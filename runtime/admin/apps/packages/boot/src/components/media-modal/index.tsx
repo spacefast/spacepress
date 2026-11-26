@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import importAttachment from '@typedpress-admin/attachment-importer';
+import importAttachment from '@spacepress-admin/attachment-importer';
 import { addFilter } from '@wordpress/hooks';
 import { Modal, Button, FormFileUpload } from '@wordpress/components';
 import { useState, useMemo } from '@wordpress/element';
@@ -110,8 +110,8 @@ export function MediaModal({ render, onSelect, allowedTypes, multiple, value }: 
 			{isOpen && (
 				<Modal
 					size="fill"
-					className="typedpress-admin-media-modal"
-					title={__('Media Library', 'typedpress-admin')}
+					className="spacepress-admin-media-modal"
+					title={__('Media Library', 'spacepress-admin')}
 					onRequestClose={() => setIsOpen(false)}
 					headerActions={
 						<FormFileUpload
@@ -129,7 +129,7 @@ export function MediaModal({ render, onSelect, allowedTypes, multiple, value }: 
 							multiple={true}
 							render={({ openFileDialog }) => (
 								<Button icon={upload} onClick={openFileDialog}>
-									{__('Upload', 'typedpress-admin')}
+									{__('Upload', 'spacepress-admin')}
 								</Button>
 							)}
 						/>
@@ -166,7 +166,7 @@ export function MediaModal({ render, onSelect, allowedTypes, multiple, value }: 
 						queryParams={{
 							media_type: allowedTypes,
 						}}
-						itemListLabel={__('Media list', 'typedpress-admin')}
+						itemListLabel={__('Media list', 'spacepress-admin')}
 					/>
 				</Modal>
 			)}

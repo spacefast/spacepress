@@ -1,8 +1,8 @@
 <?php
 /**
- * REST API: TypedPress_Admin_REST_Plugins_Controller class
+ * REST API: SpacePress_Admin_REST_Plugins_Controller class
  *
- * @package TypedPress_Admin
+ * @package SpacePress_Admin
  * @subpackage REST_API
  */
 
@@ -13,7 +13,7 @@
  *
  * @see WP_REST_Plugins_Controller
  */
-class TypedPress_Admin_REST_Plugins_Controller extends WP_REST_Plugins_Controller {
+class SpacePress_Admin_REST_Plugins_Controller extends WP_REST_Plugins_Controller {
 	/**
 	 * Purges entries in the recently_activated option that are older than a week.
 	 *
@@ -80,19 +80,19 @@ class TypedPress_Admin_REST_Plugins_Controller extends WP_REST_Plugins_Controlle
 		$params = parent::get_collection_params();
 
 		$params['recently_active'] = array(
-			'description'       => __( 'Limit result set to plugins that were recently active (within a week).', 'typedpress-admin' ),
+			'description'       => __( 'Limit result set to plugins that were recently active (within a week).', 'spacepress-admin' ),
 			'type'              => array( 'boolean', 'string' ), // Accept boolean or string that can be coerced.
 			'validate_callback' => 'rest_validate_request_arg',
 		);
 
 		$params['update_available'] = array(
-			'description'       => __( 'Limit result set to plugins with an available update.', 'typedpress-admin' ),
+			'description'       => __( 'Limit result set to plugins with an available update.', 'spacepress-admin' ),
 			'type'              => array( 'boolean', 'string' ),
 			'validate_callback' => 'rest_validate_request_arg',
 		);
 
 		$params['auto_update'] = array(
-			'description'       => __( 'Limit result set to plugins with auto-updates enabled or disabled.', 'typedpress-admin' ),
+			'description'       => __( 'Limit result set to plugins with auto-updates enabled or disabled.', 'spacepress-admin' ),
 			'type'              => array( 'boolean', 'string' ),
 			'validate_callback' => 'rest_validate_request_arg',
 		);
@@ -204,11 +204,11 @@ class TypedPress_Admin_REST_Plugins_Controller extends WP_REST_Plugins_Controlle
 						'slug'   => array(
 							'type'        => 'string',
 							'required'    => true,
-							'description' => __( 'WordPress.org plugin directory slug.', 'typedpress-admin' ),
+							'description' => __( 'WordPress.org plugin directory slug.', 'spacepress-admin' ),
 							'pattern'     => '[\w\-]+',
 						),
 						'status' => array(
-							'description' => __( 'The plugin activation status.', 'typedpress-admin' ),
+							'description' => __( 'The plugin activation status.', 'spacepress-admin' ),
 							'type'        => 'string',
 							'enum'        => is_multisite() ? array( 'inactive', 'active', 'network-active' ) : array( 'inactive', 'active' ),
 							'default'     => 'inactive',
@@ -263,20 +263,20 @@ class TypedPress_Admin_REST_Plugins_Controller extends WP_REST_Plugins_Controlle
 		$schema = parent::get_item_schema();
 
 		$schema['properties']['recently_active'] = array(
-			'description' => __( 'Whether the plugin was recently active.', 'typedpress-admin' ),
+			'description' => __( 'Whether the plugin was recently active.', 'spacepress-admin' ),
 			'type'        => array( 'boolean' ),
 			'context'     => array( 'view', 'edit', 'embed' ),
 			'readonly'    => true,
 		);
 
 		$schema['properties']['auto_update'] = array(
-			'description' => __( 'Whether auto-updates are enabled for this plugin.', 'typedpress-admin' ),
+			'description' => __( 'Whether auto-updates are enabled for this plugin.', 'spacepress-admin' ),
 			'type'        => array( 'boolean' ),
 			'context'     => array( 'view', 'edit', 'embed' ),
 		);
 
 		$schema['properties']['update_available'] = array(
-			'description' => __( 'Whether an update is available for this plugin.', 'typedpress-admin' ),
+			'description' => __( 'Whether an update is available for this plugin.', 'spacepress-admin' ),
 			'type'        => 'boolean',
 			'context'     => array( 'view', 'edit', 'embed' ),
 			'readonly'    => true,
@@ -284,7 +284,7 @@ class TypedPress_Admin_REST_Plugins_Controller extends WP_REST_Plugins_Controlle
 
 		// Write-only flag to trigger updating the plugin to its latest version when set to true on PATCH.
 		$schema['properties']['update'] = array(
-			'description' => __( 'Trigger updating the plugin to the latest available version.', 'typedpress-admin' ),
+			'description' => __( 'Trigger updating the plugin to the latest available version.', 'spacepress-admin' ),
 			'type'        => array( 'boolean' ),
 			'context'     => array( 'edit' ),
 			'readonly'    => false,
@@ -410,12 +410,12 @@ class TypedPress_Admin_REST_Plugins_Controller extends WP_REST_Plugins_Controlle
 
 			$updates = get_site_transient( 'update_plugins' );
 			if ( is_object( $updates ) && ! empty( $updates->response[ $plugin_file ] ) ) {
-				set_site_transient( 'tp_admin_prev_update_plugins', $updates );
+				set_site_transient( 'sp_admin_prev_update_plugins', $updates );
 				return $updates->response[ $plugin_file ];
 			}
 
 			// Optional: fallback to a snapshot you maintain (good for UIs under flaky network).
-			$snapshot = get_site_transient( 'tp_admin_prev_update_plugins' );
+			$snapshot = get_site_transient( 'sp_admin_prev_update_plugins' );
 			if ( is_object( $snapshot ) && ! empty( $snapshot->response[ $plugin_file ] ) ) {
 				return $snapshot->response[ $plugin_file ];
 			}
@@ -443,8 +443,8 @@ class TypedPress_Admin_REST_Plugins_Controller extends WP_REST_Plugins_Controlle
 		$should_update_plugin = $this->get_updates( $requested_plugin_file );
 		if ( is_null( $should_update_plugin ) ) {
 			return new WP_Error(
-				'tp_admin_no_update_available',
-				__( 'No update is currently available for this plugin.', 'typedpress-admin' ),
+				'sp_admin_no_update_available',
+				__( 'No update is currently available for this plugin.', 'spacepress-admin' ),
 				array( 'status' => 400 )
 			);
 		}
@@ -563,6 +563,6 @@ class TypedPress_Admin_REST_Plugins_Controller extends WP_REST_Plugins_Controlle
 add_action(
 	'rest_api_init',
 	function () {
-		( new TypedPress_Admin_REST_Plugins_Controller() )->register_routes();
+		( new SpacePress_Admin_REST_Plugins_Controller() )->register_routes();
 	}
 );

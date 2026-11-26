@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\PropertyInfo;
+namespace SpacePress\Identity\Vendor\Symfony\Component\PropertyInfo;
 
 /**
  * Guesses the property's human readable description.

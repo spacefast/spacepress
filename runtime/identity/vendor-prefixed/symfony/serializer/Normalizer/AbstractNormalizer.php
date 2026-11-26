@@ -9,19 +9,19 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer;
+namespace SpacePress\Identity\Vendor\Symfony\Component\Serializer\Normalizer;
 
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\CircularReferenceException;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\InvalidArgumentException;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\LogicException;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\MissingConstructorArgumentsException;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\NotNormalizableValueException;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\RuntimeException;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Mapping\AttributeMetadataInterface;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Mapping\Factory\ClassMetadataFactoryInterface;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\NameConverter\NameConverterInterface;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\SerializerAwareInterface;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\SerializerAwareTrait;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Exception\CircularReferenceException;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Exception\InvalidArgumentException;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Exception\LogicException;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Exception\MissingConstructorArgumentsException;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Exception\NotNormalizableValueException;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Exception\RuntimeException;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Mapping\AttributeMetadataInterface;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Mapping\Factory\ClassMetadataFactoryInterface;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\NameConverter\NameConverterInterface;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\SerializerAwareInterface;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\SerializerAwareTrait;
 
 /**
  * Normalizer implementation.

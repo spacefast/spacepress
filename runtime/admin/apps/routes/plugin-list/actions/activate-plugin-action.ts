@@ -1,7 +1,7 @@
 import type { Plugin } from '@wordpress/core-data';
 import { __, _n, sprintf } from '@wordpress/i18n';
 import { plugins as pluginsIcon } from '@wordpress/icons';
-import type { Action } from '@typedpress-admin/dataviews';
+import type { Action } from '@spacepress-admin/dataviews';
 import usePluginService from '../hooks/use-plugin-service';
 import { bulkAction } from './helpers/bulk-runner';
 
@@ -15,7 +15,7 @@ export const useActivatePluginAction = (): Action< Plugin > => {
 
 	return {
 		id: 'activate-plugin',
-		label: __( 'Activate', 'typedpress-admin' ),
+		label: __( 'Activate', 'spacepress-admin' ),
 		isPrimary: true,
 		icon: pluginsIcon,
 		callback: async ( plugins: Plugin[] ) => {
@@ -37,7 +37,7 @@ export const useActivatePluginAction = (): Action< Plugin > => {
 									'%d plugin activated.',
 									'%d plugins activated.',
 									fulfilled,
-									'typedpress-admin'
+									'spacepress-admin'
 								),
 								fulfilled
 							);
@@ -53,7 +53,7 @@ export const useActivatePluginAction = (): Action< Plugin > => {
 									'%d plugin failed to activate.',
 									'%d plugins failed to activate.',
 									rejected,
-									'typedpress-admin'
+									'spacepress-admin'
 								),
 								rejected
 							);

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Psr\Container;
+namespace SpacePress\Identity\Vendor\Psr\Container;
 
 /**
  * Describes the interface of a container that exposes methods to read its entries.

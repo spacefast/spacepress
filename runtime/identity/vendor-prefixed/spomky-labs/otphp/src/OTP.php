@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\OTPHP;
+namespace SpacePress\Identity\Vendor\OTPHP;
 
 use function array_key_exists;
 use function chr;
@@ -11,11 +11,11 @@ use Exception;
 use function in_array;
 use function is_int;
 use function is_string;
-use TypedPress\Identity\Vendor\OTPHP\Exception\InvalidLabelException;
-use TypedPress\Identity\Vendor\OTPHP\Exception\InvalidParameterException;
-use TypedPress\Identity\Vendor\OTPHP\Exception\ParameterNotFoundException;
-use TypedPress\Identity\Vendor\OTPHP\Exception\SecretDecodingException;
-use TypedPress\Identity\Vendor\ParagonIE\ConstantTime\Base32;
+use SpacePress\Identity\Vendor\OTPHP\Exception\InvalidLabelException;
+use SpacePress\Identity\Vendor\OTPHP\Exception\InvalidParameterException;
+use SpacePress\Identity\Vendor\OTPHP\Exception\ParameterNotFoundException;
+use SpacePress\Identity\Vendor\OTPHP\Exception\SecretDecodingException;
+use SpacePress\Identity\Vendor\ParagonIE\ConstantTime\Base32;
 use function sprintf;
 use const STR_PAD_LEFT;
 use function strlen;

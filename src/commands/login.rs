@@ -1,4 +1,4 @@
-//! `typedpress login <site-url> [project-dir] [--no-browser]` and `typedpress logout <site-url>`.
+//! `spacepress login <site-url> [project-dir] [--no-browser]` and `spacepress logout <site-url>`.
 //!
 //! Signing in uses WordPress's own Authorize Application screen: the site's owner approves an
 //! application password in the browser, and WordPress sends it to this command on 127.0.0.1 (core
@@ -12,7 +12,7 @@ use std::process::ExitCode;
 use std::time::{Duration, Instant};
 
 const USAGE: &str =
-    "usage: typedpress login <site-url> [project-dir] [--no-browser]\n       typedpress logout <site-url>";
+    "usage: spacepress login <site-url> [project-dir] [--no-browser]\n       spacepress logout <site-url>";
 /// Identifies this command to WordPress, which lists application passwords by app.
 const APP_ID: &str = "0d1f6c5e-3b55-4f0e-9c2a-6a1e5f1b7a10";
 const WAIT: Duration = Duration::from_secs(600);
@@ -106,7 +106,7 @@ fn login(args: &[String]) -> Result<(), String> {
     let state = state();
     let callback = format!("http://127.0.0.1:{port}/callback?state={state}");
     let name = format!(
-        "TypedPress CLI{}",
+        "SpacePress CLI{}",
         std::env::var("HOSTNAME")
             .ok()
             .filter(|h| !h.is_empty())
@@ -134,16 +134,16 @@ fn login(args: &[String]) -> Result<(), String> {
     let file = remote::store(&site, &found.rest, &user, &password)?;
     println!("signed in to {site} as {user} (credential kept in {})", file.display());
     let project = project.unwrap_or_else(|| PathBuf::from("."));
-    if project.join("typedpress.config.ts").is_file() {
+    if project.join("spacepress.config.ts").is_file() {
         remote::link(&project, &site)?;
-        println!("this project now deploys to {site}: run typedpress push");
+        println!("this project now deploys to {site}: run spacepress push");
     } else {
-        println!("in a project, deploy with: typedpress push --site {site}");
+        println!("in a project, deploy with: spacepress push --site {site}");
     }
     if info["ready"] != true {
         println!(
-            "the site still needs plugins TypedPress depends on: typedpress push installs them, or use the button at {}",
-            info["setup"].as_str().unwrap_or("TypedPress in wp-admin")
+            "the site still needs plugins SpacePress depends on: spacepress push installs them, or use the button at {}",
+            info["setup"].as_str().unwrap_or("SpacePress in wp-admin")
         );
     }
     Ok(())
@@ -159,7 +159,7 @@ fn wait(listener: &TcpListener, state: &str) -> Result<(String, String), String>
             Ok(connection) => connection,
             Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                 if Instant::now() > deadline {
-                    return Err("no approval arrived in 10 minutes. Run typedpress login again.".into());
+                    return Err("no approval arrived in 10 minutes. Run spacepress login again.".into());
                 }
                 std::thread::sleep(Duration::from_millis(100));
                 continue;
@@ -186,7 +186,7 @@ fn wait(listener: &TcpListener, state: &str) -> Result<(String, String), String>
             Some(Ok((user.clone(), password.clone())))
         } else {
             Some(Err(
-                "the request was not approved on the site. Run typedpress login again to retry.".to_string(),
+                "the request was not approved on the site. Run spacepress login again to retry.".to_string(),
             ))
         };
         let (status, text) = match &outcome {
@@ -197,7 +197,7 @@ fn wait(listener: &TcpListener, state: &str) -> Result<(String, String), String>
             Some(Err(_)) => ("200 OK", "The request was not approved. You can close this tab."),
             None => ("404 Not Found", "Nothing here."),
         };
-        let body = format!("<!doctype html><meta charset=\"utf-8\"><title>TypedPress</title><p>{text}</p>");
+        let body = format!("<!doctype html><meta charset=\"utf-8\"><title>SpacePress</title><p>{text}</p>");
         let _ = write!(
             stream,
             "HTTP/1.1 {status}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n{body}",

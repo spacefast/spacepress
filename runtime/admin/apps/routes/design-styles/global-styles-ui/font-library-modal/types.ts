@@ -1,4 +1,4 @@
-import type { FontFamilyPreset } from '@typedpress-admin/global-styles-engine';
+import type { FontFamilyPreset } from '@spacepress-admin/global-styles-engine';
 
 export interface CollectionFontFace {
 	id: string;

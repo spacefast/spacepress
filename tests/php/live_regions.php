@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 /*
  * The subscription endpoint's `page` read (docs/decisions/2026-11-14-live-regions.md):
- * tests/fixtures/live-regions, built by `typedpress build`, on WordPress with php -S. Every answer comes
- * from `POST /wp-json/typedpress/v1/_live` over HTTP, as the browser asks. Prints one JSON object.
+ * tests/fixtures/live-regions, built by `spacepress build`, on WordPress with php -S. Every answer comes
+ * from `POST /wp-json/spacepress/v1/_live` over HTTP, as the browser asks. Prints one JSON object.
  *
- *   TP_WP_THEMES=1 php tests/php/live_regions.php <wp-content dir>
+ *   SP_WP_THEMES=1 php tests/php/live_regions.php <wp-content dir>
  */
 
 require __DIR__ . '/wp.php';
@@ -15,29 +15,29 @@ require __DIR__ . '/wp.php';
 $site = wpSite('live-regions', ['wpContent' => $argv[1], 'users' => ['chief' => 'editor'], 'muPlugins' => ['host' => <<<'PHP'
     <?php
     // A host that keeps cached pages: the page cache records what cacheable renders read.
-    add_action('tp_purge_urls', static function (array $paths): void {});
-    if (isset($_SERVER['HTTP_X_TP_TEST_SEED_FAILURE'])) {
+    add_action('sp_purge_urls', static function (array $paths): void {});
+    if (isset($_SERVER['HTTP_X_SP_TEST_SEED_FAILURE'])) {
         add_filter('salt', static function ($salt) {
-            if (in_array(\TypedPress\Live\Token::class, array_column(debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 8), 'class'), true)) {
+            if (in_array(\SpacePress\Live\Token::class, array_column(debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 8), 'class'), true)) {
                 throw new RuntimeException('Test seed issuance failure');
             }
             return $salt;
         });
     }
     // Counts the page renders `_live` runs, to tell "not modified" by counter from by hash.
-    add_action('tp_app_live_rendered', static function (): void {
+    add_action('sp_app_live_rendered', static function (): void {
         update_option('test_live_renders', (int) get_option('test_live_renders', 0) + 1, false);
     });
     PHP]]);
 wp_set_current_user(1);
-\TypedPress\db()->insert('notes', ['title' => 'One', 'slug' => 'one', 'status' => 'published']);
+\SpacePress\db()->insert('notes', ['title' => 'One', 'slug' => 'one', 'status' => 'published']);
 $site->actAs(null);
 $site->startServer();
 $url = $site->url();
 
 function post(string $url, array $queries, array $headers = []): array
 {
-    $ch = curl_init("$url/wp-json/typedpress/v1/_live");
+    $ch = curl_init("$url/wp-json/spacepress/v1/_live");
     curl_setopt_array($ch, [
         CURLOPT_POST => true, CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 30,
         CURLOPT_HTTPHEADER => ['Content-Type: application/json', ...$headers], CURLOPT_POSTFIELDS => json_encode(['queries' => $queries]),
@@ -54,7 +54,7 @@ $shape = static function (array $r): string {
 };
 $items = static fn (array $r): array => isset($r['data']['html']) && preg_match_all('#<li[^>]*class="note"[^>]*>([^<]*)</li>#', $r['data']['html'], $m) ? $m[1] : [];
 global $wpdb;
-$reads = static fn (): int => (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}tp__app_reads");
+$reads = static fn (): int => (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}sp__app_reads");
 
 $out = [];
 $renders = static function (): int {
@@ -71,8 +71,8 @@ function pageSeed(string $url, string $id, array $headers = []): array
     }
     $doc = new DOMDocument();
     @$doc->loadHTML($body);
-    $element = (new DOMXPath($doc))->query("//*[@data-tp-live='$id']")->item(0);
-    return json_decode($element->getAttribute('data-tp-live-seed'), true, 512, JSON_THROW_ON_ERROR);
+    $element = (new DOMXPath($doc))->query("//*[@data-sp-live='$id']")->item(0);
+    return json_decode($element->getAttribute('data-sp-live-seed'), true, 512, JSON_THROW_ON_ERROR);
 }
 
 $was = $renders();
@@ -81,7 +81,7 @@ $out['page seed'] = [$renders() - $was, $seed['kinds']];
 $was = $renders();
 [$checked] = post($url, [$page('/', 'notes', $seed['token'])]);
 $out['first poll'] = [$shape($checked), $renders() - $was];
-$unsealed = pageSeed("$url/", 'notes', ['X-TP-Test-Seed-Failure: 1']);
+$unsealed = pageSeed("$url/", 'notes', ['X-SP-Test-Seed-Failure: 1']);
 [$retry] = post($url, [$page($unsealed['url'], 'notes', $unsealed['token'] ?? null)]);
 $out['unsealed page seed'] = [isset($unsealed['token']), $unsealed['kinds'], $shape($retry), $items($retry)];
 
@@ -98,7 +98,7 @@ $out['again'] = [$shape($again), 'rendered' => $renders() - $was];
 $out['same hash'] = $fresh['data']['html'] === $first['data']['html'];
 // A write the region read: changed on the next poll.
 wp_set_current_user(1);
-\TypedPress\db()->insert('notes', ['title' => 'Two', 'status' => 'published']);
+\SpacePress\db()->insert('notes', ['title' => 'Two', 'status' => 'published']);
 $site->actAs(null);
 [$after] = post($url, [$page('/', 'notes', $again['token'])]);
 $out['after write'] = [$shape($after), $items($after)];
@@ -106,7 +106,7 @@ $out['after write'] = [$shape($after), $items($after)];
 $out['write before first poll'] = [$shape($changedSinceGet), $items($changedSinceGet)];
 // A draft doesn't show to anonymous visitors, and doesn't count as a change for them.
 wp_set_current_user(1);
-\TypedPress\db()->insert('notes', ['title' => 'Draft', 'status' => 'draft']);
+\SpacePress\db()->insert('notes', ['title' => 'Draft', 'status' => 'draft']);
 $site->actAs(null);
 [$draft] = post($url, [$page('/', 'notes', $after['token'])]);
 $out['after draft'] = $shape($draft);
@@ -156,8 +156,8 @@ $out['a GET records'] = $reads() - $before > 0;
 
 // `<Live>` around `<Comments>`: a new approved comment shows on the next poll, not after the
 // five-minute trust window, because the thread marks the page as reading something unseen.
-$slug = (string) \TypedPress\db()->findFirst('notes', ['where' => ['title' => 'One']])['slug'];
-$noteId = (int) \TypedPress\db()->findFirst('notes', ['where' => ['title' => 'One']])['id'];
+$slug = (string) \SpacePress\db()->findFirst('notes', ['where' => ['title' => 'One']])['slug'];
+$noteId = (int) \SpacePress\db()->findFirst('notes', ['where' => ['title' => 'One']])['id'];
 [$thread] = post($url, [$page("/notes/$slug", 'thread')]);
 wp_insert_comment(['comment_post_ID' => $noteId, 'comment_content' => 'Live hello', 'comment_author' => 'admin', 'user_id' => 1, 'comment_approved' => 1]);
 $was = $renders();
@@ -168,8 +168,8 @@ $out['comments'] = [$shape($thread), str_contains($thread['data']['html'] ?? '',
 // only for a visitor holding its cookie, and a token issued to one visitor is never "not modified"
 // for the other.
 wp_set_current_user(1);
-\TypedPress\db()->insert('notes', ['title' => 'Locked', 'slug' => 'locked', 'status' => 'published']);
-wp_update_post(['ID' => (int) \TypedPress\db()->findFirst('notes', ['where' => ['slug' => 'locked']])['id'], 'post_password' => 'open sesame']);
+\SpacePress\db()->insert('notes', ['title' => 'Locked', 'slug' => 'locked', 'status' => 'published']);
+wp_update_post(['ID' => (int) \SpacePress\db()->findFirst('notes', ['where' => ['slug' => 'locked']])['id'], 'post_password' => 'open sesame']);
 $site->actAs(null);
 require_once ABSPATH . WPINC . '/class-phpass.php';
 $pass = ['Cookie: wp-postpass_' . COOKIEHASH . '=' . rawurlencode((new PasswordHash(8, true))->HashPassword('open sesame'))];
@@ -184,21 +184,21 @@ $out['password'] = [
     'with token, without cookie' => [$shape($crossB), in_array('Locked', $items($crossB), true)],
 ];
 wp_set_current_user(1);
-wp_delete_post((int) \TypedPress\db()->findFirst('notes', ['where' => ['slug' => 'locked']])['id'], true);
+wp_delete_post((int) \SpacePress\db()->findFirst('notes', ['where' => ['slug' => 'locked']])['id'], true);
 $site->actAs(null);
 
 // A cached page's seed: its token is older than TRUST_SECONDS (a page cache served it later). The
 // counters may not answer for it: the region renders and compares, and answers unchanged.
 [$fresh] = post($url, [$page('/', 'notes')]);
-$claims = \TypedPress\Live\Token::open($fresh['token']);
-$claims['t'] -= \TypedPress\Live\Module::TRUST_SECONDS + 100;
-$old = \TypedPress\Live\Token::seal($claims);
+$claims = \SpacePress\Live\Token::open($fresh['token']);
+$claims['t'] -= \SpacePress\Live\Module::TRUST_SECONDS + 100;
+$old = \SpacePress\Live\Token::seal($claims);
 $was = $renders();
 [$aged] = post($url, [$page('/', 'notes', $old)]);
 $out['aged seed'] = [$shape($aged), 'rendered' => $renders() - $was];
 
 // A new build of the same page: the held token is a different question, so the region renders.
-$schemaFile = \TypedPress\Wp\Runtime::plugin()->dir . '/tp/app/schema.php';
+$schemaFile = \SpacePress\Wp\Runtime::plugin()->dir . '/sp/app/schema.php';
 [$held] = post($url, [$page('/', 'notes')]);
 file_put_contents($schemaFile, file_get_contents($schemaFile) . "\n// another build\n");
 [$rebuilt] = post($url, [$page('/', 'notes', $held['token'])]);

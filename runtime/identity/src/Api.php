@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity;
+namespace SpacePress\Identity;
 
 final class Api
 {
-    public const DEFAULT_NAMESPACE = "typedpress-identity/v1";
+    public const DEFAULT_NAMESPACE = "spacepress-identity/v1";
 
     /** Active REST namespace for Identity API (hosts may override via SP_IDENTITY_API_NAMESPACE or `sp_identity_api_namespace`). */
     public static function apiNamespace(): string
@@ -73,7 +73,7 @@ final class Api
             );
         } catch (\Throwable $e) {
             error_log(
-                "TypedPress Identity: " . get_class($e) . " " . $e->getMessage(),
+                "SpacePress Identity: " . get_class($e) . " " . $e->getMessage(),
             );
             $response = new \WP_REST_Response(
                 [
@@ -288,7 +288,7 @@ final class Api
             return [
                 "account" => $this->accounts->profile($uid) + [
                     "guest" => in_array(
-                        "tp_guest",
+                        "sp_guest",
                         (array) get_userdata($uid)->roles,
                         true,
                     ),

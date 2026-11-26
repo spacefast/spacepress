@@ -1,4 +1,4 @@
-import { unlock } from '@typedpress-admin/admin-toolkit';
+import { unlock } from '@spacepress-admin/admin-toolkit';
 import {
 	Platform,
 	useContext,
@@ -33,11 +33,11 @@ function SidebarHeader( { mediaType }: { mediaType: string } ) {
 	return (
 		<Tabs.TabList>
 			<Tabs.Tab tabId={ MEDIA_EDITOR_SIDEBAR_DETAILS_TAB }>
-				{ __( 'Details', 'typedpress-admin' ) }
+				{ __( 'Details', 'spacepress-admin' ) }
 			</Tabs.Tab>
 			{ mediaType === 'image' && (
 				<Tabs.Tab tabId={ MEDIA_EDITOR_SIDEBAR_EDIT_TAB }>
-					{ __( 'Edit', 'typedpress-admin' ) }
+					{ __( 'Edit', 'spacepress-admin' ) }
 				</Tabs.Tab>
 			) }
 		</Tabs.TabList>
@@ -63,23 +63,23 @@ function SidebarContent( {
 
 	return (
 		<ComplementaryArea
-			className="typedpress-admin-media-editor-sidebar"
+			className="spacepress-admin-media-editor-sidebar"
 			header={
 				<Tabs.Context.Provider value={ tabsContextValue }>
 					<SidebarHeader mediaType={ mediaType } />
 				</Tabs.Context.Provider>
 			}
-			headerClassName="typedpress-admin-media-editor-sidebar__tabs-header"
+			headerClassName="spacepress-admin-media-editor-sidebar__tabs-header"
 			/* translators: button label text should, if possible, be under 16 characters. */
-			title={ __( 'Media Editor', 'typedpress-admin' ) }
-			closeLabel={ __( 'Close Media Editor', 'typedpress-admin' ) }
+			title={ __( 'Media Editor', 'spacepress-admin' ) }
+			closeLabel={ __( 'Close Media Editor', 'spacepress-admin' ) }
 			scope="core/edit-media"
 			identifier={ currentArea }
 			icon={ isRTL() ? drawerLeft : drawerRight }
 			isActiveByDefault={ SIDEBAR_ACTIVE_BY_DEFAULT }
 		>
 			<Tabs.Context.Provider value={ tabsContextValue }>
-				<div className="typedpress-admin-media-editor-sidebar__tabs-panel">
+				<div className="spacepress-admin-media-editor-sidebar__tabs-panel">
 					<Tabs.TabPanel
 						tabId={ MEDIA_EDITOR_SIDEBAR_DETAILS_TAB }
 						focusable={ false }

@@ -1,4 +1,4 @@
-TypedPress Admin is licensed under GPL-2.0-or-later.
+SpacePress Admin is licensed under GPL-2.0-or-later.
 Copyright (c) 2026 Spacefast.
 
 Portions are adapted from CIAB Admin / next-admin, by Automattic and
@@ -10,7 +10,7 @@ Complete normalized inputs for adapted files are kept in the source
 repository under runtime/admin/upstream-metadata/adapter-originals; the
 built plugin does not ship them.
 
-The existing TypedPress WordPress integration and telemetry adapter derive from
+The existing SpacePress WordPress integration and telemetry adapter derive from
 Spacefast's earlier admin work under the same license. Bundled WordPress
 packages are copyright the WordPress contributors, GPL-2.0-or-later;
 build/THIRD-PARTY-LICENSES.txt records dependency and workspace notices.

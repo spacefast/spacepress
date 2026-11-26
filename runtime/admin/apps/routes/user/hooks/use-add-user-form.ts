@@ -1,5 +1,5 @@
 import { Icon } from '@wordpress/ui';
-import { store as userDataStore } from '@typedpress-admin/user-data';
+import { store as userDataStore } from '@spacepress-admin/user-data';
 import { __, sprintf } from '@wordpress/i18n';
 import { select, useDispatch, useSelect } from '@wordpress/data';
 import { store as coreStore } from '@wordpress/core-data';
@@ -69,16 +69,16 @@ export function useAddUserForm(
 
 	// Determine button labels based on invite mode
 	let saveButtonLabel: string = isInviteMode
-		? __( 'Send invite', 'typedpress-admin' )
-		: __( 'Save', 'typedpress-admin' );
+		? __( 'Send invite', 'spacepress-admin' )
+		: __( 'Save', 'spacepress-admin' );
 	if ( isSaving ) {
 		saveButtonLabel = isInviteMode
-			? __( 'Sending…', 'typedpress-admin' )
-			: __( 'Saving…', 'typedpress-admin' );
+			? __( 'Sending…', 'spacepress-admin' )
+			: __( 'Saving…', 'spacepress-admin' );
 	} else if ( isSuccess && ! isDirty ) {
 		saveButtonLabel = isInviteMode
-			? __( 'Sent!', 'typedpress-admin' )
-			: __( 'Saved!', 'typedpress-admin' );
+			? __( 'Sent!', 'spacepress-admin' )
+			: __( 'Saved!', 'spacepress-admin' );
 	}
 
 	const handleOnChange = useCallback(
@@ -127,7 +127,7 @@ export function useAddUserForm(
 				void createSuccessNotice(
 					sprintf(
 						/* translators: %s: email address of invited user */
-						__( '%s invited.', 'typedpress-admin' ),
+						__( '%s invited.', 'spacepress-admin' ),
 						getUserDisplayName( data )
 					),
 					{

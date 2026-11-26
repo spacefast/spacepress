@@ -2,12 +2,12 @@
 /**
  * Name field definition for core plugins fields collection
  *
- * @package TypedPress_Admin
+ * @package SpacePress_Admin
  */
 
 return array(
 	'type'               => 'text',
-	'label'              => __( 'Plugin Name', 'typedpress-admin' ),
+	'label'              => __( 'Plugin Name', 'spacepress-admin' ),
 	'enableHiding'       => true,
 	'filterBy'           => array(
 		'operators' => array( 'contains', 'startsWith', 'is', 'isNot' ),

@@ -1,6 +1,6 @@
 import { useNavigate } from '@wordpress/route';
-import { useViewConfig } from '@typedpress-admin/views';
-import type { Action } from '@typedpress-admin/dataviews';
+import { useViewConfig } from '@spacepress-admin/views';
+import type { Action } from '@spacepress-admin/dataviews';
 import { useMemo } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
 import { pencil } from '@wordpress/icons';
@@ -23,7 +23,7 @@ export const useFullEditAction = (): Action< User > | null => {
 
 		return {
 			id: 'full-edit-user',
-			label: __( 'View', 'typedpress-admin' ),
+			label: __( 'View', 'spacepress-admin' ),
 			isPrimary: true,
 			icon: pencil,
 			supportsBulk: false,

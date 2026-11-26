@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Cose\Key;
+namespace SpacePress\Identity\Vendor\Cose\Key;
 
 use InvalidArgumentException;
 use function is_string;

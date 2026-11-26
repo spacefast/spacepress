@@ -1,6 +1,6 @@
 //! A compiled project as plain JSON for a reader that is not the runtime: its kinds, fields, access
-//! rules, actions, jobs and routes, under the names an author writes. `typedpress mcp`'s `schema` tool
-//! answers with it. It reads the schema the pipeline built (the one `typedpress check` compiles) and adds
+//! rules, actions, jobs and routes, under the names an author writes. `spacepress mcp`'s `schema` tool
+//! answers with it. It reads the schema the pipeline built (the one `spacepress check` compiles) and adds
 //! nothing to it.
 
 use crate::schema::{Access, App, ColType, Collection, Column, DefaultKind, RelKind, Schema};
@@ -8,7 +8,7 @@ use crate::wordpress::abilities::{kebab, own_inputs};
 use indexmap::IndexMap;
 use serde_json::{Map, Value, json};
 
-/// The app's HTTP API below the site root (`TypedPress\Wp\Facade::PREFIX`).
+/// The app's HTTP API below the site root (`SpacePress\Wp\Facade::PREFIX`).
 pub(super) const API: &str = crate::sync::client::API;
 
 fn access(rule: &Access) -> Value {
@@ -53,7 +53,7 @@ fn field(c: &Column, schema: &Schema) -> Value {
         c.ty.builder_name()
     };
     out.insert("type".into(), json!(authored));
-    // TypedPress fills it in: the id, the status and timestamps, a slug derived from another field.
+    // SpacePress fills it in: the id, the status and timestamps, a slug derived from another field.
     let generated = c.system || c.derived || c.auto_increment || c.ty == ColType::Slug && c.source.is_some();
     // A write must supply it: required, and nothing fills it in.
     if !c.optional_on_insert() && !generated {
@@ -193,7 +193,7 @@ fn kind(c: &Collection, schema: &Schema) -> Value {
     out
 }
 
-/// `tp/app/`: each page and HTTP route by its URL pattern, most specific first.
+/// `sp/app/`: each page and HTTP route by its URL pattern, most specific first.
 fn routes(app: &App, schema: &Schema) -> Vec<Value> {
     app.routes
         .iter()
@@ -207,7 +207,7 @@ fn routes(app: &App, schema: &Schema) -> Vec<Value> {
                 "type": if route.page.is_some() { "page" } else { "route" },
             });
             if let Some(file) = file {
-                out["file"] = json!(format!("tp/{file}"));
+                out["file"] = json!(format!("sp/{file}"));
             }
             if let Some(compiled) = compiled {
                 if !compiled.methods.is_empty() {
@@ -232,7 +232,7 @@ fn routes(app: &App, schema: &Schema) -> Vec<Value> {
                     route
                         .layouts
                         .iter()
-                        .map(|layout| format!("tp/{layout}"))
+                        .map(|layout| format!("sp/{layout}"))
                         .collect::<Vec<_>>()
                 );
             }
@@ -325,14 +325,14 @@ pub(super) fn project(schema: &Schema) -> Value {
         "abilities": own_inputs(schema).into_keys().collect::<Vec<_>>(),
         "endpoints": {
             "api": API,
-            "mcp": format!("/wp-json/mcp/typedpress-{app}"),
+            "mcp": format!("/wp-json/mcp/spacepress-{app}"),
             "abilities": "/wp-json/wp-abilities/v1/abilities",
         },
     });
     if let Some(locales) = &schema.locales {
         out["locales"] = locales.clone();
     }
-    // Both admins: TypedPress Admin (unless `admin: false`) and classic wp-admin, below the site URL.
+    // Both admins: SpacePress Admin (unless `admin: false`) and classic wp-admin, below the site URL.
     out["admin"] = if schema.admin {
         json!({ "default": "/wp-admin/new/", "classic": "/wp-admin/" })
     } else {

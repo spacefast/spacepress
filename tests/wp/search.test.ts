@@ -28,13 +28,13 @@ test("concurrent creates never deadlock on the search index, and each one is fou
   const bodies = found.json.data.map((r: { body: string }) => r.body).sort();
   assert.equal(bodies.length, writers * rounds);
   assert.equal(new Set(bodies).size, writers * rounds);
-  const entries = sql(`SELECT COUNT(*) AS n FROM wp_tp__search WHERE kind = 'guest_notes' AND body LIKE 'Concurrent ${run} %'`);
+  const entries = sql(`SELECT COUNT(*) AS n FROM wp_sp__search WHERE kind = 'guest_notes' AND body LIKE 'Concurrent ${run} %'`);
   assert.equal(Number(entries[0].n), writers * rounds, "one entry per row and field");
 });
 
 test("an update replaces a row's entry in place, and clearing the field removes it", async () => {
   const note = (await http("POST", `${api}/guest_notes`, { as: "editor", body: { body: `Before ${run}` } })).json.data;
-  const entry = () => sql(`SELECT body FROM wp_tp__search WHERE kind = 'guest_notes' AND item = '${note.id}'`).map((r) => r.body);
+  const entry = () => sql(`SELECT body FROM wp_sp__search WHERE kind = 'guest_notes' AND item = '${note.id}'`).map((r) => r.body);
   assert.deepEqual(entry(), [`Before ${run}`]);
   assert.equal((await http("PATCH", `${api}/guest_notes/${note.id}`, { as: "editor", body: { body: `After ${run}` } })).status, 200);
   assert.deepEqual(entry(), [`After ${run}`], "replaced, not added");

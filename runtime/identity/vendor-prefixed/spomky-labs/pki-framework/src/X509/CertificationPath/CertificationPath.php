@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath;
+namespace SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath;
 
 use ArrayIterator;
 use function count;
@@ -10,15 +10,15 @@ use Countable;
 use const E_USER_DEPRECATED;
 use IteratorAggregate;
 use LogicException;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\CryptoBridge\Crypto;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Certificate;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\CertificateBundle;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\CertificateChain;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\Exception\PathValidationException;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\PathBuilding\CertificationPathBuilder;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\PathValidation\PathValidationConfig;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\PathValidation\PathValidationResult;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\PathValidation\PathValidator;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\CryptoBridge\Crypto;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Certificate;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\CertificateBundle;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\CertificateChain;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\Exception\PathValidationException;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\PathBuilding\CertificationPathBuilder;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\PathValidation\PathValidationConfig;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\PathValidation\PathValidationResult;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\PathValidation\PathValidator;
 
 /**
  * Implements certification path structure.

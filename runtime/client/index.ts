@@ -1,11 +1,11 @@
-// TypedPress typed client runtime. `typedpress build` copies this file next to the generated `types.ts`
-// (interfaces) and `schema.ts` (the SCHEMA descriptor) in `tp/_generated/client/`. Do not edit the copy.
+// SpacePress typed client runtime. `spacepress build` copies this file next to the generated `types.ts`
+// (interfaces) and `schema.ts` (the SCHEMA descriptor) in `sp/_generated/client/`. Do not edit the copy.
 //
 // No dependencies; `fetch`-based; erasable TypeScript only, so Node (type stripping), Bun, Deno and
 // bundlers run it as-is. A kind's list, get, create, update, delete, paginate and staged steps, an
 // action and a global are the app's WordPress Abilities, run through core's run route
 // (`/wp-json/wp-abilities/v1/abilities/<app>/<name>/run`). The app's own REST routes
-// (`/wp-json/typedpress/v1/…`) carry the rest: `count()` and subscriptions (`_live`), media,
+// (`/wp-json/spacepress/v1/…`) carry the rest: `count()` and subscriptions (`_live`), media,
 // revisions, soft-delete restore and purge, `auth.me()`, uploads, file streams, sign-in, the schema,
 // and every call on a kind that has no abilities (a taxonomy). On a WordPress page `createClient()` reads the site's REST root, the
 // app API's namespace and, for a signed-in visitor, the REST nonce the page prints for it.
@@ -100,10 +100,10 @@ export interface Query<T> extends Promise<T> {
    * Calls `onData` with the result, and again each time it changes. `onError` gets the problem of a
    * read the server refuses (a `get` whose row is missing or unreadable is a 404) and network
    * failures; the subscription continues. `seed` is an answer rendered on the server
-   * (`TypedPress\Live\Module::evaluate`): its data is delivered at once and its token sent with the
+   * (`SpacePress\Live\Module::evaluate`): its data is delivered at once and its token sent with the
    * first request. Returns a function that ends the subscription.
    */
-  subscribe(onData: (data: T) => void, onError?: (error: TypedPressError) => void, seed?: { token: string; data: T }): () => void;
+  subscribe(onData: (data: T) => void, onError?: (error: SpacePressError) => void, seed?: { token: string; data: T }): () => void;
   /**
    * Shows subscribers `update(current)` at once, before the server has answered a write. Call
    * `settle()` when the write succeeded (the change stays until the server's next answer replaces
@@ -141,7 +141,7 @@ export interface CollectionClient<K extends CollectionKey> {
   watch<const W extends Collections[K]["with"] = Extract<{}, Collections[K]["with"]>>(
     q: ListQuery<K, ExactWith<K, W>> | undefined,
     onRows: (rows: RowWith<K, W>[]) => void,
-    onError?: (error: TypedPressError) => void,
+    onError?: (error: SpacePressError) => void,
   ): () => void;
   revisions: {
     /** Newest first. Needs `update` access on the row. */
@@ -285,11 +285,11 @@ export type Client = { readonly [K in CollectionKey]: CollectionClient<K> } & {
   readonly actions: ActionsClient;
   readonly globals: GlobalsClient;
   readonly auth: AuthClient;
-  /** `GET /wp-json/typedpress/v1`: the app's description (kinds, fields, globals, actions), as `typedpress pull` reads it. */
+  /** `GET /wp-json/spacepress/v1`: the app's description (kinds, fields, globals, actions), as `spacepress pull` reads it. */
   schema(): Promise<unknown>;
 };
 
-/** One committed transaction's changes, as the runtime's `tp_realtime_changes` hook sends them. */
+/** One committed transaction's changes, as the runtime's `sp_realtime_changes` hook sends them. */
 export interface ChangeNotice {
   id: string;
   at: string;
@@ -298,7 +298,7 @@ export interface ChangeNotice {
 }
 
 /**
- * Delivers change notices from the host (Cast, a WebSocket relay, Pusher, ...). TypedPress ships none.
+ * Delivers change notices from the host (Cast, a WebSocket relay, Pusher, ...). SpacePress ships none.
  * `connect` starts delivery and returns a stop function; call `status("live")` once notices flow
  * and `status("down")` when they stop, so the client polls meanwhile.
  */
@@ -332,8 +332,8 @@ interface Registry {
   waiters: Set<() => void>;
 }
 function registry(): Registry {
-  const g = globalThis as { __tpRealtime?: Registry };
-  return (g.__tpRealtime ??= { waiters: new Set() });
+  const g = globalThis as { __spRealtime?: Registry };
+  return (g.__spRealtime ??= { waiters: new Set() });
 }
 
 /** For host scripts: every client on this page, created before or after, uses this transport by default. */
@@ -347,19 +347,19 @@ export interface ClientOptions {
   /**
    * The site's REST root: "https://x.test/wp-json" (or "https://x.test/?rest_route=" without pretty
    * permalinks; WordPress names it in the `Link: <…>; rel="https://api.w.org/"` header of every page).
-   * The app's API URL ("https://x.test/wp-json/typedpress/v1") is accepted too, and a site URL without
-   * either is taken as its `/wp-json`. Default: the root a TypedPress page names for the client, else
+   * The app's API URL ("https://x.test/wp-json/spacepress/v1") is accepted too, and a site URL without
+   * either is taken as its `/wp-json`. Default: the root a SpacePress page names for the client, else
    * `/wp-json` on the page's origin.
    */
   url?: string;
   /**
    * The app API's route below the REST root, when the site serves it somewhere other than
-   * `/typedpress/v1` (`sp_api_namespace`). With it, `url` is taken as the REST root as given, so a
-   * site with another REST prefix (`https://x.test/api`) works too. A TypedPress page names both.
+   * `/spacepress/v1` (`sp_api_namespace`). With it, `url` is taken as the REST root as given, so a
+   * site with another REST prefix (`https://x.test/api`) works too. A SpacePress page names both.
    */
   api?: string;
   /**
-   * Use what a WordPress page prints for the client (`wp-script-module-data-@typedpress/client`): its
+   * Use what a WordPress page prints for the client (`wp-script-module-data-@spacepress/client`): its
    * REST root and the app API's namespace (unless `url` is given), and a signed-in visitor's REST
    * nonce (unless `fetch`, `headers`, `nonce` or `auth` brings another credential; `true` uses it
    * anyway). Default: on; `false` ignores the page.
@@ -377,13 +377,13 @@ export interface ClientOptions {
 }
 
 export interface AuthOptions {
-  /** The typedpress-identity OIDC issuer (`https://x.test/identity`). Default: `issuer` from `GET /auth/config`. */
+  /** The spacepress-identity OIDC issuer (`https://x.test/identity`). Default: `issuer` from `GET /auth/config`. */
   issuer?: string;
   /** The registered application's client id. */
   clientId?: string;
   /** Where the issuer sends the browser back (the page that calls `handleCallback()`). */
   redirectUri?: string;
-  /** Where tokens live: in memory (default) or `sessionStorage` under `typedpress.auth:<base url>`. */
+  /** Where tokens live: in memory (default) or `sessionStorage` under `spacepress.auth:<base url>`. */
   storage?: "memory" | "session";
   /** A write rejected as unauthenticated while signed out starts a guest session and is retried once. */
   guests?: boolean;
@@ -404,7 +404,7 @@ export interface Problem {
 }
 
 /** Thrown for every non-2xx response; the fields are the problem document. Network failures: status 0, code "network". */
-export class TypedPressError extends Error {
+export class SpacePressError extends Error {
   readonly status: number;
   readonly code: string;
   readonly detail: string;
@@ -414,7 +414,7 @@ export class TypedPressError extends Error {
 
   constructor(problem: Problem) {
     super(problem.detail);
-    this.name = "TypedPressError";
+    this.name = "SpacePressError";
     this.status = problem.status;
     this.code = problem.code;
     this.detail = problem.detail;
@@ -424,8 +424,8 @@ export class TypedPressError extends Error {
   }
 }
 
-function networkError(detail: string): TypedPressError {
-  return new TypedPressError({ type: "about:blank", title: "Network error", status: 0, code: "network", detail });
+function networkError(detail: string): SpacePressError {
+  return new SpacePressError({ type: "about:blank", title: "Network error", status: 0, code: "network", detail });
 }
 
 // ---------------------------------------------------------------------------
@@ -501,7 +501,7 @@ function listParams(q: Json | undefined): URLSearchParams {
 /** One subscribed read, as `POST /_live` takes it: the kind query API's call on a kind. */
 type ReadCall =
   | { kind: string; op: "list" | "paginate" | "get" | "count"; args?: Json; id?: string | number }
-  /** One `<Live>` region of a page (TypedPress's own pages only): `{ html, kinds }`. */
+  /** One `<Live>` region of a page (SpacePress's own pages only): `{ html, kinds }`. */
   | { kind?: undefined; op: "page"; args: { url: string; region: string }; id?: undefined };
 
 /** The client's query as that call's arguments: `status` folded into `where`, `orderBy` as an object. */
@@ -547,17 +547,17 @@ function decodeCursor(cursor: string): number {
 }
 
 /** A page argument refused before anything is sent, as the app API refuses it. */
-function invalidQuery(detail: string, pointer: string): TypedPressError {
-  return new TypedPressError({ type: "about:blank", title: "Invalid query", status: 400, code: "invalid_query", detail, pointer });
+function invalidQuery(detail: string, pointer: string): SpacePressError {
+  return new SpacePressError({ type: "about:blank", title: "Invalid query", status: 400, code: "invalid_query", detail, pointer });
 }
 
 /** The app's API namespace under the REST root when `url` names none (a host may serve it elsewhere: `sp_api_namespace`). */
-const DEFAULT_API = "/typedpress/v1";
+const DEFAULT_API = "/spacepress/v1";
 
 /**
- * `url` as the REST root and the app's API route below it (TypedPress's own routes: uploads, files,
+ * `url` as the REST root and the app's API route below it (SpacePress's own routes: uploads, files,
  * `_live`, sign-in). `…/wp-json` and `…?rest_route=` are roots; a route after either
- * (`…/wp-json/typedpress/v1`, the app's API URL) names the API; a URL ending in the default API
+ * (`…/wp-json/spacepress/v1`, the app's API URL) names the API; a URL ending in the default API
  * namespace is that API on a custom REST prefix; any other URL is a site, whose root is `/wp-json`.
  */
 function endpoints(url: string): { root: string; api: string } {
@@ -599,7 +599,7 @@ function restUrl(root: string, route: string, query?: string): string {
 }
 
 /**
- * What a TypedPress page prints for the client (`TypedPress\Islands::clientData`): the REST root as a
+ * What a SpacePress page prints for the client (`SpacePress\Islands::clientData`): the REST root as a
  * path on the site, the app API's namespace, and a signed-in visitor's REST nonce. A signed-out page
  * (cached, prebuilt, exported) has no nonce. Read once per client.
  */
@@ -615,7 +615,7 @@ function pageData(): PageData | null {
   // The script element WordPress prints, by tag and type as well as id: post content may carry an
   // element with the same id (kses allows `id`), which getElementById would find first.
   const doc = (globalThis as { document?: { querySelector(selector: string): { textContent: string | null } | null } }).document;
-  const text = doc?.querySelector?.('script[type="application/json"][id="wp-script-module-data-@typedpress/client"]')?.textContent;
+  const text = doc?.querySelector?.('script[type="application/json"][id="wp-script-module-data-@spacepress/client"]')?.textContent;
   if (!text) return null;
   try {
     const v: unknown = JSON.parse(text);
@@ -644,11 +644,11 @@ interface Send {
   anonymous?: boolean;
   /** Return the whole `{ data, cursor }` envelope of a list instead of `data`. */
   envelope?: boolean;
-  /** The answer is the route's own JSON (an ability's output), not a TypedPress `{ data }` envelope. */
+  /** The answer is the route's own JSON (an ability's output), not a SpacePress `{ data }` envelope. */
   raw?: boolean;
 }
 
-/** What `auth.session()` exposes, plus what refresh and sign-out need. Stored as JSON under `typedpress.auth:<base>`. */
+/** What `auth.session()` exposes, plus what refresh and sign-out need. Stored as JSON under `spacepress.auth:<base>`. */
 interface Held extends Session {
   clientId?: string;
   idToken?: string;
@@ -656,7 +656,7 @@ interface Held extends Session {
   sid?: string;
 }
 
-/** TypedPress's guest token response (`/auth/guest`). */
+/** SpacePress's guest token response (`/auth/guest`). */
 interface Issued {
   accessToken: string;
   refreshToken: string;
@@ -681,7 +681,7 @@ interface BrowserGlobals {
 
 const browser = () => globalThis as unknown as BrowserGlobals;
 
-const PKCE_KEY = "typedpress.auth.pkce";
+const PKCE_KEY = "spacepress.auth.pkce";
 
 function base64url(bytes: Uint8Array): string {
   let bin = "";
@@ -697,15 +697,15 @@ async function s256(verifier: string): Promise<string> {
   return base64url(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier))));
 }
 
-function authError(status: number, code: string, detail: string): TypedPressError {
-  return new TypedPressError({ type: "about:blank", title: code, status, code, detail });
+function authError(status: number, code: string, detail: string): SpacePressError {
+  return new SpacePressError({ type: "about:blank", title: code, status, code, detail });
 }
 
 /** In-flight refreshes of sessionStorage-backed sessions, by storage key (shared by clients in this tab). */
 const refreshes = new Map<string, Promise<boolean>>();
 
 export function createClient(options: ClientOptions = {}): Client {
-  // Where the client calls: `url` when given; else, on a TypedPress page, the REST root and API
+  // Where the client calls: `url` when given; else, on a SpacePress page, the REST root and API
   // namespace the page prints for it (whatever credential the client brings: `auth`, `headers`).
   const site = options.wordpress === false || options.url !== undefined ? null : pageData();
   const pageRoot = typeof site?.root === "string" && site.root !== "" ? site.root : null;
@@ -719,7 +719,7 @@ export function createClient(options: ClientOptions = {}): Client {
   let nonce = options.nonce ?? (cookie ? site?.nonce : undefined);
   const pageNonce = cookie && options.nonce === undefined;
   // Session storage is keyed as before the client ran abilities: by `url`, else the default API URL.
-  const base = (options.url ?? "/wp-json/typedpress/v1").replace(/\/+$/, "");
+  const base = (options.url ?? "/wp-json/spacepress/v1").replace(/\/+$/, "");
   const app: string = SCHEMA.app;
   const authOpts = options.auth ?? {};
   const doFetch = (input: string, init: RequestInit) => (options.fetch ?? globalThis.fetch)(input, init);
@@ -727,7 +727,7 @@ export function createClient(options: ClientOptions = {}): Client {
   // Token storage: memory by default, sessionStorage on request. The record always exists once
   // written: signed out, it keeps only a `sid`, so every sign-in and sign-out (including from the
   // anonymous state) is a distinct generation that late results can be checked against.
-  const storageKey = `typedpress.auth:${base}`;
+  const storageKey = `spacepress.auth:${base}`;
   let memory: Stored = {};
   type Stored = Partial<Held> & { sid?: string };
   function stored(): Stored {
@@ -789,7 +789,7 @@ export function createClient(options: ClientOptions = {}): Client {
     }
   }
 
-  /** One REST request: `route` below the REST root (`/typedpress/v1/me`, `/wp-abilities/v1/…`). */
+  /** One REST request: `route` below the REST root (`/spacepress/v1/me`, `/wp-abilities/v1/…`). */
   async function request<T>(method: string, path: string, send: Send = {}, retried = false): Promise<T> {
     const qs = send.query?.toString();
     const headers: Record<string, string> = { accept: "application/json" };
@@ -816,7 +816,7 @@ export function createClient(options: ClientOptions = {}): Client {
     let { res, parsed } = await call(address, init, label);
     // The app API puts WordPress's nonce error code in a header.
     const expired = res.status === 403 && (
-      (isObject(parsed) && parsed.code === "rest_cookie_invalid_nonce") || res.headers?.get("typedpress-reason") === "rest_cookie_invalid_nonce"
+      (isObject(parsed) && parsed.code === "rest_cookie_invalid_nonce") || res.headers?.get("spacepress-reason") === "rest_cookie_invalid_nonce"
     );
     if (expired && sentPageNonce && !retried && currentSid() === started) {
       const fresh = await freshNonce();
@@ -862,18 +862,18 @@ export function createClient(options: ClientOptions = {}): Client {
         credentials: "same-origin",
         mode: "same-origin",
         cache: "no-store",
-        headers: { "x-typedpress-rest-session": session },
+        headers: { "x-spacepress-rest-session": session },
       });
       if (res.status === 409) throw authError(409, "session_changed", "The WordPress login session changed. Reload the page.");
       const text = res.ok ? (await res.text()).trim() : "";
       return /^[a-z0-9]{10}$/i.test(text) ? text : null;
     } catch (error) {
-      if (error instanceof TypedPressError) throw error;
+      if (error instanceof SpacePressError) throw error;
       return null;
     }
   }
 
-  /** A route's answer: an ability's own output, or TypedPress's `{ data }` envelope. */
+  /** A route's answer: an ability's own output, or SpacePress's `{ data }` envelope. */
   function unwrapped<T>(parsed: unknown, send: Send, label: string): T {
     if (send.raw) return (parsed === undefined ? null : parsed) as T;
     if (!isObject(parsed) || !("data" in parsed)) throw networkError(`${label}: response has no data`);
@@ -883,7 +883,7 @@ export function createClient(options: ClientOptions = {}): Client {
   /**
    * Runs the app's ability `<app>/<name>` with `input` at core's run route, with the method its
    * annotations ask for. The server checks its input schema, its permission and its output, and
-   * answers TypedPress's own errors (with their pointer). `@wordpress/abilities` is not used: its
+   * answers SpacePress's own errors (with their pointer). `@wordpress/abilities` is not used: its
    * browser-side schema check refuses values the server accepts (a URL with `[]` or `|`), and its
    * GET encoding drops `null`, `[]` and `{}`.
    */
@@ -936,7 +936,7 @@ export function createClient(options: ClientOptions = {}): Client {
       });
     } catch (e) {
       // A refused refresh signs this session out: a new generation, like any sign-out.
-      if (!(e instanceof TypedPressError) || e.status !== 0) switchTo(null, started);
+      if (!(e instanceof SpacePressError) || e.status !== 0) switchTo(null, started);
       return false;
     }
   }
@@ -1102,7 +1102,7 @@ export function createClient(options: ClientOptions = {}): Client {
         await issuerPost("/revoke", { token: current.refreshToken, client_id: current.clientId ?? authOpts.clientId ?? "" });
       } catch (e) {
         // A session the server already ended is signed out; anything else is the caller's to see.
-        if (!(e instanceof TypedPressError && e.status === 401)) throw e;
+        if (!(e instanceof SpacePressError && e.status === 401)) throw e;
       } finally {
         switchTo(null, from); // only the session this sign-out began with
       }
@@ -1202,14 +1202,14 @@ export function createClient(options: ClientOptions = {}): Client {
   // `POST /_live`, each with the token of its last answer; the server answers "not modified" or the
   // fresh result. Without a live transport the requests repeat on an adaptive interval; with one, a
   // notice asks at once for the reads it names and the interval becomes the slow safety poll.
-  interface Subscriber { onData: (data: unknown) => void; onError?: (error: TypedPressError) => void }
+  interface Subscriber { onData: (data: unknown) => void; onError?: (error: SpacePressError) => void }
   interface Subscription {
     descriptor: ReadCall;
     deps: ReadonlySet<string>;
     token?: string;
     has: boolean;
     data: unknown;
-    error?: TypedPressError;
+    error?: SpacePressError;
     due: boolean;
     subscribers: Set<Subscriber>;
     /** Optimistic updates, oldest first. `after`: the last request for this read sent before the write was known to be committed (null: not settled). */
@@ -1258,14 +1258,14 @@ export function createClient(options: ClientOptions = {}): Client {
     }
   };
   /** Tells every subscriber of `s` about `error`, each in its own guarded call. */
-  const fail = (s: Subscription, error: TypedPressError) => {
+  const fail = (s: Subscription, error: SpacePressError) => {
     for (const to of [...s.subscribers]) guarded(() => to.onError?.(error));
   };
   const deliver = (s: Subscription, to: Subscriber) => {
     if (s.error) return guarded(() => to.onError?.(s.error!));
     if (!s.has) return;
     // A `get` of a row that is missing, or that this visitor may not read, is the API's 404.
-    if (s.descriptor.op === "get" && s.data === null) return guarded(() => to.onError?.(new TypedPressError({ type: "about:blank", title: "Not found", status: 404, code: "not_found", detail: `No ${s.descriptor.kind} row` })));
+    if (s.descriptor.op === "get" && s.data === null) return guarded(() => to.onError?.(new SpacePressError({ type: "about:blank", title: "Not found", status: 404, code: "not_found", detail: `No ${s.descriptor.kind} row` })));
     const data = s.overlays.reduce((current, overlay) => overlay.apply(current), s.data);
     guarded(() => to.onData(data));
   };
@@ -1374,7 +1374,7 @@ export function createClient(options: ClientOptions = {}): Client {
           } catch (e) {
             if (currentSid() !== visitor) continue;
             failed = true;
-            const error = e instanceof TypedPressError ? e : networkError(String(e));
+            const error = e instanceof SpacePressError ? e : networkError(String(e));
             for (const [key, s] of batch) if (subscriptions.get(key) === s) fail(s, error);
           }
         }
@@ -1628,7 +1628,7 @@ export function createClient(options: ClientOptions = {}): Client {
     return {
       list,
       paginate,
-      watch: (q: Json | undefined, onRows: (rows: unknown) => void, onError?: (error: TypedPressError) => void) => list(q).subscribe(onRows, onError),
+      watch: (q: Json | undefined, onRows: (rows: unknown) => void, onError?: (error: SpacePressError) => void) => list(q).subscribe(onRows, onError),
       get: (id: string | number, q?: Json) =>
         query({ kind: key, op: "get", id, args: liveArgs(q ? { with: q.with, locale: q.locale } : undefined) }, reads(q), () => getOne(id, q)),
       count: (q?: Json) => {
@@ -1674,7 +1674,7 @@ export function createClient(options: ClientOptions = {}): Client {
     };
   }
 
-  /** A multipart upload to one of TypedPress's REST routes (abilities carry no files). */
+  /** A multipart upload to one of SpacePress's REST routes (abilities carry no files). */
   const upload = (route: string, file: Blob, fields: Record<string, string>, filename?: string) => {
     const form = new FormData();
     form.append("file", file, filename ?? ("name" in file && typeof file.name === "string" ? file.name : "upload"));
@@ -1729,7 +1729,7 @@ const hubs = new WeakMap<object, Hub>();
 const pageReads = new WeakMap<object, (url: string, region: string, deps: readonly string[]) => Query<{ html: string; kinds: string[] }>>();
 
 /**
- * @internal TypedPress's own `<Live>` regions only; not part of the client's API. One region of one of
+ * @internal SpacePress's own `<Live>` regions only; not part of the client's API. One region of one of
  * this site's pages as a read: `{ html, kinds }`, kept current like any other subscription (the
  * same batch, polling and notices). `deps` are the kinds the server said the region read: a notice
  * or a write through `client` for one of them asks again at once.
@@ -1751,7 +1751,7 @@ export function watch<T>(
   collections: readonly CollectionKey[],
   read: () => Promise<T>,
   onResult: (value: T) => void,
-  onError?: (error: TypedPressError) => void,
+  onError?: (error: SpacePressError) => void,
 ): () => void {
   const hub = hubs.get(client) ?? (() => {
     throw new TypeError("watch() needs a client from createClient()");
@@ -1759,7 +1759,7 @@ export function watch<T>(
   return watchWith(hub, collections, read, onResult, onError);
 }
 
-function watchWith<T>(hub: Hub, collections: readonly string[], read: () => Promise<T>, onResult: (value: T) => void, onError?: (error: TypedPressError) => void): () => void {
+function watchWith<T>(hub: Hub, collections: readonly string[], read: () => Promise<T>, onResult: (value: T) => void, onError?: (error: SpacePressError) => void): () => void {
   // Coalesced: one read in flight; changes during it schedule exactly one more.
   let stopped = false;
   let running = false;
@@ -1777,7 +1777,7 @@ function watchWith<T>(hub: Hub, collections: readonly string[], read: () => Prom
           const value = await read();
           if (!stopped) onResult(value);
         } catch (e) {
-          if (!stopped) onError?.(e instanceof TypedPressError ? e : networkError(String(e)));
+          if (!stopped) onError?.(e instanceof SpacePressError ? e : networkError(String(e)));
         }
       } while (again && !stopped);
     } finally {
@@ -1818,9 +1818,9 @@ function dependencies(key: string, w: unknown, where?: unknown, seen = new Set<s
 }
 
 /** WordPress's error codes as the client's: the status and code callers already handle. */
-function wordPressError(wpCode: string, message: string, givenStatus: number, body: Json, data: Json): TypedPressError {
-  // TypedPress's own errors travel through core as `tp_<code>`, with their status and pointer.
-  let code = wpCode.startsWith("tp_") ? wpCode.slice(3) : wpCode;
+function wordPressError(wpCode: string, message: string, givenStatus: number, body: Json, data: Json): SpacePressError {
+  // SpacePress's own errors travel through core as `sp_<code>`, with their status and pointer.
+  let code = wpCode.startsWith("sp_") ? wpCode.slice(3) : wpCode;
   let status = givenStatus;
   switch (code) {
     // Core answers 401 to a caller it doesn't know and 403 to one it does (rest_authorization_required_code).
@@ -1860,9 +1860,9 @@ function wordPressError(wpCode: string, message: string, givenStatus: number, bo
       if (code === "") code = status ? "http_error" : "error";
   }
   const pointer = typeof data.pointer === "string" ? data.pointer : typeof body.pointer === "string" ? body.pointer : undefined;
-  return new TypedPressError({
+  return new SpacePressError({
     type: typeof body.type === "string" ? body.type : "about:blank",
-    title: typeof body.title === "string" ? body.title : code,
+    title: typeof body.title === "string" ? body.title : typeof data.title === "string" ? data.title : code,
     status: status || 500,
     code,
     detail: message,
@@ -1871,7 +1871,7 @@ function wordPressError(wpCode: string, message: string, givenStatus: number, bo
 }
 
 /** Problem documents map field by field; WordPress core errors (`{ code, message, data: { status } }`) are mapped onto the same shape. */
-function toError(res: Response, body: unknown): TypedPressError {
+function toError(res: Response, body: unknown): SpacePressError {
   // A WordPress error (`{ code, message, data }`, no `detail`): core's codes as the client's.
   if (isObject(body) && typeof body.code === "string" && typeof body.detail !== "string" && typeof body.message === "string") {
     const data = isObject(body.data) ? body.data : {};
@@ -1879,7 +1879,7 @@ function toError(res: Response, body: unknown): TypedPressError {
   }
   if (isObject(body) && typeof body.code === "string") {
     const detail = typeof body.detail === "string" ? body.detail : typeof body.message === "string" ? body.message : res.statusText;
-    return new TypedPressError({
+    return new SpacePressError({
       type: typeof body.type === "string" ? body.type : "about:blank",
       title: typeof body.title === "string" ? body.title : res.statusText || `HTTP ${res.status}`,
       status: typeof body.status === "number" ? body.status : res.status,
@@ -1888,7 +1888,7 @@ function toError(res: Response, body: unknown): TypedPressError {
       ...(typeof body.pointer === "string" ? { pointer: body.pointer } : {}),
     });
   }
-  return new TypedPressError({
+  return new SpacePressError({
     type: "about:blank",
     title: res.statusText || `HTTP ${res.status}`,
     status: res.status,

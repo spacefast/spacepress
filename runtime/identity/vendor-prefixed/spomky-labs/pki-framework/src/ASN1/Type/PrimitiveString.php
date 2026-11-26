@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type;
+namespace SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type;
 
 use InvalidArgumentException;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Component\Identifier;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Component\Length;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Exception\DecodeException;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Component\Identifier;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Component\Length;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Exception\DecodeException;
 
 /**
  * Base class for primitive strings.

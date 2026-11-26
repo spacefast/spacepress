@@ -1,1 +1,1 @@
-<?php return array('name' => 'identity', 'dependencies' => array('react', 'wp-api-fetch', 'wp-components', 'wp-i18n'), 'moduleDependencies' => array('@typedpress-admin/admin-toolkit'), 'version' => '98e46848d5f0338e6e40');
+<?php return array('name' => 'identity', 'dependencies' => array('react', 'wp-api-fetch', 'wp-components', 'wp-i18n'), 'moduleDependencies' => array('@spacepress-admin/admin-toolkit'), 'version' => '1626cf1de581f89f03dd');

@@ -1,5 +1,5 @@
-import { withEditor, withStylesId } from '@typedpress-admin/lazy-editor';
-import type { Field, DataViewRenderFieldProps } from '@typedpress-admin/dataviews';
+import { withEditor, withStylesId } from '@spacepress-admin/lazy-editor';
+import type { Field, DataViewRenderFieldProps } from '@spacepress-admin/dataviews';
 import { __ } from '@wordpress/i18n';
 import { useMemo } from '@wordpress/element';
 import { parse } from '@wordpress/blocks';
@@ -37,7 +37,7 @@ function ContentPreviewField( {
 	return (
 		<EditorProvider post={ item } settings={ settings }>
 			<div className="fields-content-preview">
-				{ isEmpty && __( 'Empty content', 'typedpress-admin' ) }
+				{ isEmpty && __( 'Empty content', 'spacepress-admin' ) }
 				{ ! isEmpty && (
 					<BlockPreview.Async>
 						<BlockPreview blocks={ blocks } />

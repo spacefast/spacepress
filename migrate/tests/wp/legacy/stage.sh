@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Seed the running harness stack the way ORIGINAL Zero stored content: copy its kernel (from a
 # monorepo checkout, ZERO_ORIGINAL) and the captured release into the container, then create
-# content through that kernel (seed.php). Prints seed.php's JSON. Needs TP_WP_PROJECT like harness.sh.
+# content through that kernel (seed.php). Prints seed.php's JSON. Needs SP_WP_PROJECT like harness.sh.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 : "${ZERO_ORIGINAL:?set ZERO_ORIGINAL to the original monorepo checkout}"
@@ -18,6 +18,6 @@ release="$content/.stattic/storage/spaces/legacy-space/content-model/releases/${
 compose exec -T cli sh -c "rm -rf $content/legacy-engine $content/.stattic && mkdir -p $content/mu-plugins $(dirname "$release")"
 compose cp "$work/runtime/engine" "cli:$content/legacy-engine" >/dev/null 2>&1
 compose cp "$work/release" "cli:$release" >/dev/null 2>&1
-compose cp "$here/kernel.php" "cli:$content/mu-plugins/typedpress-legacy-kernel.php" >/dev/null 2>&1
-compose cp "$here/seed.php" cli:/tmp/typedpress-legacy-seed.php >/dev/null 2>&1
-compose exec -T -e "ZERO_LEGACY_RELEASE=$release" cli wp eval-file /tmp/typedpress-legacy-seed.php
+compose cp "$here/kernel.php" "cli:$content/mu-plugins/spacepress-legacy-kernel.php" >/dev/null 2>&1
+compose cp "$here/seed.php" cli:/tmp/spacepress-legacy-seed.php >/dev/null 2>&1
+compose exec -T -e "ZERO_LEGACY_RELEASE=$release" cli wp eval-file /tmp/spacepress-legacy-seed.php

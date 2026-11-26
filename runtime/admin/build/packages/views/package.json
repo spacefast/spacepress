@@ -1,7 +1,7 @@
 {
-	"name": "@typedpress-admin/views",
+	"name": "@spacepress-admin/views",
 	"version": "1.0.0",
-	"description": "TypedPress Admin list views: @wordpress/views with TypedPress's view config and DataViews layout",
+	"description": "SpacePress Admin list views: @wordpress/views with SpacePress's view config and DataViews layout",
 	"type": "module",
 	"wpModule": true,
 	"exports": {
@@ -11,10 +11,10 @@
 		"build"
 	],
 	"dependencies": {
-		"@typedpress-admin/core-data-next": "workspace:*",
+		"@spacepress-admin/core-data-next": "workspace:*",
 		"@wordpress/base-styles": "catalog:",
-		"@typedpress-admin/dataviews": "workspace:*",
-		"@typedpress-admin/design-system": "workspace:*",
+		"@spacepress-admin/dataviews": "workspace:*",
+		"@spacepress-admin/design-system": "workspace:*",
 		"@wordpress/views": "catalog:",
 		"@wordpress/data": "catalog:",
 		"@wordpress/element": "catalog:"

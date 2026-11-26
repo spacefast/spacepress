@@ -16,14 +16,14 @@
   footer { margin-top: 40px; font-size: .85rem; color: #5e6357; }
   #state { padding: 24px 0; } .reviewed { color: #55734a; font-size: .8rem; }
 </style>
-<header><div class="eyebrow">TypedPress / Native WordPress / MCP</div><h1 id="heading">The agent notebook</h1><p id="description">Loading notebook…</p></header>
+<header><div class="eyebrow">SpacePress / Native WordPress / MCP</div><h1 id="heading">The agent notebook</h1><p id="description">Loading notebook…</p></header>
 <main aria-live="polite"><p id="state" role="status">Loading published articles…</p><div id="articles"></div></main>
-<footer>Drafts and operator notes stay private. <a href="/wp-admin/">Open WordPress admin</a> · <a href="/wp-json/typedpress/v1">API schema</a></footer>
+<footer>Drafts and operator notes stay private. <a href="/wp-admin/">Open WordPress admin</a> · <a href="/wp-json/spacepress/v1">API schema</a></footer>
 <script type="module">
   const state = document.querySelector('#state');
   try {
     const read = async (path) => {
-      const response = await fetch('/wp-json/typedpress/v1' + path);
+      const response = await fetch('/wp-json/spacepress/v1' + path);
       const result = await response.json();
       if (!response.ok) throw new Error(result.detail ?? 'Could not load notebook');
       return result.data;

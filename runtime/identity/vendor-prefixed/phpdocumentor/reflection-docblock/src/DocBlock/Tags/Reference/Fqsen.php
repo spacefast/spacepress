@@ -11,12 +11,12 @@ declare(strict_types=1);
  * @link http://phpdoc.org
  */
 
-namespace TypedPress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\Reference;
+namespace SpacePress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\Reference;
 
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\Fqsen as RealFqsen;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\Fqsen as RealFqsen;
 
 /**
- * Fqsen reference used by {@see \TypedPress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\See}
+ * Fqsen reference used by {@see \SpacePress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\See}
  */
 final class Fqsen implements Reference
 {

@@ -1,26 +1,26 @@
 <?php
 /**
- * TypedPress Admin SPA
+ * SpacePress Admin SPA
  *
- * This file provides the API for registering init modules in the TypedPress Admin SPA.
+ * This file provides the API for registering init modules in the SpacePress Admin SPA.
  *
- * @package TypedPress_Admin
+ * @package SpacePress_Admin
  */
 
 // Global storage for registered init modules.
-global $tp_admin_init_modules;
-$tp_admin_init_modules = array();
+global $sp_admin_init_modules;
+$sp_admin_init_modules = array();
 
 /**
- * Register a module for the TypedPress Admin SPA. These are loaded during boot.
+ * Register a module for the SpacePress Admin SPA. These are loaded during boot.
  *
  * @since 1.0.0
  *
  * @param array $module The module data.
  */
-function tp_admin_register_init_module( $module ) {
-	global $tp_admin_init_modules;
-	$tp_admin_init_modules[] = $module;
+function sp_admin_register_init_module( $module ) {
+	global $sp_admin_init_modules;
+	$sp_admin_init_modules[] = $module;
 }
 
 /**
@@ -28,7 +28,7 @@ function tp_admin_register_init_module( $module ) {
  *
  * @return array Array of registered init modules.
  */
-function tp_admin_get_init_modules() {
-	global $tp_admin_init_modules;
-	return $tp_admin_init_modules;
+function sp_admin_get_init_modules() {
+	global $sp_admin_init_modules;
+	return $sp_admin_init_modules;
 }

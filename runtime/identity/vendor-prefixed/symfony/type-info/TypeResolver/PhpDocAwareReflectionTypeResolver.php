@@ -9,21 +9,21 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\TypeResolver;
+namespace SpacePress\Identity\Vendor\Symfony\Component\TypeInfo\TypeResolver;
 
-use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\ParamTagValueNode;
-use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\ReturnTagValueNode;
-use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\VarTagValueNode;
-use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Lexer\Lexer;
-use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Parser\ConstExprParser;
-use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Parser\PhpDocParser;
-use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Parser\TokenIterator;
-use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Parser\TypeParser;
-use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\ParserConfig;
-use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Exception\UnsupportedException;
-use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Type;
-use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\TypeContext\TypeContext;
-use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\TypeContext\TypeContextFactory;
+use SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\ParamTagValueNode;
+use SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\ReturnTagValueNode;
+use SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Ast\PhpDoc\VarTagValueNode;
+use SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Lexer\Lexer;
+use SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Parser\ConstExprParser;
+use SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Parser\PhpDocParser;
+use SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Parser\TokenIterator;
+use SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Parser\TypeParser;
+use SpacePress\Identity\Vendor\PHPStan\PhpDocParser\ParserConfig;
+use SpacePress\Identity\Vendor\Symfony\Component\TypeInfo\Exception\UnsupportedException;
+use SpacePress\Identity\Vendor\Symfony\Component\TypeInfo\Type;
+use SpacePress\Identity\Vendor\Symfony\Component\TypeInfo\TypeContext\TypeContext;
+use SpacePress\Identity\Vendor\Symfony\Component\TypeInfo\TypeContext\TypeContextFactory;
 
 /**
  * Resolves type on reflection prioriziting PHP documentation.

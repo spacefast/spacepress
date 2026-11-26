@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\CryptoEncoding;
+namespace SpacePress\Identity\Vendor\SpomkyLabs\Pki\CryptoEncoding;
 
 use ArrayIterator;
 use function count;

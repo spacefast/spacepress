@@ -1,30 +1,30 @@
 #!/usr/bin/env bash
 # The system suite: examples/site end to end. Boots a fresh WordPress that has users and nothing
-# else; tests/system/wp.test.ts installs the `typedpress build` artifact into it as a site
+# else; tests/system/wp.test.ts installs the `spacepress build` artifact into it as a site
 # owner would and walks the whole journey and plugin lifecycle. The tests build their own copies of
 # the example under tests/system/.work. A second site serves examples/blog with its Markdown posts.
 #
-# TP_WP_PROJECT (default typedpress-system) and TP_WP_PORT (default 8809) pick the stack;
-# TP_WP_KEEP=1 leaves it up afterwards.
+# SP_WP_PROJECT (default spacepress-system) and SP_WP_PORT (default 8809) pick the stack;
+# SP_WP_KEEP=1 leaves it up afterwards.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 repo="$(cd "$here/../.." && pwd)"
 cd "$repo"
-export TP_WP_PROJECT="${TP_WP_PROJECT:-typedpress-system}" TP_WP_PORT="${TP_WP_PORT:-8809}"
+export SP_WP_PROJECT="${SP_WP_PROJECT:-spacepress-system}" SP_WP_PORT="${SP_WP_PORT:-8809}"
 # Every build of the example shares one checksum-verified download cache for the platform plugins.
-export TP_WP_PLUGIN_CACHE="${TP_WP_PLUGIN_CACHE:-$repo/.tp/cache/plugins}"
+export SP_WP_PLUGIN_CACHE="${SP_WP_PLUGIN_CACHE:-$repo/.sp/cache/plugins}"
 
 cargo build -q
 # The committed client and migrations must be what this compiler produces: the journey imports them.
-"${CARGO_TARGET_DIR:-target}/debug/typedpress" build examples/site --out "$here/.work/check" --quiet >/dev/null
+"${CARGO_TARGET_DIR:-target}/debug/spacepress" build examples/site --out "$here/.work/check" --quiet >/dev/null
 if [[ -n $(git status --porcelain -- examples/site) ]]; then
   git status --short -- examples/site >&2
-  echo 'examples/site is stale: commit the output of `typedpress build examples/site`' >&2
+  echo 'examples/site is stale: commit the output of `spacepress build examples/site`' >&2
   exit 1
 fi
 
 harness="$repo/tests/wp/harness.sh"
-cleanup() { [[ ${TP_WP_KEEP:-0} == 1 ]] || "$harness" down; }
+cleanup() { [[ ${SP_WP_KEEP:-0} == 1 ]] || "$harness" down; }
 trap cleanup EXIT
 "$harness" down
 rm -rf "$here/.wp-content" && mkdir -p "$here/.wp-content/plugins"

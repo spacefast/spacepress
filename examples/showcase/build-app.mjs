@@ -27,15 +27,15 @@ export async function buildApp({ app, first, files, log = () => {} }) {
   for (const [name, source] of Object.entries(files)) await writeFile(join(app, name), source);
   const build = async () => log(await command(first, ["build", app, "--quiet"]));
   await build();
-  const plugin = join(app, "tp/dist/wp-content/plugins/typedpress-app-showcase");
-  const generated = join(plugin, "tp/app");
+  const plugin = join(app, "sp/dist/wp-content/plugins/spacepress-app-showcase");
+  const generated = join(plugin, "sp/app");
   await mkdir(join(app, "public/client"), { recursive: true });
-  await copyFile(join(app, "tp/_generated/client/client.js"), join(app, "public/client/index.js"));
-  await copyFile(join(app, "tp/_generated/client/LICENSE"), join(app, "public/client/LICENSE"));
-  await copyFile(join(app, "typedpress.config.ts"), join(app, "public/source.ts.txt"));
+  await copyFile(join(app, "sp/_generated/client/client.js"), join(app, "public/client/index.js"));
+  await copyFile(join(app, "sp/_generated/client/LICENSE"), join(app, "public/client/LICENSE"));
+  await copyFile(join(app, "spacepress.config.ts"), join(app, "public/source.ts.txt"));
   await copyFile(join(app, "pantry.ts"), join(app, "public/pantry.ts.txt"));
   await copyFile(join(generated, "functions.php"), join(app, "public/compiled.php.txt"));
-  const migrationDir = join(app, "tp/_generated/migrations");
+  const migrationDir = join(app, "sp/_generated/migrations");
   const migrationFiles = (await readdir(migrationDir))
     .filter((name) => name.endsWith(".sql"))
     .sort();
@@ -43,7 +43,7 @@ export async function buildApp({ app, first, files, log = () => {} }) {
   for (const name of ["schema.php", "functions.php"])
     output[name] = await readFile(join(generated, name), "utf8");
   for (const name of ["types", "schema"])
-    output[`client/${name}.ts`] = await readFile(join(app, `tp/_generated/client/${name}.ts`), "utf8");
+    output[`client/${name}.ts`] = await readFile(join(app, `sp/_generated/client/${name}.ts`), "utf8");
   for (const name of migrationFiles)
     output[`migrations/${name}`] = await readFile(join(migrationDir, name), "utf8");
   const manifest = {
@@ -125,7 +125,7 @@ export async function readAppSchema(plugin) {
     await command("php", [
       "-r",
       "echo json_encode(require $argv[1], JSON_THROW_ON_ERROR);",
-      join(plugin, "tp/app/schema.php"),
+      join(plugin, "sp/app/schema.php"),
     ]),
   );
 }

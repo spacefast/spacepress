@@ -1,4 +1,4 @@
-import { useImageCropper } from '@typedpress-admin/image-cropper';
+import { useImageCropper } from '@spacepress-admin/image-cropper';
 import { store as coreStore } from '@wordpress/core-data';
 import { useSelect } from '@wordpress/data';
 import { useMemo } from '@wordpress/element';
@@ -18,7 +18,7 @@ export default function useGetAspectRatios() {
 			!! baseConfig?.settings?.dimensions?.defaultAspectRatios;
 		const imageAspectRatios: AspectRatio[] = [
 			{
-				name: __( 'Image Aspect Ratio', 'typedpress-admin' ),
+				name: __( 'Image Aspect Ratio', 'spacepress-admin' ),
 				slug: 'image',
 				ratio: resetState?.aspectRatio ?? 1,
 			},

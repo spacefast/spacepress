@@ -9,14 +9,14 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\Serializer\Context\Normalizer;
+namespace SpacePress\Identity\Vendor\Symfony\Component\Serializer\Context\Normalizer;
 
-use TypedPress\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\InvalidPropertyPathException;
-use TypedPress\Identity\Vendor\Symfony\Component\PropertyAccess\PropertyPath;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Context\ContextBuilderInterface;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Context\ContextBuilderTrait;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\InvalidArgumentException;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\UnwrappingDenormalizer;
+use SpacePress\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\InvalidPropertyPathException;
+use SpacePress\Identity\Vendor\Symfony\Component\PropertyAccess\PropertyPath;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Context\ContextBuilderInterface;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Context\ContextBuilderTrait;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Exception\InvalidArgumentException;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\UnwrappingDenormalizer;
 
 /**
  * A helper providing autocompletion for available UnwrappingDenormalizer options.

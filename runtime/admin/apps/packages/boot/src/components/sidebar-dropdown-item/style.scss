@@ -1,6 +1,6 @@
 @use "@wordpress/base-styles/variables";
 
-.typedpress-admin-sidebar-dropdown-item__children {
+.spacepress-admin-sidebar-dropdown-item__children {
 	display: flex;
 	flex-direction: column;
 
@@ -17,11 +17,11 @@
 		$padding-to-avoid-cutting-focus-ring;*/
 	overflow: hidden;
 
-	.typedpress-admin-sidebar-navigation-item {
+	.spacepress-admin-sidebar-navigation-item {
 		padding-left: variables.$grid-unit-40;
 	}
 }
 
-.typedpress-admin-sidebar-dropdown-item__chevron.is-up {
+.spacepress-admin-sidebar-dropdown-item__chevron.is-up {
 	transform: rotate( 180deg );
 }

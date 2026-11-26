@@ -14,7 +14,7 @@
         "wp-sitemap.xml",
         "xmlrpc.php",
         "feed",
-        "__tp",
+        "__sp",
         "__spacefast",
         "llms.txt",
         "robots.txt",
@@ -181,7 +181,7 @@
                 "delete": true
             },
             "wp": null,
-            "table": "tp_notes"
+            "table": "sp_notes"
         },
         "members": {
             "key": "members",
@@ -341,7 +341,7 @@
                 "delete": true
             },
             "wp": null,
-            "table": "tp_members"
+            "table": "sp_members"
         }
     },
     "globals": [],

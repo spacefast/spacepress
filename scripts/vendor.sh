@@ -12,9 +12,9 @@ fi
 php -r 'exit(hash_equals($argv[1], hash_file("sha256", $argv[2])) ? 0 : 1);' "$pin" "$strauss"
 roots=()
 case "${1:-all}" in
-  runtime) roots=(TypedPress) ;;
+  runtime) roots=(SpacePress) ;;
   identity) roots=(identity) ;;
-  all) roots=(TypedPress identity) ;;
+  all) roots=(SpacePress identity) ;;
   *) echo 'usage: scripts/vendor.sh [runtime|identity|all]' >&2; exit 2 ;;
 esac
 for root in "${roots[@]}"; do

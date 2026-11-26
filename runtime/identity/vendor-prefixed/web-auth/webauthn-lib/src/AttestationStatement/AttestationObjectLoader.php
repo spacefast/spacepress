@@ -2,24 +2,24 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Webauthn\AttestationStatement;
+namespace SpacePress\Identity\Vendor\Webauthn\AttestationStatement;
 
 use function array_key_exists;
-use TypedPress\Identity\Vendor\CBOR\Decoder;
-use TypedPress\Identity\Vendor\CBOR\Normalizable;
+use SpacePress\Identity\Vendor\CBOR\Decoder;
+use SpacePress\Identity\Vendor\CBOR\Normalizable;
 use function is_array;
-use TypedPress\Identity\Vendor\Psr\EventDispatcher\EventDispatcherInterface;
-use TypedPress\Identity\Vendor\Psr\Log\LoggerInterface;
-use TypedPress\Identity\Vendor\Psr\Log\NullLogger;
+use SpacePress\Identity\Vendor\Psr\EventDispatcher\EventDispatcherInterface;
+use SpacePress\Identity\Vendor\Psr\Log\LoggerInterface;
+use SpacePress\Identity\Vendor\Psr\Log\NullLogger;
 use Throwable;
-use TypedPress\Identity\Vendor\Webauthn\AuthenticatorDataLoader;
-use TypedPress\Identity\Vendor\Webauthn\Event\AttestationObjectLoaded;
-use TypedPress\Identity\Vendor\Webauthn\Event\CanDispatchEvents;
-use TypedPress\Identity\Vendor\Webauthn\Event\NullEventDispatcher;
-use TypedPress\Identity\Vendor\Webauthn\Exception\InvalidDataException;
-use TypedPress\Identity\Vendor\Webauthn\MetadataService\CanLogData;
-use TypedPress\Identity\Vendor\Webauthn\StringStream;
-use TypedPress\Identity\Vendor\Webauthn\Util\Base64;
+use SpacePress\Identity\Vendor\Webauthn\AuthenticatorDataLoader;
+use SpacePress\Identity\Vendor\Webauthn\Event\AttestationObjectLoaded;
+use SpacePress\Identity\Vendor\Webauthn\Event\CanDispatchEvents;
+use SpacePress\Identity\Vendor\Webauthn\Event\NullEventDispatcher;
+use SpacePress\Identity\Vendor\Webauthn\Exception\InvalidDataException;
+use SpacePress\Identity\Vendor\Webauthn\MetadataService\CanLogData;
+use SpacePress\Identity\Vendor\Webauthn\StringStream;
+use SpacePress\Identity\Vendor\Webauthn\Util\Base64;
 
 class AttestationObjectLoader implements CanDispatchEvents, CanLogData
 {

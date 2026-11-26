@@ -21,11 +21,11 @@ const recording = async (input, init) => {
   }
   return res;
 };
-const { createClient, TypedPressError } = await import(pathToFileURL(join(clientDir, "index.ts")).href);
+const { createClient, SpacePressError } = await import(pathToFileURL(join(clientDir, "index.ts")).href);
 const authorization = `Basic ${Buffer.from(password).toString("base64")}`;
 const agent = createClient({ url: `${url}/wp-json`, fetch: recording, headers: { Authorization: authorization } });
 const visitor = createClient({ url, fetch: recording });
-const typed = (e) => ({ typed: e instanceof TypedPressError, status: e.status, code: e.code });
+const typed = (e) => ({ typed: e instanceof SpacePressError, status: e.status, code: e.code });
 
 // A wrong application password is refused, never read as a visitor.
 const wrong = await createClient({ url: `${url}/wp-json`, fetch: recording, headers: { Authorization: `Basic ${Buffer.from(`${password.split(":")[0]}:nope`).toString("base64")}` } })

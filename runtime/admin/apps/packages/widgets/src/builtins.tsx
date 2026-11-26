@@ -8,15 +8,15 @@ import {
 	postList,
 	store as storeIcon,
 } from '@wordpress/icons';
-import { RouterLink } from '@typedpress-admin/admin-toolkit';
+import { RouterLink } from '@spacepress-admin/admin-toolkit';
 import {
-	store as tpAdminStore,
+	store as spAdminStore,
 	type StoreSelectors,
-} from '@typedpress-admin/boot';
+} from '@spacepress-admin/boot';
 import type {
 	DashboardWidgetType,
 	WidgetRenderProps,
-} from '@typedpress-admin/dashboard';
+} from '@spacepress-admin/dashboard';
 import {
 	allowed,
 	bootstrap,
@@ -26,7 +26,7 @@ import {
 	singularLabel,
 	type Collection,
 	type Row,
-} from '@typedpress-admin/schema';
+} from '@spacepress-admin/schema';
 
 function formatShortDate(value: unknown): string {
 	if (typeof value !== 'string' || !value) return '';
@@ -112,7 +112,7 @@ function ContentOverviewWidget({ setError }: WidgetRenderProps) {
 
 	if (loading) {
 		return (
-			<div className="tp-widget__loading">
+			<div className="sp-widget__loading">
 				<Spinner />
 				<span>Loading collections…</span>
 			</div>
@@ -121,37 +121,37 @@ function ContentOverviewWidget({ setError }: WidgetRenderProps) {
 
 	if (items.length === 0) {
 		return (
-			<div className="tp-widget__empty">
+			<div className="sp-widget__empty">
 				No collections defined in this app yet.
 			</div>
 		);
 	}
 
 	return (
-		<div className="tp-widget">
-			<ul className="tp-widget__list">
+		<div className="sp-widget">
+			<ul className="sp-widget__list">
 				{items.map(({ collection: c, count, canCreate }) => (
-					<li key={c.name} className="tp-widget__row">
-						<div className="tp-widget__row-main">
+					<li key={c.name} className="sp-widget__row">
+						<div className="sp-widget__row-main">
 							<RouterLink
-								className="tp-widget__row-title"
+								className="sp-widget__row-title"
 								to={`/collections/${c.name}`}
 							>
 								{c.label}
 							</RouterLink>
 							{c.ui?.description && (
-								<span className="tp-widget__row-meta">
+								<span className="sp-widget__row-meta">
 									{c.ui.description}
 								</span>
 							)}
 						</div>
-						<div className="tp-widget__row-actions">
+						<div className="sp-widget__row-actions">
 							{count !== null && (
-								<span className="tp-widget__count">{count}</span>
+								<span className="sp-widget__count">{count}</span>
 							)}
 							{canCreate && (
 								<RouterLink
-									className="tp-widget__link-chip"
+									className="sp-widget__link-chip"
 									to={`/collections/${c.name}/-/new`}
 								>
 									+ {singularLabel(c)}
@@ -242,7 +242,7 @@ function RecentActivityWidget({ setError }: WidgetRenderProps) {
 
 	if (loading) {
 		return (
-			<div className="tp-widget__loading">
+			<div className="sp-widget__loading">
 				<Spinner />
 				<span>Loading recent updates…</span>
 			</div>
@@ -250,20 +250,20 @@ function RecentActivityWidget({ setError }: WidgetRenderProps) {
 	}
 
 	if (entries.length === 0) {
-		return <div className="tp-widget__empty">No recent entries yet.</div>;
+		return <div className="sp-widget__empty">No recent entries yet.</div>;
 	}
 
 	return (
-		<div className="tp-widget">
-			<ul className="tp-widget__list">
+		<div className="sp-widget">
+			<ul className="sp-widget__list">
 				{entries.map((entry) => (
-					<li key={entry.id} className="tp-widget__row">
-						<div className="tp-widget__row-main">
-							<RouterLink className="tp-widget__row-title" to={entry.to}>
+					<li key={entry.id} className="sp-widget__row">
+						<div className="sp-widget__row-main">
+							<RouterLink className="sp-widget__row-title" to={entry.to}>
 								{entry.title}
 							</RouterLink>
-							<span className="tp-widget__row-meta">
-								<span className="tp-widget__pill">{entry.collectionLabel}</span>
+							<span className="sp-widget__row-meta">
+								<span className="sp-widget__pill">{entry.collectionLabel}</span>
 								{entry.updated && <span>{entry.updated}</span>}
 							</span>
 						</div>
@@ -344,7 +344,7 @@ function DraftsQueueWidget({ setBadge, setError }: WidgetRenderProps) {
 
 	if (loading) {
 		return (
-			<div className="tp-widget__loading">
+			<div className="sp-widget__loading">
 				<Spinner />
 				<span>Checking drafts…</span>
 			</div>
@@ -353,26 +353,26 @@ function DraftsQueueWidget({ setBadge, setError }: WidgetRenderProps) {
 
 	if (drafts.length === 0) {
 		return (
-			<div className="tp-widget__empty">
+			<div className="sp-widget__empty">
 				All clear — no drafts waiting to be published.
 			</div>
 		);
 	}
 
 	return (
-		<div className="tp-widget">
-			<ul className="tp-widget__list">
+		<div className="sp-widget">
+			<ul className="sp-widget__list">
 				{drafts.map((item) => (
-					<li key={item.id} className="tp-widget__row">
-						<div className="tp-widget__row-main">
-							<RouterLink className="tp-widget__row-title" to={item.to}>
+					<li key={item.id} className="sp-widget__row">
+						<div className="sp-widget__row-main">
+							<RouterLink className="sp-widget__row-title" to={item.to}>
 								{item.title}
 							</RouterLink>
-							<span className="tp-widget__row-meta">
+							<span className="sp-widget__row-meta">
 								<span>{item.collectionLabel}</span>
 							</span>
 						</div>
-						<span className="tp-widget__pill is-warning">{item.status}</span>
+						<span className="sp-widget__pill is-warning">{item.status}</span>
 					</li>
 				))}
 			</ul>
@@ -386,7 +386,7 @@ function DraftsQueueWidget({ setBadge, setError }: WidgetRenderProps) {
 function AppStatusWidget() {
 	const context = useSelect(
 		(select) =>
-			(select(tpAdminStore) as StoreSelectors).getDashboardContext(),
+			(select(spAdminStore) as StoreSelectors).getDashboardContext(),
 		[]
 	);
 	const [summary, setSummary] = useState<{
@@ -417,54 +417,54 @@ function AppStatusWidget() {
 	}, []);
 
 	return (
-		<div className="tp-widget">
-			<div className="tp-widget__metrics">
-				<div className="tp-widget__metric">
-					<span className="tp-widget__metric-label">Collections</span>
-					<span className="tp-widget__metric-value">
+		<div className="sp-widget">
+			<div className="sp-widget__metrics">
+				<div className="sp-widget__metric">
+					<span className="sp-widget__metric-label">Collections</span>
+					<span className="sp-widget__metric-value">
 						{summary ? summary.collections : '—'}
 					</span>
 				</div>
-				<div className="tp-widget__metric">
-					<span className="tp-widget__metric-label">Tables</span>
-					<span className="tp-widget__metric-value">
+				<div className="sp-widget__metric">
+					<span className="sp-widget__metric-label">Tables</span>
+					<span className="sp-widget__metric-value">
 						{summary ? summary.tables : '—'}
 					</span>
 				</div>
-				<div className="tp-widget__metric">
-					<span className="tp-widget__metric-label">Globals</span>
-					<span className="tp-widget__metric-value">
+				<div className="sp-widget__metric">
+					<span className="sp-widget__metric-label">Globals</span>
+					<span className="sp-widget__metric-value">
 						{summary ? summary.globals : '—'}
 					</span>
 				</div>
 			</div>
-			<dl className="tp-widget__summary">
-				<div className="tp-widget__summary-row">
+			<dl className="sp-widget__summary">
+				<div className="sp-widget__summary-row">
 					<dt>Runtime</dt>
 					<dd>{context?.managed ? 'SpaceFast Managed' : 'Self-Hosted'}</dd>
 				</div>
 				{Array.isArray(context?.dashboards) && context.dashboards.length > 0 && (
-					<div className="tp-widget__summary-row">
+					<div className="sp-widget__summary-row">
 						<dt>Custom Dashboards</dt>
 						<dd>{context.dashboards.length}</dd>
 					</div>
 				)}
 			</dl>
-			<div className="tp-widget__quick-links">
-				<RouterLink className="tp-widget__link-chip" to="/styles">
+			<div className="sp-widget__quick-links">
+				<RouterLink className="sp-widget__link-chip" to="/styles">
 					Design
 				</RouterLink>
 				{summary && summary.globals > 0 && (
-					<RouterLink className="tp-widget__link-chip" to="/globals">
+					<RouterLink className="sp-widget__link-chip" to="/globals">
 						Globals
 					</RouterLink>
 				)}
 				{context?.identity_active && (
-					<RouterLink className="tp-widget__link-chip" to="/identity">
+					<RouterLink className="sp-widget__link-chip" to="/identity">
 						Identity
 					</RouterLink>
 				)}
-				<RouterLink className="tp-widget__link-chip" to="/settings/general">
+				<RouterLink className="sp-widget__link-chip" to="/settings/general">
 					Settings
 				</RouterLink>
 			</div>
@@ -537,7 +537,7 @@ function StorePulseWidget({ setError }: WidgetRenderProps) {
 
 	if (loading) {
 		return (
-			<div className="tp-widget__loading">
+			<div className="sp-widget__loading">
 				<Spinner />
 				<span>Loading store…</span>
 			</div>
@@ -546,24 +546,24 @@ function StorePulseWidget({ setError }: WidgetRenderProps) {
 
 	if (stats.length === 0) {
 		return (
-			<div className="tp-widget__empty">
+			<div className="sp-widget__empty">
 				Store is active. Add products or orders to see live metrics here.
 			</div>
 		);
 	}
 
 	return (
-		<div className="tp-widget">
-			<div className="tp-widget__metrics">
+		<div className="sp-widget">
+			<div className="sp-widget__metrics">
 				{stats.map((item) => (
 					<RouterLink
 						key={item.name}
 						to={item.to}
-						className="tp-widget__metric"
+						className="sp-widget__metric"
 						style={{ textDecoration: 'none' }}
 					>
-						<span className="tp-widget__metric-label">{item.label}</span>
-						<span className="tp-widget__metric-value">
+						<span className="sp-widget__metric-label">{item.label}</span>
+						<span className="sp-widget__metric-value">
 							{item.count !== null ? item.count : '—'}
 						</span>
 					</RouterLink>
@@ -575,7 +575,7 @@ function StorePulseWidget({ setError }: WidgetRenderProps) {
 
 export const BUILTIN_WIDGET_TYPES: DashboardWidgetType<unknown>[] = [
 	{
-		name: 'tp/content-overview',
+		name: 'sp/content-overview',
 		title: 'Content Overview',
 		description: 'Live counts and quick create actions for your collections.',
 		icon: postContent,
@@ -584,7 +584,7 @@ export const BUILTIN_WIDGET_TYPES: DashboardWidgetType<unknown>[] = [
 		render: ContentOverviewWidget,
 	},
 	{
-		name: 'tp/recent-activity',
+		name: 'sp/recent-activity',
 		title: 'Recent Activity',
 		description: 'Recently updated entries across your collections.',
 		icon: listView,
@@ -593,7 +593,7 @@ export const BUILTIN_WIDGET_TYPES: DashboardWidgetType<unknown>[] = [
 		render: RecentActivityWidget,
 	},
 	{
-		name: 'tp/drafts-queue',
+		name: 'sp/drafts-queue',
 		title: 'Drafts & Review',
 		description: 'Draft entries waiting to be published.',
 		icon: postList,
@@ -602,7 +602,7 @@ export const BUILTIN_WIDGET_TYPES: DashboardWidgetType<unknown>[] = [
 		render: DraftsQueueWidget,
 	},
 	{
-		name: 'tp/app-status',
+		name: 'sp/app-status',
 		title: 'Site & App Status',
 		description: 'Schema overview and shortcuts to site settings.',
 		icon: globe,
@@ -611,7 +611,7 @@ export const BUILTIN_WIDGET_TYPES: DashboardWidgetType<unknown>[] = [
 		render: AppStatusWidget,
 	},
 	{
-		name: 'tp/store-pulse',
+		name: 'sp/store-pulse',
 		title: 'Store Pulse',
 		description: 'Live product and order totals for your storefront.',
 		icon: storeIcon,

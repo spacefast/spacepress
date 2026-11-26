@@ -5,21 +5,21 @@
 // operator marks it. Prints the outcome of each step as JSON, then cleans up.
 declare(strict_types=1);
 
-$plugin = \TypedPress\Wp\Runtime::plugin();
+$plugin = \SpacePress\Wp\Runtime::plugin();
 $db = $plugin->connection();
-$dir = sys_get_temp_dir() . '/typedpress-resume-' . bin2hex(random_bytes(4));
+$dir = sys_get_temp_dir() . '/spacepress-resume-' . bin2hex(random_bytes(4));
 $id = '20990101000000_probe1_resume';
 mkdir("$dir/$id", 0777, true);
 file_put_contents("$dir/$id/migration.sql", implode("\n--> statement-breakpoint\n", [
     "CREATE TABLE `{prefix}resume_a` (\n\t`id` BIGINT NOT NULL,\n\tPRIMARY KEY (`id`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;",
     'ALTER TABLE `{prefix}resume_a` ADD COLUMN `n` INT;',
 ]));
-$migrator = new \TypedPress\Wp\Migrator($db, $dir, $plugin->schema);
+$migrator = new \SpacePress\Wp\Migrator($db, $dir, $plugin->schema);
 $attempt = static function (callable $fn): string {
     try {
         $fn();
         return 'ok';
-    } catch (\RuntimeException|\TypedPress\HttpError $e) {
+    } catch (\RuntimeException|\SpacePress\HttpError $e) {
         return $e->getMessage();
     }
 };
@@ -34,9 +34,9 @@ try {
     $out['mark'] = $attempt(fn () => $migrator->markApplied("$id:1"));
     $out['resume'] = $attempt(fn () => $migrator->migrate());
     $out['columns'] = array_column($db->run("SELECT COLUMN_NAME AS c FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'wp_resume_a' ORDER BY ORDINAL_POSITION"), 'c');
-    $out['ledger'] = array_column($db->run("SELECT id FROM wp_tp__migrations WHERE app = ? AND SUBSTRING_INDEX(id, ':', 1) = ? ORDER BY id", [$plugin->schema->name(), $id]), 'id');
+    $out['ledger'] = array_column($db->run("SELECT id FROM wp_sp__migrations WHERE app = ? AND SUBSTRING_INDEX(id, ':', 1) = ? ORDER BY id", [$plugin->schema->name(), $id]), 'id');
 } finally {
-    $db->run("DELETE FROM wp_tp__migrations WHERE app = ? AND SUBSTRING_INDEX(id, ':', 1) = ?", [$plugin->schema->name(), $id]);
+    $db->run("DELETE FROM wp_sp__migrations WHERE app = ? AND SUBSTRING_INDEX(id, ':', 1) = ?", [$plugin->schema->name(), $id]);
     $db->run('DROP TABLE IF EXISTS wp_resume_a');
     unlink("$dir/$id/migration.sql");
     rmdir("$dir/$id");

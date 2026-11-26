@@ -1,21 +1,21 @@
 {
- "about": "Heading text and the id github-slugger 2.0.0 gives it (slug(), lowercase), which TypedPress's heading ids follow. A heading whose text keeps nothing is `section` in TypedPress, where github-slugger gives an empty id.",
+ "about": "Heading text and the id github-slugger 2.0.0 gives it (slug(), lowercase), which SpacePress's heading ids follow. A heading whose text keeps nothing is `section` in SpacePress, where github-slugger gives an empty id.",
  "cases": [
   [
    "Why",
    "why"
   ],
   [
-   "What's `tp/app/`?",
-   "whats-tpapp"
+   "What's `sp/app/`?",
+   "whats-spapp"
   ],
   [
    "Use the running app: the site’s MCP endpoint",
    "use-the-running-app-the-sites-mcp-endpoint"
   ],
   [
-   "tp/app/",
-   "tpapp"
+   "sp/app/",
+   "spapp"
   ],
   [
    "Compiles (47)",

@@ -2,16 +2,16 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Webauthn\Denormalizer;
+namespace SpacePress\Identity\Vendor\Webauthn\Denormalizer;
 
 use function array_key_exists;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerAwareInterface;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerAwareTrait;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerInterface;
-use TypedPress\Identity\Vendor\Webauthn\AuthenticatorAssertionResponse;
-use TypedPress\Identity\Vendor\Webauthn\AuthenticatorAttestationResponse;
-use TypedPress\Identity\Vendor\Webauthn\AuthenticatorResponse;
-use TypedPress\Identity\Vendor\Webauthn\Exception\InvalidDataException;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerAwareInterface;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerAwareTrait;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\DenormalizerInterface;
+use SpacePress\Identity\Vendor\Webauthn\AuthenticatorAssertionResponse;
+use SpacePress\Identity\Vendor\Webauthn\AuthenticatorAttestationResponse;
+use SpacePress\Identity\Vendor\Webauthn\AuthenticatorResponse;
+use SpacePress\Identity\Vendor\Webauthn\Exception\InvalidDataException;
 
 final class AuthenticatorResponseDenormalizer implements DenormalizerInterface, DenormalizerAwareInterface
 {

@@ -28,12 +28,12 @@ export function ScreenHeader( {
 						<Navigator.BackButton
 							icon={ isRTL() ? chevronRight : chevronLeft }
 							size="small"
-							label={ __( 'Back', 'typedpress-admin' ) }
+							label={ __( 'Back', 'spacepress-admin' ) }
 							onClick={ onBack }
 						/>
 						<Spacer>
 							<Heading
-								className="typedpress-admin-global-styles-header"
+								className="spacepress-admin-global-styles-header"
 								level={ 2 }
 								size={ 13 }
 							>
@@ -44,7 +44,7 @@ export function ScreenHeader( {
 				</Spacer>
 			</View>
 			{ description && (
-				<p className="typedpress-admin-global-styles-header__description">
+				<p className="spacepress-admin-global-styles-header__description">
 					{ description }
 				</p>
 			) }

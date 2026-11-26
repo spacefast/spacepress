@@ -9,9 +9,9 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\Serializer\NameConverter;
+namespace SpacePress\Identity\Vendor\Symfony\Component\Serializer\NameConverter;
 
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\UnexpectedPropertyException;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Exception\UnexpectedPropertyException;
 
 /**
  * CamelCase to Underscore name converter.

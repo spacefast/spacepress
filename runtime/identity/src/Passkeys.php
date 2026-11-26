@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity;
+namespace SpacePress\Identity;
 
-use TypedPress\Identity\Vendor\Webauthn\{
+use SpacePress\Identity\Vendor\Webauthn\{
     PublicKeyCredentialCreationOptions,
     PublicKeyCredentialRequestOptions,
     PublicKeyCredentialRpEntity,
@@ -21,20 +21,20 @@ use TypedPress\Identity\Vendor\Webauthn\{
 
 final class Passkeys
 {
-    private \TypedPress\Identity\Vendor\Symfony\Component\Serializer\SerializerInterface $serializer;
-    private \TypedPress\Identity\Vendor\Webauthn\CeremonyStep\CeremonyStepManagerFactory $factory;
+    private \SpacePress\Identity\Vendor\Symfony\Component\Serializer\SerializerInterface $serializer;
+    private \SpacePress\Identity\Vendor\Webauthn\CeremonyStep\CeremonyStepManagerFactory $factory;
     private string $host;
     public function __construct(private DB $db, private Security $security)
     {
-        $manager = new \TypedPress\Identity\Vendor\Webauthn\AttestationStatement\AttestationStatementSupportManager(
+        $manager = new \SpacePress\Identity\Vendor\Webauthn\AttestationStatement\AttestationStatementSupportManager(
             [
-                new \TypedPress\Identity\Vendor\Webauthn\AttestationStatement\NoneAttestationStatementSupport(),
+                new \SpacePress\Identity\Vendor\Webauthn\AttestationStatement\NoneAttestationStatementSupport(),
             ],
         );
-        $this->serializer = (new \TypedPress\Identity\Vendor\Webauthn\Denormalizer\WebauthnSerializerFactory(
+        $this->serializer = (new \SpacePress\Identity\Vendor\Webauthn\Denormalizer\WebauthnSerializerFactory(
             $manager,
         ))->create();
-        $this->factory = new \TypedPress\Identity\Vendor\Webauthn\CeremonyStep\CeremonyStepManagerFactory();
+        $this->factory = new \SpacePress\Identity\Vendor\Webauthn\CeremonyStep\CeremonyStepManagerFactory();
         $this->factory->setAllowedOrigins([untrailingslashit(home_url())]);
         $this->host = wp_parse_url(home_url(), PHP_URL_HOST);
     }

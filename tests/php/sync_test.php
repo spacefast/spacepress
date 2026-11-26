@@ -9,7 +9,7 @@ declare(strict_types=1);
  * people a custom table; sync over HTTP against WordPress is proven by tests/wp/sync.test.ts.
  */
 
-use TypedPress\Sync\Canon;
+use SpacePress\Sync\Canon;
 
 require __DIR__ . '/wp.php';
 require __DIR__ . '/harness.php';
@@ -31,7 +31,7 @@ $schema = [
         ],
         // A synced table whose reference targets a non-id key (0.3.0 captures only).
         'badges' => [
-            'primaryKey' => 'id', 'editor' => false, 'table' => 'tp_badges', 'uid' => true, 'sync' => null, 'access' => $editor, 'api' => $api, 'relations' => [], 'hooks' => [],
+            'primaryKey' => 'id', 'editor' => false, 'table' => 'sp_badges', 'uid' => true, 'sync' => null, 'access' => $editor, 'api' => $api, 'relations' => [], 'hooks' => [],
             'columns' => [
                 'id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true],
                 'badgeId' => ['type' => 'integer', 'references' => ['collection' => 'people', 'column' => 'badge']],
@@ -61,7 +61,7 @@ $schema = [
 $functions = <<<'PHP'
     <?php
     declare(strict_types=1);
-    namespace TypedPressApp;
+    namespace SpacePressApp;
     // Authors and up create; while the test flag is set, only published rows (status comes from its default).
     function notes__create($ctx) {
         $rank = ['author' => 1, 'editor' => 2, 'admin' => 3][$ctx->p['user']->p['role'] ?? ''] ?? 0;
@@ -69,7 +69,7 @@ $functions = <<<'PHP'
             return $rank >= 1;
         }
         // The generated `now` values must be the instant the rule itself reads.
-        $now = \TypedPress\Js::iso(\TypedPress\Js::now());
+        $now = \SpacePress\Js::iso(\SpacePress\Js::now());
         return $rank >= 1 && ($ctx->p['data']->p['status'] ?? null) === 'published'
             && ($ctx->p['data']->p['publishedAt'] ?? null) === $now && ($ctx->p['data']->p['updatedAt'] ?? null) === $now;
     }
@@ -77,26 +77,26 @@ $functions = <<<'PHP'
     function notes__update($ctx) {
         return match ($ctx->p['user']->p['role'] ?? null) {
             'editor', 'admin' => true,
-            'author' => ['authorId' => ['in' => array_column(\TypedPress\db()->findMany('people', ['where' => ['name' => $ctx->p['user']->p['name']]]), 'id')]],
+            'author' => ['authorId' => ['in' => array_column(\SpacePress\db()->findMany('people', ['where' => ['name' => $ctx->p['user']->p['name']]]), 'id')]],
             default => false,
         };
     }
     function notes__delete($ctx) {
         if (!empty($GLOBALS['firstJsonDeleteFilter'])) {
-            return new \TypedPress\JsObject(['meta' => new \TypedPress\JsObject(['eq' => new \TypedPress\JsObject()])]);
+            return new \SpacePress\JsObject(['meta' => new \SpacePress\JsObject(['eq' => new \SpacePress\JsObject()])]);
         }
         return in_array($ctx->p['user']->p['role'] ?? null, ['editor', 'admin'], true);
     }
     // Normalisation the client didn't send: titles are trimmed.
     function notes__beforeCreate($data) {
-        if ($data->p['title'] === 'forbidden title') { throw new \TypedPress\JsError('this title is not allowed'); }
-        return new \TypedPress\JsObject(['title' => trim($data->p['title'])] + $data->p);
+        if ($data->p['title'] === 'forbidden title') { throw new \SpacePress\JsError('this title is not allowed'); }
+        return new \SpacePress\JsObject(['title' => trim($data->p['title'])] + $data->p);
     }
     // A hook that tries to rewrite identity: the runtime must refuse it after the hook.
     // A compiled hook returning `{}` replaces the patch with nothing to change.
-    function notes__beforeUpdate($patch, $existing) { return match ($patch->p['title'] ?? null) { 'steal uid' => new \TypedPress\JsObject($patch->p + ['uid' => 'zr_99999999999999999999']), 'drop it' => new \TypedPress\JsObject(), default => $patch }; }
+    function notes__beforeUpdate($patch, $existing) { return match ($patch->p['title'] ?? null) { 'steal uid' => new \SpacePress\JsObject($patch->p + ['uid' => 'zr_99999999999999999999']), 'drop it' => new \SpacePress\JsObject(), default => $patch }; }
     function guestReferences__read($ctx) {
-        return $ctx->p['user'] === null ? new \TypedPress\JsObject(['visible' => true]) : true;
+        return $ctx->p['user'] === null ? new \SpacePress\JsObject(['visible' => true]) : true;
     }
     PHP;
 
@@ -132,7 +132,7 @@ $schema['collections']['guestReferences'] = [
 ];
 $wp = wpSite('sync', ['schema' => $schema, 'functions' => $functions, 'users' => ['ed' => 'editor', 'au' => 'author']]);
 $app = $wp->app();
-$db = \TypedPress\db();
+$db = \SpacePress\db();
 
 /** @return array{int, mixed} [status, data or problem] */
 function req(string $method, string $path, mixed $body = null, ?string $as = 'ed', array $query = []): array
@@ -177,7 +177,7 @@ foreach (glob(dirname(__DIR__) . '/fixtures/canon/*.json') as $file) {
 // ================================================================ uid
 
 foreach (json_decode(file_get_contents(__DIR__ . '/../fixtures/sync-file-uid.json'), true, 512, JSON_THROW_ON_ERROR) as $case) {
-    eq('file uid ' . $case['collection'] . '/' . $case['basename'], \TypedPress\Sync\Uid::forFile($case['collection'], $case['basename']), $case['uid']);
+    eq('file uid ' . $case['collection'] . '/' . $case['basename'], \SpacePress\Sync\Uid::forFile($case['collection'], $case['basename']), $case['uid']);
 }
 
 $ada = $db->insert('people', ['name' => 'Ada'], true)[0];
@@ -189,8 +189,8 @@ $before = $db->findFirst('notes', ['where' => ['id' => $hooked['id']]])['title']
 $db->update('notes', ['title' => 'drop it'], ['id' => $hooked['id']]);
 eq('a beforeUpdate returning {} replaces the patch with nothing', $db->findFirst('notes', ['where' => ['id' => $hooked['id']]])['title'], $before);
 // What sync authorizes (Wire::decode's data) is plain outside json(): a select sent as `{}` is [].
-eq('sync hands rules plain arrays outside json() values, and keeps {} inside them', \TypedPress\Js::jsonStringify(\TypedPress\Sync\Wire::decode('notes',
-    \TypedPress\Js::decodeJson('{"uid":"zr_0f0f0f0f0f0f0f0f0f0f","fields":{"title":"T","meta":{"a":{}}},"body":null}'), true)), '{"title":"T","meta":{"a":{}},"body":null}');
+eq('sync hands rules plain arrays outside json() values, and keeps {} inside them', \SpacePress\Js::jsonStringify(\SpacePress\Sync\Wire::decode('notes',
+    \SpacePress\Js::decodeJson('{"uid":"zr_0f0f0f0f0f0f0f0f0f0f","fields":{"title":"T","meta":{"a":{}}},"body":null}'), true)), '{"title":"T","meta":{"a":{}},"body":null}');
 eq('and the row keeps its uid and title', [$db->findFirst('notes', ['where' => ['id' => $hooked['id']]])['uid'], $db->findFirst('notes', ['where' => ['id' => $hooked['id']]])['title']], [$hooked['uid'], 'Hooked']);
 $given = $db->insert('people', ['name' => 'Grace', 'uid' => 'zr_11111111111111111111'], true)[0];
 eq('a writer may supply the uid', $given['uid'], 'zr_11111111111111111111');
@@ -211,7 +211,7 @@ isProblem('unrepresentable native blocks are refused before a sync insert', req(
 eq('the refused native block was never stored', $db->findFirst('notes', ['where' => ['uid' => $nativeUid]]), null);
 
 $noteUid = 'zr_aaaaaaaaaaaaaaaaaaaa';
-$record = ['uid' => $noteUid, 'fields' => ['title' => 'TypedPress', 'slug' => 'first', 'meta' => ['b' => 1, 'a' => [true]], 'authorId' => $ada['uid'], 'status' => 'draft', 'publishedAt' => null],
+$record = ['uid' => $noteUid, 'fields' => ['title' => 'SpacePress', 'slug' => 'first', 'meta' => ['b' => 1, 'a' => [true]], 'authorId' => $ada['uid'], 'status' => 'draft', 'publishedAt' => null],
     'body' => "# Hello\n\nWorld.\n"];
 [$s, $created] = req('POST', '/sync/notes', ['record' => $record, 'expect' => 'absent']);
 eq('push creates with expect absent', [$s, $created['status'], $created['uid']], [201, 'applied', $noteUid]);
@@ -232,7 +232,7 @@ check('a push with fields: {} is accepted as an object (then the required title 
 $stale = req('POST', '/sync/notes', ['record' => ['fields' => ['title' => 'Later']] + $record, 'expect' => 'sha256:' . str_repeat('0', 64)]);
 isProblem('wrong expected digest is stale', $stale, 409, 'sync_stale');
 eq('stale carries the current record and digest', [$stale[1]['current']['digest'], $stale[1]['current']['record']], [$created['digest'], $record]);
-eq('stale wrote nothing', $db->findFirst('notes', ['where' => ['uid' => $noteUid]])['title'], 'TypedPress');
+eq('stale wrote nothing', $db->findFirst('notes', ['where' => ['uid' => $noteUid]])['title'], 'SpacePress');
 
 $spaced = ['uid' => 'zr_cccccccccccccccccccc', 'fields' => ['title' => '  Spaced  ', 'slug' => 'spaced'], 'body' => null];
 [$s, $normalized] = req('POST', '/sync/notes', ['record' => $spaced, 'expect' => 'absent']);
@@ -256,7 +256,7 @@ eq('and pushing the pulled record is a no-op', json_decode($out, true)['data']['
 
 // A read transform (lane B's field access) hides `meta` from the viewer: the answer to a write is what
 // that viewer pulls, never the trusted row.
-\TypedPress\Extensions::onRead(static fn (array $rows, string $c, ?\TypedPress\Viewer $v) => $c === 'notes' && $v !== null && ($v->user['name'] ?? null) === 'ed'
+\SpacePress\Extensions::onRead(static fn (array $rows, string $c, ?\SpacePress\Viewer $v) => $c === 'notes' && $v !== null && ($v->user['name'] ?? null) === 'ed'
     ? array_map(static fn (array $r) => ($r['title'] ?? null) === 'Hidden' ? array_diff_key($r, ['meta' => true]) : $r, $rows) : $rows, constraintSafe: true);
 $hidden = ['uid' => 'zr_eeeeeeeeeeeeeeeeeeee', 'fields' => ['title' => ' Hidden ', 'slug' => 'hidden', 'meta' => ['secret' => 1]], 'body' => null];
 [, $answer] = req('POST', '/sync/notes', ['record' => $hidden, 'expect' => 'absent']);
@@ -268,11 +268,11 @@ eq('and the digest a pull by that viewer returns', $answer['digest'], pull('note
 // A reference to a non-id key the viewer can't read refuses the same way whether its row exists or not.
 $badged = $db->insert('people', ['name' => 'Badged', 'badge' => 4242], true)[0];
 foreach ([$badged['uid'], 'zr_dddddddddddddddddddd'] as $uid) {
-    problem('a sync reference through a hidden key discloses nothing', fn () => $db->current(static fn () => \TypedPress\Sync\Wire::decode('badges',
-        ['uid' => 'zr_cccccccccccccccccccc', 'fields' => ['badgeId' => $uid], 'body' => null], viewer: new \TypedPress\Viewer(['id' => 9, 'name' => 'au', 'role' => 'author']))), 409, 'reference_violation', '/badgeId');
+    problem('a sync reference through a hidden key discloses nothing', fn () => $db->current(static fn () => \SpacePress\Sync\Wire::decode('badges',
+        ['uid' => 'zr_cccccccccccccccccccc', 'fields' => ['badgeId' => $uid], 'body' => null], viewer: new \SpacePress\Viewer(['id' => 9, 'name' => 'au', 'role' => 'author']))), 409, 'reference_violation', '/badgeId');
 }
-eq('a reader of the key resolves the reference to it', $db->current(static fn () => \TypedPress\Sync\Wire::decode('badges',
-    ['uid' => 'zr_cccccccccccccccccccc', 'fields' => ['badgeId' => $badged['uid']], 'body' => null], viewer: new \TypedPress\Viewer(['id' => 8, 'name' => 'ed', 'role' => 'editor'])))['badgeId'], 4242);
+eq('a reader of the key resolves the reference to it', $db->current(static fn () => \SpacePress\Sync\Wire::decode('badges',
+    ['uid' => 'zr_cccccccccccccccccccc', 'fields' => ['badgeId' => $badged['uid']], 'body' => null], viewer: new \SpacePress\Viewer(['id' => 8, 'name' => 'ed', 'role' => 'editor'])))['badgeId'], 4242);
 $orphan = ['uid' => 'zr_bbbbbbbbbbbbbbbbbbbb', 'fields' => ['title' => 'Orphan', 'authorId' => 'zr_ffffffffffffffffffff'], 'body' => null];
 isProblem('unknown reference uid', req('POST', '/sync/notes', ['record' => $orphan, 'expect' => 'absent']), 409, 'reference_violation', '/authorId');
 isProblem('references are not resolved for a caller who may not write', req('POST', '/sync/notes', ['record' => $orphan, 'expect' => 'absent'], as: null), 401, 'unauthenticated');
@@ -280,7 +280,7 @@ isProblem('generated columns are not writable', req('POST', '/sync/notes', ['rec
 isProblem('validation runs through the pipeline', req('POST', '/sync/notes', ['record' => ['fields' => ['status' => 'bogus', 'title' => 'x']] + $orphan, 'expect' => 'absent']), 422, 'invalid_input', '/status');
 
 $unsynced = $db->insert('people', ['name' => 'Legacy'], true)[0];
-$wp->exec('UPDATE {prefix}tp_people SET `uid` = NULL WHERE `id` = ?', [$unsynced['id']]);
+$wp->exec('UPDATE {prefix}sp_people SET `uid` = NULL WHERE `id` = ?', [$unsynced['id']]);
 $db->update('notes', ['authorId' => $unsynced['id']], ['uid' => $noteUid]);
 $legacyUid = pull('notes')[$noteUid]['record']['fields']['authorId'];
 eq('a referenced row without a uid gets one on pull', $legacyUid, $db->findFirst('people', ['where' => ['id' => $unsynced['id']]])['uid']);
@@ -296,16 +296,16 @@ isProblem('collections without sync have no sync route', req('GET', '/sync/peopl
 // their filter matches, but a stale write discloses nothing to a caller who can't pull.
 $au = $db->insert('people', ['name' => 'au'], true)[0];
 // A create rule reading defaulted values sees them on sync as on an ordinary create, and reads the
-// write's one instant: the clock moves a millisecond on every read (TP_NOW_STEP), so sync's preview
+// write's one instant: the clock moves a millisecond on every read (SP_NOW_STEP), so sync's preview
 // and the rule evaluation must not read it separately.
 $GLOBALS['firstCreateNeedsPublished'] = true;
-putenv('TP_NOW=2026-01-01T00:00:00.000Z');
-putenv('TP_NOW_STEP=1');
+putenv('SP_NOW=2026-01-01T00:00:00.000Z');
+putenv('SP_NOW_STEP=1');
 $plain = req('POST', '/notes', ['title' => 'Plain', 'slug' => 'plain-create'], as: 'ed');
 [$s] = req('POST', '/sync/notes', ['record' => ['uid' => 'zr_12121212121212121212', 'fields' => ['title' => 'Synced', 'slug' => 'synced-create'], 'body' => null], 'expect' => 'absent'], as: 'ed');
 eq('a create rule sees defaults on sync as on an ordinary create', [$plain[0], $s], [201, 201]);
-putenv('TP_NOW_STEP');
-putenv('TP_NOW');
+putenv('SP_NOW_STEP');
+putenv('SP_NOW');
 unset($GLOBALS['firstCreateNeedsPublished']);
 $own = ['uid' => 'zr_dddddddddddddddddddd', 'fields' => ['title' => 'Mine', 'slug' => 'mine', 'meta' => null, 'authorId' => $au['uid'], 'status' => 'draft', 'publishedAt' => null], 'body' => null];
 [$s, $mine] = req('POST', '/sync/notes', ['record' => $own, 'expect' => 'absent'], as: 'ed');
@@ -317,7 +317,7 @@ foreach (['mine', 'free-slug'] as $slug) {
 $ownPatch = $own;
 unset($ownPatch['fields']['slug']);
 eq('a filtered update rule authorizes rows it matches', req('POST', '/sync/notes', ['record' => ['body' => "Edited.\n"] + $ownPatch, 'expect' => $mine['digest']], as: 'au')[1]['status'], 'normalized');
-eq('the authorized body edit was saved', $db->findFirst('notes', ['where' => ['uid' => $own['uid']]])['body'], \TypedPress\Sync\Markdown::toBlocks("Edited.\n"));
+eq('the authorized body edit was saved', $db->findFirst('notes', ['where' => ['uid' => $own['uid']]])['body'], \SpacePress\Sync\Markdown::toBlocks("Edited.\n"));
 $theirs = pull('notes')['zr_cccccccccccccccccccc'];
 isProblem('and masks rows it does not, as item routes do', req('POST', '/sync/notes', ['record' => ['body' => 'Mine now'] + $theirs['record'], 'expect' => $theirs['digest']], as: 'au'), 404, 'not_found');
 isProblem('authorization comes before staleness, so a probe learns nothing', req('POST', '/sync/notes', ['record' => $theirs['record'], 'expect' => 'absent'], as: 'au'), 404, 'not_found');
@@ -327,14 +327,14 @@ isProblem('a stale write on a row the caller may update', $leak, 409, 'sync_stal
 check('carries no current record for a caller who cannot pull', !array_key_exists('current', $leak[1]), $leak[1]);
 isProblem('trash needs the delete rule', req('POST', '/sync/notes/trash', ['uid' => $own['uid'], 'expect' => $mine['digest']], as: 'au'), 403, 'forbidden');
 
-$nulRow = $db->insert('notes', ['title' => 'NUL JSON', 'meta' => \TypedPress\Js::decodeJson('{"\\u0000":1}')], true)[0];
+$nulRow = $db->insert('notes', ['title' => 'NUL JSON', 'meta' => \SpacePress\Js::decodeJson('{"\\u0000":1}')], true)[0];
 $nul = pull('notes')[$nulRow['uid']];
 [$nulStatus, $nulResult] = req('POST', '/sync/notes', ['record' => $nul['record'], 'expect' => $nul['digest']]);
 eq('a NUL-key JSON record keeps its sent digest when echoed', [$nulStatus, $nulResult['status'] ?? null], [200, 'unchanged']);
 
 // Sync authorizes post-backed trash through the same schema-aware JSON filter as Db.
-$object = $db->insert('notes', ['title' => 'Object filter', 'meta' => \TypedPress\Js::decodeJson('{}')], true)[0];
-$list = $db->insert('notes', ['title' => 'List filter', 'meta' => \TypedPress\Js::decodeJson('[]')], true)[0];
+$object = $db->insert('notes', ['title' => 'Object filter', 'meta' => \SpacePress\Js::decodeJson('{}')], true)[0];
+$list = $db->insert('notes', ['title' => 'List filter', 'meta' => \SpacePress\Js::decodeJson('[]')], true)[0];
 $filterRows = pull('notes');
 $GLOBALS['firstJsonDeleteFilter'] = true;
 try {
@@ -358,10 +358,10 @@ $guestTrash = static fn (array $post): array => req('POST', '/sync/guestPosts/tr
     'uid' => $post['uid'], 'expect' => $guestRecords[$post['uid']]['digest'],
 ], as: null);
 $directRefusal = problem('an anonymous delete refuses a hidden reference',
-    fn () => $db->delete('guestPosts', ['id' => $guest['id']], viewer: new \TypedPress\Viewer(null)),
+    fn () => $db->delete('guestPosts', ['id' => $guest['id']], viewer: new \SpacePress\Viewer(null)),
     409, 'reference_violation');
 if ($directRefusal !== null) {
-    eq('anonymous sync trash returns the same refusal as direct delete', $guestTrash($guest), [409, \TypedPress\App::problem($directRefusal)]);
+    eq('anonymous sync trash returns the same refusal as direct delete', $guestTrash($guest), [409, \SpacePress\App::problem($directRefusal)]);
 }
 eq('refused sync trash leaves the post published and referenced', [
     get_post_status($guest['id']), $db->findFirst('guestReferences', ['where' => ['id' => $hiddenRef]])['postId'],
@@ -380,7 +380,7 @@ check('rows created outside sync get uids on read', count(array_filter(array_key
 $current = pull('notes')[$noteUid];
 isProblem('trash with a stale digest', req('POST', '/sync/notes/trash', ['uid' => $noteUid, 'expect' => 'sha256:' . str_repeat('1', 64)]), 409, 'sync_stale');
 eq('trash applies', req('POST', '/sync/notes/trash', ['uid' => $noteUid, 'expect' => $current['digest']])[1]['status'], 'applied');
-$trashedId = (int) $wp->scalar('SELECT `ID` FROM {prefix}posts WHERE `post_status` = ? AND `post_type` = ?', ['trash', 'tp_notes']);
+$trashedId = (int) $wp->scalar('SELECT `ID` FROM {prefix}posts WHERE `post_status` = ? AND `post_type` = ?', ['trash', 'sp_notes']);
 check('trash moves the post to the WordPress trash: outside every read, listed by pull as trashed', $db->findFirst('notes', ['where' => ['uid' => $noteUid]]) === null
     && $trashedId > 0 && (pull('notes')[$noteUid]['trashed'] ?? null) === true, pull('notes')[$noteUid] ?? null);
 eq('trash of a trashed uid is unchanged', req('POST', '/sync/notes/trash', ['uid' => $noteUid, 'expect' => $current['digest']])[1]['status'], 'unchanged');
@@ -414,52 +414,52 @@ $merge = static fn (string $base, string $ours, string $theirs) => req('POST', '
 eq('independent line edits merge', $merge("a\n\nb\n\nc\n", "A\n\nb\n\nc\n", "a\n\nb\n\nC\n"), ['merged' => "A\n\nb\n\nC\n", 'conflicts' => []]);
 eq('the same line edited twice conflicts', $merge("a\n\nb\n", "a\n\nX\n", "a\n\nY\n"), ['merged' => null, 'conflicts' => [['ours' => "X\n", 'theirs' => "Y\n", 'line' => 3]]]);
 
-$seedDir = sys_get_temp_dir() . '/tp-cycle-seed-' . bin2hex(random_bytes(4)); mkdir($seedDir);
+$seedDir = sys_get_temp_dir() . '/sp-cycle-seed-' . bin2hex(random_bytes(4)); mkdir($seedDir);
 file_put_contents($seedDir . '/.ignored.json', 'not seed input');
 file_put_contents($seedDir . '/README.txt', 'not seed input');
 $writeSeed = static function (string $name, array $records) use ($seedDir): void {
     file_put_contents($seedDir . '/' . $name . '.json', wp_json_encode(['collection' => $name, 'format' => 'json', 'records' => $records]));
 };
 foreach (['seedAuthors', 'seedArticles'] as $name) { $writeSeed($name, []); }
-$empty = \TypedPress\Sync\Seed::run($wp->plugin(), $seedDir);
+$empty = \SpacePress\Sync\Seed::run($wp->plugin(), $seedDir);
 eq('empty seeds do not depend on schema reference cycles', array_sum(array_column($empty, 'created')), 0);
-$authorUid = \TypedPress\Sync\Uid::mint(); $articleUid = \TypedPress\Sync\Uid::mint();
+$authorUid = \SpacePress\Sync\Uid::mint(); $articleUid = \SpacePress\Sync\Uid::mint();
 $writeSeed('seedAuthors', [['uid' => $authorUid, 'fields' => ['name' => 'Author', 'peer' => null]]]);
 $writeSeed('seedArticles', [['uid' => $articleUid, 'fields' => ['name' => 'Article']]]);
-$created = \TypedPress\Sync\Seed::run($wp->plugin(), $seedDir);
+$created = \SpacePress\Sync\Seed::run($wp->plugin(), $seedDir);
 eq('nullable or omitted references can seed cyclic schemas', array_sum(array_column($created, 'created')), 2);
 $writeSeed('seedAuthors', [['uid' => $authorUid, 'fields' => ['name' => 'Author', 'peer' => $articleUid]]]);
 $writeSeed('seedArticles', [['uid' => $articleUid, 'fields' => ['name' => 'Article', 'peer' => $authorUid]]]);
-$existing = \TypedPress\Sync\Seed::run($wp->plugin(), $seedDir);
+$existing = \SpacePress\Sync\Seed::run($wp->plugin(), $seedDir);
 eq('already-existing targets resolve when seed schemas form a cycle', [array_sum(array_column($existing, 'created')), array_sum(array_column($existing, 'updated'))], [0, 2]);
 $seedAuthor = $db->findFirst('seedAuthors', ['where' => ['uid' => $authorUid]]);
 $seedArticle = $db->findFirst('seedArticles', ['where' => ['uid' => $articleUid]]);
 eq('cyclic references are stored as their actual target identities', [$seedAuthor['peer'], $seedArticle['peer']], [$seedArticle['id'], $seedAuthor['id']]);
-$writeSeed('seedAuthors', [['uid' => \TypedPress\Sync\Uid::mint(), 'fields' => ['name' => 'Missing target', 'peer' => \TypedPress\Sync\Uid::mint()]]]);
+$writeSeed('seedAuthors', [['uid' => \SpacePress\Sync\Uid::mint(), 'fields' => ['name' => 'Missing target', 'peer' => \SpacePress\Sync\Uid::mint()]]]);
 $writeSeed('seedArticles', []);
-problem('an actual missing seed reference is still refused', fn () => \TypedPress\Sync\Seed::run($wp->plugin(), $seedDir), 422, 'sync_missing_reference', '/fields/peer');
-$itemUid = \TypedPress\Sync\Uid::mint(); $newAuthorUid = \TypedPress\Sync\Uid::mint();
+problem('an actual missing seed reference is still refused', fn () => \SpacePress\Sync\Seed::run($wp->plugin(), $seedDir), 422, 'sync_missing_reference', '/fields/peer');
+$itemUid = \SpacePress\Sync\Uid::mint(); $newAuthorUid = \SpacePress\Sync\Uid::mint();
 $item = $db->insert('aSeedItems', ['uid' => $itemUid, 'name' => 'Existing item'], true)[0];
 $writeSeed('aSeedItems', [['uid' => $itemUid, 'fields' => ['name' => 'Existing item', 'peer' => $newAuthorUid]]]);
 $writeSeed('seedAuthors', [['uid' => $newAuthorUid, 'fields' => ['name' => 'New author']]]);
-$outside = \TypedPress\Sync\Seed::run($wp->plugin(), $seedDir);
+$outside = \SpacePress\Sync\Seed::run($wp->plugin(), $seedDir);
 eq('a dependency cycle is seeded before an outside collection that references it', [$outside['seedAuthors']['created'], $outside['aSeedItems']['updated']], [1, 1]);
 eq('the outside record resolves the new target inside the schema cycle', $db->findFirst('aSeedItems', ['where' => ['id' => $item['id']]])['peer'], $db->findFirst('seedAuthors', ['where' => ['uid' => $newAuthorUid]])['id']);
 $nodes = $db->insert('seedNodes', [['name' => 'A'], ['name' => 'B']], true);
 $writeSeed('seedNodes', [['uid' => $nodes[0]['uid'], 'fields' => ['name' => 'A', 'parent' => $nodes[0]['uid']]]]);
-$selfReference = \TypedPress\Sync\Seed::run($wp->plugin(), $seedDir);
+$selfReference = \SpacePress\Sync\Seed::run($wp->plugin(), $seedDir);
 eq('an ordinary parent reference can seed an existing self-reference', $selfReference['seedNodes']['updated'], 1);
 $writeSeed('seedNodes', [['uid' => $nodes[0]['uid'], 'fields' => ['name' => 'A', 'parent' => $nodes[1]['uid']]], ['uid' => $nodes[1]['uid'], 'fields' => ['name' => 'B', 'parent' => $nodes[0]['uid']]]]);
-$parentCycle = \TypedPress\Sync\Seed::run($wp->plugin(), $seedDir);
+$parentCycle = \SpacePress\Sync\Seed::run($wp->plugin(), $seedDir);
 eq('ordinary parent reference cycles resolve existing targets', $parentCycle['seedNodes']['updated'], 2);
 eq('ordinary parent reference cycles store both target identities', [$db->findFirst('seedNodes', ['where' => ['id' => $nodes[0]['id']]])['parent'], $db->findFirst('seedNodes', ['where' => ['id' => $nodes[1]['id']]])['parent']], [$nodes[1]['id'], $nodes[0]['id']]);
-eq('repeating an ordinary parent cycle seed is unchanged', \TypedPress\Sync\Seed::run($wp->plugin(), $seedDir)['seedNodes']['unchanged'], 2);
+eq('repeating an ordinary parent cycle seed is unchanged', \SpacePress\Sync\Seed::run($wp->plugin(), $seedDir)['seedNodes']['unchanged'], 2);
 chmod($seedDir, 0000); clearstatcache(true, $seedDir);
 try {
     // A root test runner can still read mode-000 directories; exercise real permission errors elsewhere.
     if (!is_readable($seedDir)) {
         $listingFailed = false;
-        try { \TypedPress\Sync\Seed::run($wp->plugin(), $seedDir); }
+        try { \SpacePress\Sync\Seed::run($wp->plugin(), $seedDir); }
         catch (RuntimeException $e) { $listingFailed = $e->getMessage() === 'Cannot list seed records'; }
         check('unreadable seed contents throw instead of acknowledging an empty seed', $listingFailed);
     }
@@ -468,10 +468,10 @@ try {
 // A record the seed refuses names the file it was compiled from, and the refusal is kept for the
 // build: later requests report it without the lock and without running the records again.
 $own = $wp->plugin();
-$ownDir = $own->dir . '/tp/app/seed';
-$ownVersion = $own->dir . '/tp/app/seed-version.php';
+$ownDir = $own->dir . '/sp/app/seed';
+$ownVersion = $own->dir . '/sp/app/seed-version.php';
 mkdir($ownDir);
-$ownUid = \TypedPress\Sync\Uid::mint();
+$ownUid = \SpacePress\Sync\Uid::mint();
 $writeOwn = static function (string $body) use ($ownDir, $ownVersion, $ownUid): array {
     $php = '<?php return ' . var_export(['collection' => 'notes', 'format' => 'md', 'records' => [
         ['uid' => $ownUid, 'fields' => ['title' => 'Seeded from a file'], 'body' => $body, 'path' => 'content/notes/embed.md'],
@@ -484,13 +484,13 @@ $writeOwn = static function (string $body) use ($ownDir, $ownVersion, $ownUid): 
     return $version;
 };
 $writeOwn("Hello\n\n<iframe src=\"https://example.com\"></iframe>\n");
-$seedLock = static fn (callable $fn) => \TypedPress\Wp\Migrator::locked($own->connection(), 'seed', $fn);
+$seedLock = static fn (callable $fn) => \SpacePress\Wp\Migrator::locked($own->connection(), 'seed', $fn);
 $first = clone $own;
 $first->installSeed();
 $refusal = (string) $first->unavailable();
 check('a refused seed record names the file it came from', str_starts_with($refusal, 'Seed refused: content/notes/embed.md: core/html can\'t be written as Markdown'), $refusal);
-eq('a refused seed leaves no receipt', get_option('tp_notes_seed'), false);
-eq('a refused seed is kept with its message', get_option('tp_notes_seed_refused')['problem'] ?? null, $refusal);
+eq('a refused seed leaves no receipt', get_option('sp_notes_seed'), false);
+eq('a refused seed is kept with its message', get_option('sp_notes_seed_refused')['problem'] ?? null, $refusal);
 // While this process holds the seed lock, a request that ran the seed again would wait for it.
 $started = microtime(true);
 $again = $seedLock(static function () use ($own): string {
@@ -502,31 +502,31 @@ $again = $seedLock(static function () use ($own): string {
 eq('the next request reports the kept refusal', $again, $refusal);
 check('and reports it without waiting for the seed lock', microtime(true) - $started < 5, microtime(true) - $started);
 // A seed another request is still importing says so, in its own words.
-$kept = get_option('tp_notes_seed_refused');
-delete_option('tp_notes_seed_refused');
+$kept = get_option('sp_notes_seed_refused');
+delete_option('sp_notes_seed_refused');
 $busy = $seedLock(static function () use ($own, $ownVersion): string {
     try {
-        \TypedPress\Sync\Seed::install($own, $ownVersion, 1);
-    } catch (\TypedPress\Wp\LockBusy $e) {
+        \SpacePress\Sync\Seed::install($own, $ownVersion, 1);
+    } catch (\SpacePress\Wp\LockBusy $e) {
         return $e->getMessage();
     }
 
     return 'not refused';
 });
 eq('a held seed lock is reported as a seed, not as migrations', $busy, 'another request is still importing the seed content; try again shortly');
-eq('a busy seed lock is not kept as a refusal', get_option('tp_notes_seed_refused'), false);
-update_option('tp_notes_seed_refused', $kept, false);
+eq('a busy seed lock is not kept as a refusal', get_option('sp_notes_seed_refused'), false);
+update_option('sp_notes_seed_refused', $kept, false);
 // A new build (another seed version) runs the seed again, and its receipt clears the refusal.
 $fixedVersion = $writeOwn("Hello\n\nNo embed here.\n");
 $fixed = clone $own;
 $fixed->installSeed();
-eq('a changed seed version runs the seed again', [$fixed->unavailable(), get_option('tp_notes_seed')], [null, $fixedVersion]);
-eq('and its receipt clears the kept refusal', get_option('tp_notes_seed_refused'), false);
+eq('a changed seed version runs the seed again', [$fixed->unavailable(), get_option('sp_notes_seed')], [null, $fixedVersion]);
+eq('and its receipt clears the kept refusal', get_option('sp_notes_seed_refused'), false);
 eq('the fixed record is seeded', $db->findFirst('notes', ['where' => ['uid' => $ownUid]])['title'] ?? null, 'Seeded from a file');
 // An error the app's own hook throws for a record is a refusal too, with the record's file.
 $writeOwn("Hello\n");
 $hookSeed = require $ownDir . '/notes.php';
-$hookSeed['records'][0] = ['uid' => \TypedPress\Sync\Uid::mint(), 'fields' => ['title' => 'forbidden title'], 'path' => 'content/notes/forbidden.md'];
+$hookSeed['records'][0] = ['uid' => \SpacePress\Sync\Uid::mint(), 'fields' => ['title' => 'forbidden title'], 'path' => 'content/notes/forbidden.md'];
 $hookPhp = '<?php return ' . var_export($hookSeed, true) . ';';
 file_put_contents($ownDir . '/notes.php', $hookPhp);
 file_put_contents($ownVersion, '<?php return ' . var_export(['notes.php' => hash('sha256', $hookPhp)], true) . ';');
@@ -534,12 +534,12 @@ if (function_exists('opcache_invalidate')) { opcache_invalidate($ownDir . '/note
 $hooked = clone $own;
 $hooked->installSeed();
 check('an error a hook throws for a seed record names its file and is kept', str_starts_with((string) $hooked->unavailable(), 'Seed refused: content/notes/forbidden.md: this title is not allowed')
-    && (get_option('tp_notes_seed_refused')['problem'] ?? null) === $hooked->unavailable(), $hooked->unavailable());
+    && (get_option('sp_notes_seed_refused')['problem'] ?? null) === $hooked->unavailable(), $hooked->unavailable());
 // Activating the plugin again retries a kept refusal.
-update_option('tp_notes_seed_refused', $kept, false);
-\TypedPress\Sync\Seed::retry($own);
-eq('activation forgets a kept seed refusal', get_option('tp_notes_seed_refused'), false);
-unlink($ownDir . '/notes.php'); rmdir($ownDir); unlink($ownVersion); delete_option('tp_notes_seed');
+update_option('sp_notes_seed_refused', $kept, false);
+\SpacePress\Sync\Seed::retry($own);
+eq('activation forgets a kept seed refusal', get_option('sp_notes_seed_refused'), false);
+unlink($ownDir . '/notes.php'); rmdir($ownDir); unlink($ownVersion); delete_option('sp_notes_seed');
 foreach (['seedAuthors', 'seedArticles', 'aSeedItems', 'seedNodes'] as $name) { unlink($seedDir . '/' . $name . '.json'); }
 unlink($seedDir . '/.ignored.json'); unlink($seedDir . '/README.txt'); rmdir($seedDir);
 finish('sync');

@@ -1,5 +1,5 @@
-// Feature 4 on real WordPress (§6.2): a browser-less PKCE sign-in against typedpress-identity, its Bearer
-// on /wp-json/typedpress/v1, refresh rotation and reuse, guests created on first write and upgraded in
+// Feature 4 on real WordPress (§6.2): a browser-less PKCE sign-in against spacepress-identity, its Bearer
+// on /wp-json/spacepress/v1, refresh rotation and reuse, guests created on first write and upgraded in
 // place, suspension on every channel, and the `members` auth collection living in wp_users with
 // its hidden columns never leaving the runtime. Application passwords keep working.
 import { test } from "node:test";
@@ -8,7 +8,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { appendFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 // The test app's own typed client (run.sh builds tests/wp/app before the suites).
-import { createClient } from "./app/tp/_generated/client/index.ts";
+import { createClient } from "./app/sp/_generated/client/index.ts";
 import { request as rawRequest } from "node:http";
 import { api, auth, harness, http, run, sql, wp, wpTry, first } from "./env.ts";
 import { loginCookie } from "./login.ts";
@@ -36,7 +36,7 @@ async function member(tag: string) {
 
 /** The authorization-code flow with only fetch: password sign-in → consent (cookie + CSRF) → token. */
 async function signIn(login: string, password: string) {
-  const signin = await fetch(`${site}/wp-json/typedpress-identity/v1/sign-in/password`, {
+  const signin = await fetch(`${site}/wp-json/spacepress-identity/v1/sign-in/password`, {
     method: "POST", headers: { "content-type": "application/json", origin: site }, body: JSON.stringify({ login, password }),
   });
   assert.equal(signin.status, 200, await signin.clone().text());
@@ -65,7 +65,7 @@ async function token(body: Record<string, string>) {
   return { status: res.status, json: await res.json() };
 }
 
-test("PKCE sign-in yields a Bearer that works on /wp-json/typedpress/v1; refresh rotates and reuse fails", async () => {
+test("PKCE sign-in yields a Bearer that works on /wp-json/spacepress/v1; refresh rotates and reuse fails", async () => {
   const ana = await member("ana");
   const tokens = await signIn(ana.email, ana.password);
   assert.equal(tokens.status, 200, JSON.stringify(tokens.json));
@@ -83,18 +83,18 @@ test("PKCE sign-in yields a Bearer that works on /wp-json/typedpress/v1; refresh
   const reuse = await token({ grant_type: "refresh_token", client_id: app.id, refresh_token: tokens.json.refresh_token });
   assert.deepEqual([reuse.status, reuse.json.error], [400, "invalid_grant"]);
   const after = await call("GET", "/me", { token: rotated.json.access_token });
-  assert.deepEqual([after.status, after.json.code], [401, "unauthenticated"], "reuse revoked the family on /wp-json/typedpress/v1 too");
+  assert.deepEqual([after.status, after.json.code], [401, "unauthenticated"], "reuse revoked the family on /wp-json/spacepress/v1 too");
 });
 
-test("an opted-in host's identity cookie works on /wp-json/typedpress/v1 from its own pages only", async () => {
+test("an opted-in host's identity cookie works on /wp-json/spacepress/v1 from its own pages only", async () => {
   const host = await member("host-cookie");
-  const signin = await fetch(`${site}/wp-json/typedpress-identity/v1/sign-in/password`, {
+  const signin = await fetch(`${site}/wp-json/spacepress-identity/v1/sign-in/password`, {
     method: "POST", headers: { "content-type": "application/json", origin: site }, body: JSON.stringify({ login: host.email, password: host.password }),
   });
   const cookie = signin.headers.getSetCookie().find((c) => c.startsWith("zi_session="))!.split(";")[0];
   const me = (headers: Record<string, string> = {}) => fetch(`${api}/me`, { headers: { cookie, ...headers } });
-  assert.equal((await (await me()).json()).data, null, "cookies are off on /wp-json/typedpress/v1 unless the host opts in");
-  wp("option", "update", "tp_test_rest_cookie_auth", "1");
+  assert.equal((await (await me()).json()).data, null, "cookies are off on /wp-json/spacepress/v1 unless the host opts in");
+  wp("option", "update", "sp_test_rest_cookie_auth", "1");
   try {
     const own = await me({ origin: site });
     assert.equal((await own.json()).data.id, host.id, "a same-origin request is the signed-in member");
@@ -124,7 +124,7 @@ test("an opted-in host's identity cookie works on /wp-json/typedpress/v1 from it
       assert.deepEqual([overridden.status, (await overridden.json()).code], [403, "invalid_csrf"], `a method override is judged as a write: ${path}`);
     }
   } finally {
-    wp("option", "delete", "tp_test_rest_cookie_auth");
+    wp("option", "delete", "sp_test_rest_cookie_auth");
   }
 });
 
@@ -136,7 +136,7 @@ test("guests: created on first write, below subscriber, upgraded in place with t
   const me = await call("GET", "/me", { token: guest.accessToken });
   assert.equal(me.json.data.role, "guest");
   const id = me.json.data.id as number;
-  assert.equal(sql(`SELECT meta_value FROM wp_usermeta WHERE user_id = ${id} AND meta_key = 'wp_capabilities'`)[0].meta_value, 'a:1:{s:8:"tp_guest";b:1;}');
+  assert.equal(sql(`SELECT meta_value FROM wp_usermeta WHERE user_id = ${id} AND meta_key = 'wp_capabilities'`)[0].meta_value, 'a:1:{s:8:"sp_guest";b:1;}');
   assert.ok(entry.id, "the write went through as the guest");
   assert.deepEqual([me.json.data.plan, me.json.data.points, me.json.data.tags], ["free", 0, []], "a guest member gets the collection's defaults");
   const review = await call("POST", "/reviews", { token: guest.accessToken, body: { body: "five stars" } });
@@ -155,14 +155,14 @@ test("guests: created on first write, below subscriber, upgraded in place with t
   assert.match(landing.headers.get("location")!, /\/identity\?upgrade=1&return_to=/);
   const cookie = landing.headers.getSetCookie().find((c) => c.startsWith("zi_session="))!.split(";")[0];
   const email = `guest-${run}@example.test`;
-  const start = await fetch(`${site}/wp-json/typedpress-identity/v1/sign-in/email`, {
+  const start = await fetch(`${site}/wp-json/spacepress-identity/v1/sign-in/email`, {
     method: "POST", headers: { "content-type": "application/json", origin: site, cookie }, body: JSON.stringify({ email }),
   });
   const { data: { challenge_id } } = await start.json();
   // The harness keeps outgoing mail on disk (tests/wp/mu-plugins/capture-mail.php).
-  const secret = /Your code is (\d{6})/.exec(wp("eval", `echo file_get_contents(WP_CONTENT_DIR . '/typedpress-test-mail/' . sanitize_file_name(${JSON.stringify(email)}) . '.txt');`))?.[1];
+  const secret = /Your code is (\d{6})/.exec(wp("eval", `echo file_get_contents(WP_CONTENT_DIR . '/spacepress-test-mail/' . sanitize_file_name(${JSON.stringify(email)}) . '.txt');`))?.[1];
   assert.ok(secret, "the sign-in code was mailed");
-  const verify = await fetch(`${site}/wp-json/typedpress-identity/v1/sign-in/verify`, {
+  const verify = await fetch(`${site}/wp-json/spacepress-identity/v1/sign-in/verify`, {
     method: "POST", headers: { "content-type": "application/json", origin: site, cookie }, body: JSON.stringify({ challenge_id, code: secret }),
   });
   assert.deepEqual(await verify.json(), { data: { kind: "signed_in" } });
@@ -188,25 +188,25 @@ test("suspension blocks every channel: Bearer, application password and cookie +
   const viaCookie = () => fetch(`${api}/me`, { headers: { cookie, "x-wp-nonce": nonce } });
   assert.equal((await viaCookie()).status, 200, "cookie + nonce works before");
   assert.equal((await fetch(`${api}/me`, { headers: basic })).status, 200);
-  wp("typedpress", "identity", "suspend", String(bo.id));
+  wp("spacepress", "identity", "suspend", String(bo.id));
   const bearer = await call("GET", "/me", { token: tokens.json.access_token });
   assert.deepEqual([bearer.status, bearer.json.code], [403, "suspended"]);
-  // typedpress-identity refuses a suspended account's application password: the API says so (403
+  // spacepress-identity refuses a suspended account's application password: the API says so (403
   // account_unavailable, as core's authentication error is), and never acts as the account.
   const viaApp = await fetch(`${api}/me`, { headers: basic });
   assert.deepEqual([viaApp.status, (await viaApp.json()).code], [403, "account_unavailable"]);
   const write = await fetch(`${api}/reviews`, { method: "POST", headers: { ...basic, "content-type": "application/json" }, body: JSON.stringify({ body: "as suspended" }) });
   assert.equal(write.status, 403, "a suspended account can't write");
   const viaAbility = await fetch(`${site}/wp-json/wp-abilities/v1/abilities/blog/guestbook-create/run`, { method: "POST", headers: { ...basic, "content-type": "application/json" }, body: JSON.stringify({ input: { message: "x" } }) });
-  assert.equal(viaAbility.status, 401, "abilities refuse a suspended account too");
+  assert.deepEqual([viaAbility.status, (await viaAbility.json()).code], [403, "account_unavailable"]);
   // A session WordPress resolved some other way (a cookie issued before suspension, a plugin) still
-  // meets WpAuth's own suspension check on every TypedPress channel.
-  const viaRuntime = wp("eval", `wp_set_current_user(${bo.id}); try { \\TypedPress\\Wp\\WpAuth::current(); echo 'allowed'; } catch (\\TypedPress\\HttpError $e) { echo $e->errorCode; }`);
+  // meets WpAuth's own suspension check on every SpacePress channel.
+  const viaRuntime = wp("eval", `wp_set_current_user(${bo.id}); try { \\SpacePress\\Wp\\WpAuth::current(); echo 'allowed'; } catch (\\SpacePress\\HttpError $e) { echo $e->errorCode; }`);
   assert.equal(viaRuntime, "suspended");
-  // typedpress-identity also refuses native sign-in and destroys WordPress sessions on suspension.
+  // spacepress-identity also refuses native sign-in and destroys WordPress sessions on suspension.
   const cookieAfter = await viaCookie();
   assert.ok([401, 403].includes(cookieAfter.status), `the cookie no longer works (${cookieAfter.status})`);
-  wp("typedpress", "identity", "restore", String(bo.id));
+  wp("spacepress", "identity", "restore", String(bo.id));
   assert.equal((await fetch(`${api}/me`, { headers: basic })).status, 200, "restored accounts work again");
 });
 
@@ -217,10 +217,10 @@ test("a member row is a WordPress user: wp_users, usermeta in SCF's forms, WordP
   const self = await signIn(cy.email, cy.password);
   const patched = await call("PATCH", `/members/${cy.id}`, { token: self.json.access_token, body: { points: 7, tags: ["beta"] } });
   assert.equal(patched.status, 200, patched.text);
-  const meta = Object.fromEntries(sql(`SELECT meta_key, meta_value FROM wp_usermeta WHERE user_id = ${cy.id} AND meta_key IN ('tp_points','tp_tags')`).map((r) => [r.meta_key, r.meta_value]));
-  assert.deepEqual(meta, { tp_points: "7", tp_tags: 'a:1:{i:0;s:4:"beta";}' }, "multiple selects are SCF's serialized arrays");
-  // An edit through SCF's own field API (what the profile screen saves) reads back through TypedPress.
-  wp("eval", `update_field('field_tp_member_tags', ['early', 'beta'], 'user_${cy.id}');`);
+  const meta = Object.fromEntries(sql(`SELECT meta_key, meta_value FROM wp_usermeta WHERE user_id = ${cy.id} AND meta_key IN ('sp_points','sp_tags')`).map((r) => [r.meta_key, r.meta_value]));
+  assert.deepEqual(meta, { sp_points: "7", sp_tags: 'a:1:{i:0;s:4:"beta";}' }, "multiple selects are SCF's serialized arrays");
+  // An edit through SCF's own field API (what the profile screen saves) reads back through SpacePress.
+  wp("eval", `update_field('field_sp_member_tags', ['early', 'beta'], 'user_${cy.id}');`);
   wp("user", "update", String(cy.id), "--display_name=Cy Edited");
   const row = await call("GET", `/members/${cy.id}`, { token: self.json.access_token });
   assert.deepEqual([row.json.data.name, row.json.data.tags, row.json.data.points], ["Cy Edited", ["early", "beta"], 7]);
@@ -241,87 +241,87 @@ test("a member row is a WordPress user: wp_users, usermeta in SCF's forms, WordP
   // The read rule is "self", so the answer carries no row: the member is in wp_users.
   assert.deepEqual([made.status, made.json.data], [201, null], "an administrator creates a member with an email");
   assert.equal(sql(`SELECT COUNT(*) AS n FROM wp_users WHERE user_email = 'free-${run}@example.test'`)[0].n, "1");
-  const taken = JSON.parse(wpTry("typedpress", "update", "members", JSON.stringify({ id: dupe.id }), JSON.stringify({ handle: `cy-${run}` })));
+  const taken = JSON.parse(wpTry("spacepress", "update", "members", JSON.stringify({ id: dupe.id }), JSON.stringify({ handle: `cy-${run}` })));
   assert.deepEqual([taken.error.status, taken.error.code, taken.error.pointer], [409, "unique_violation", "/handle"], "trusted writes still enforce unique usermeta");
   // Uniqueness compares the stored (SCF) form: a date is kept as Ymd.
-  const sameDay = JSON.parse(wpTry("typedpress", "update", "members", JSON.stringify({ id: dupe.id }), JSON.stringify({ joined: "2026-01-02" })));
+  const sameDay = JSON.parse(wpTry("spacepress", "update", "members", JSON.stringify({ id: dupe.id }), JSON.stringify({ joined: "2026-01-02" })));
   assert.deepEqual([sameDay.error.status, sameDay.error.pointer], [409, "/joined"]);
-  // A member's role is the one TypedPress authenticates them with: a contributor is an author.
+  // A member's role is the one SpacePress authenticates them with: a contributor is an author.
   wp("user", "set-role", String(dupe.id), "contributor");
   const asContributor = await call("GET", "/me", { token: (await signIn(dupe.email, dupe.password)).json.access_token });
-  assert.equal(asContributor.json.data.role, "author", "the WordPress contributor is TypedPress's author, as user and member");
-  const byRole = JSON.parse(wp("typedpress", "find", "members", JSON.stringify({ where: { id: dupe.id, role: "author" } })));
+  assert.equal(asContributor.json.data.role, "author", "the WordPress contributor is SpacePress's author, as user and member");
+  const byRole = JSON.parse(wp("spacepress", "find", "members", JSON.stringify({ where: { id: dupe.id, role: "author" } })));
   assert.deepEqual(byRole.data.map((r: any) => r.id), [dupe.id], "filters on role decide it as authentication does");
   // Capabilities granted or denied to the user directly count the same way.
   wp("user", "set-role", String(dupe.id), "subscriber");
   wp("user", "add-cap", String(dupe.id), "manage_options");
-  const granted = JSON.parse(wp("typedpress", "find", "members", JSON.stringify({ where: { id: dupe.id } })));
+  const granted = JSON.parse(wp("spacepress", "find", "members", JSON.stringify({ where: { id: dupe.id } })));
   assert.equal(granted.data[0].role, "admin", "a direct grant of manage_options makes an admin");
   wp("user", "remove-cap", String(dupe.id), "manage_options");
   wp("user", "set-role", String(dupe.id), "editor");
   wp("eval", `$u = new WP_User(${dupe.id}); $u->add_cap('edit_others_posts', false);`);
-  const denied = JSON.parse(wp("typedpress", "find", "members", JSON.stringify({ where: { id: dupe.id, role: "author" } })));
+  const denied = JSON.parse(wp("spacepress", "find", "members", JSON.stringify({ where: { id: dupe.id, role: "author" } })));
   assert.deepEqual(denied.data.map((r: any) => r.role), ["author"], "an editor denied edit_others_posts is an author, in filters too");
   wp("eval", `$u = new WP_User(${dupe.id}); $u->remove_cap('edit_others_posts'); $u->set_role('contributor'); $u->add_cap('edit_posts', false);`);
-  const contributorDenied = JSON.parse(wp("typedpress", "find", "members", JSON.stringify({ where: { id: dupe.id, role: "subscriber" } })));
+  const contributorDenied = JSON.parse(wp("spacepress", "find", "members", JSON.stringify({ where: { id: dupe.id, role: "subscriber" } })));
   assert.deepEqual(contributorDenied.data.map((r: any) => r.role), ["subscriber"], "a contributor denied edit_posts holds no author capability: a subscriber");
-  const authRole = wp("eval", `echo \\TypedPress\\Wp\\WpAuth::map(new WP_User(${dupe.id}))['role'];`);
+  const authRole = wp("eval", `echo \\SpacePress\\Wp\\WpAuth::map(new WP_User(${dupe.id}))['role'];`);
   assert.equal(authRole, "subscriber", "the same answer authentication gives");
   // Several roles, one granting and a later one denying manage_options: rows follow WordPress's merge.
-  wp("eval", `add_role('tp_test_deny', 'Deny', ['manage_options' => false]); $u = new WP_User(${dupe.id}); $u->set_role('administrator'); $u->add_role('tp_test_deny');`);
-  const authenticated = wp("eval", `echo \\TypedPress\\Wp\\WpAuth::map(new WP_User(${dupe.id}))['role'];`);
-  const merged = JSON.parse(wp("typedpress", "find", "members", JSON.stringify({ where: { id: dupe.id, role: authenticated } })));
+  wp("eval", `add_role('sp_test_deny', 'Deny', ['manage_options' => false]); $u = new WP_User(${dupe.id}); $u->set_role('administrator'); $u->add_role('sp_test_deny');`);
+  const authenticated = wp("eval", `echo \\SpacePress\\Wp\\WpAuth::map(new WP_User(${dupe.id}))['role'];`);
+  const merged = JSON.parse(wp("spacepress", "find", "members", JSON.stringify({ where: { id: dupe.id, role: authenticated } })));
   assert.equal(merged.data[0]?.role, authenticated, "rows and role filters follow WordPress's ordered merge");
   assert.notEqual(authenticated, "admin", "the later role's denial wins, as in WordPress");
-  wp("eval", `$u = new WP_User(${dupe.id}); $u->remove_role('tp_test_deny'); $u->set_role('subscriber'); remove_role('tp_test_deny');`);
+  wp("eval", `$u = new WP_User(${dupe.id}); $u->remove_role('sp_test_deny'); $u->set_role('subscriber'); remove_role('sp_test_deny');`);
   // Capability changes that don't go through a role assignment still move the stored role.
   wp("eval", `$u = new WP_User(${dupe.id}); $u->set_role('administrator'); $u->remove_all_caps();`);
-  assert.equal(JSON.parse(wp("typedpress", "find", "members", JSON.stringify({ where: { id: dupe.id } }))).data[0].role, "subscriber", "remove_all_caps");
+  assert.equal(JSON.parse(wp("spacepress", "find", "members", JSON.stringify({ where: { id: dupe.id } }))).data[0].role, "subscriber", "remove_all_caps");
   wp("user", "set-role", String(dupe.id), "contributor");
   wp("cap", "remove", "contributor", "edit_posts");
   try {
-    assert.equal(JSON.parse(wp("typedpress", "find", "members", JSON.stringify({ where: { id: dupe.id, role: "subscriber" } }))).data.length, 1, "a role definition edit");
+    assert.equal(JSON.parse(wp("spacepress", "find", "members", JSON.stringify({ where: { id: dupe.id, role: "subscriber" } }))).data.length, 1, "a role definition edit");
   } finally {
     wp("cap", "add", "contributor", "edit_posts");
   }
-  assert.equal(JSON.parse(wp("typedpress", "find", "members", JSON.stringify({ where: { id: dupe.id } }))).data[0].role, "author", "and back");
+  assert.equal(JSON.parse(wp("spacepress", "find", "members", JSON.stringify({ where: { id: dupe.id } }))).data[0].role, "author", "and back");
   wp("user", "set-role", String(dupe.id), "subscriber");
 });
 
-test("a hosted sign-up (no TypedPress create) is a member with the collection's defaults", async () => {
+test("a hosted sign-up (no SpacePress create) is a member with the collection's defaults", async () => {
   const email = `hosted-${run}@example.test`;
-  const start = await fetch(`${site}/wp-json/typedpress-identity/v1/sign-in/email`, {
+  const start = await fetch(`${site}/wp-json/spacepress-identity/v1/sign-in/email`, {
     method: "POST", headers: { "content-type": "application/json", origin: site }, body: JSON.stringify({ email }),
   });
   const { data: { challenge_id } } = await start.json();
-  const code = /Your code is (\d{6})/.exec(wp("eval", `echo file_get_contents(WP_CONTENT_DIR . '/typedpress-test-mail/' . sanitize_file_name(${JSON.stringify(email)}) . '.txt');`))?.[1];
-  const verify = await fetch(`${site}/wp-json/typedpress-identity/v1/sign-in/verify`, {
+  const code = /Your code is (\d{6})/.exec(wp("eval", `echo file_get_contents(WP_CONTENT_DIR . '/spacepress-test-mail/' . sanitize_file_name(${JSON.stringify(email)}) . '.txt');`))?.[1];
+  const verify = await fetch(`${site}/wp-json/spacepress-identity/v1/sign-in/verify`, {
     method: "POST", headers: { "content-type": "application/json", origin: site }, body: JSON.stringify({ challenge_id, code }),
   });
   assert.deepEqual(await verify.json(), { data: { kind: "signed_in" } });
   const id = Number(sql(`SELECT ID FROM wp_users WHERE user_email = '${email}'`)[0].ID);
-  const row = JSON.parse(wp("typedpress", "find", "members", JSON.stringify({ where: { id } })));
+  const row = JSON.parse(wp("spacepress", "find", "members", JSON.stringify({ where: { id } })));
   assert.deepEqual([row.data[0].plan, row.data[0].points, row.data[0].tags], ["free", 0, []]);
 });
 
 test("existing WordPress users become members with defaults when the app (re)activates", () => {
   const id = wp("user", "create", `before-${run}`, `before-${run}@example.test`, "--porcelain");
-  wp("user", "meta", "delete", id, "tp_plan");
-  wp("plugin", "deactivate", "typedpress-app-blog");
-  wp("plugin", "activate", "typedpress-app-blog");
-  assert.equal(wp("user", "meta", "get", id, "tp_plan"), "free");
+  wp("user", "meta", "delete", id, "sp_plan");
+  wp("plugin", "deactivate", "spacepress-app-blog");
+  wp("plugin", "activate", "spacepress-app-blog");
+  assert.equal(wp("user", "meta", "get", id, "sp_plan"), "free");
 });
 
 test("a rolled-back member update leaves no usermeta in WordPress's cache", () => {
   const out = wp("eval", `
-    $plugin = \\TypedPress\\Wp\\Runtime::plugin(); $db = $plugin->app()->db;
+    $plugin = \\SpacePress\\Wp\\Runtime::plugin(); $db = $plugin->app()->db;
     $id = $db->insert('members', ['email' => 'rb-${run}@example.test', 'name' => 'rb'], true)[0]['id'];
     try { $db->transaction(function () use ($db, $id) {
       $db->update('members', ['points' => 99], ['id' => $id]);
-      get_user_meta($id, 'tp_points', true); // a hook reads the new value
+      get_user_meta($id, 'sp_points', true); // a hook reads the new value
       throw new RuntimeException('rollback');
     }); } catch (RuntimeException $e) {}
-    echo get_user_meta($id, 'tp_points', true);`);
+    echo get_user_meta($id, 'sp_points', true);`);
   assert.equal(out, "0");
 });
 
@@ -332,17 +332,17 @@ test("member showIf on profile forms: live rules on member fields, core-column r
     `wp_set_current_user(${user});`,
     `acf_set_form_data(['post_id' => 'user_${user}']);`,
     "$out = [];",
-    "foreach (acf_get_fields('group_tp_members') as $f) {",
+    "foreach (acf_get_fields('group_sp_members') as $f) {",
     "  $p = apply_filters('acf/prepare_field', $f);",
     "  $out[$f['name']] = $p === false ? 'hidden' : ($p['conditional_logic'] ?: 0);",
     "}",
-    "echo wp_json_encode(['perk' => $out['tp_perk'], 'badge' => $out['tp_badge'], 'sponsored' => $out['tp_sponsored'], 'sections' => $out['tp_sections'], 'fields' => array_keys($out)]);",
+    "echo wp_json_encode(['perk' => $out['sp_perk'], 'badge' => $out['sp_badge'], 'sponsored' => $out['sp_sponsored'], 'sections' => $out['sp_sections'], 'fields' => array_keys($out)]);",
   ].join("\n")));
   const plain = rendered(id);
-  assert.deepEqual(plain.perk, [[{ field: "field_tp_member_plan", operator: "==", value: "pro" }]], "a rule on a member field stays live for SCF");
-  assert.deepEqual(plain.sections, [[{ field: "field_tp_member_plan", operator: "==", value: "pro" }]], "a structured member field's showIf is live too");
+  assert.deepEqual(plain.perk, [[{ field: "field_sp_member_plan", operator: "==", value: "pro" }]], "a rule on a member field stays live for SCF");
+  assert.deepEqual(plain.sections, [[{ field: "field_sp_member_plan", operator: "==", value: "pro" }]], "a structured member field's showIf is live too");
   assert.equal(plain.badge, "hidden", "a rule on the core name column is settled against the saved member: not shown");
-  assert.equal(plain.fields.includes("tp_sponsorId"), false, "references aren't profile fields");
+  assert.equal(plain.fields.includes("sp_sponsorId"), false, "references aren't profile fields");
   assert.equal(plain.sponsored, "hidden", "a rule on a non-profile column is settled against the saved member, never watching a missing field");
   wp("user", "update", id, "--display_name=Cy Edited");
   assert.equal(rendered(id).badge, 0, "once the saved name matches, the field shows unconditionally");
@@ -441,8 +441,8 @@ async function saveProfile(cookie: string, screen: string, set: Record<string, s
 }
 
 /** `acf[...]` control name: field names are prefixed with the member field key; row ids and SCF's own keys aren't. */
-const acf = (...keys: string[]) => `acf${keys.map((k) => `[${k.startsWith("row-") || k === "acf_fc_layout" ? k : `field_tp_member_${k}`}]`).join("")}`;
-const memberRow = (id: number) => JSON.parse(wp("typedpress", "find", "members", JSON.stringify({ where: { id } }))).data[0];
+const acf = (...keys: string[]) => `acf${keys.map((k) => `[${k.startsWith("row-") || k === "acf_fc_layout" ? k : `field_sp_member_${k}`}]`).join("")}`;
+const memberRow = (id: number) => JSON.parse(wp("spacepress", "find", "members", JSON.stringify({ where: { id } }))).data[0];
 
 /** A member signed into wp-admin with their own password. */
 async function profileMember(tag: string) {
@@ -453,27 +453,27 @@ async function profileMember(tag: string) {
 test("structured member fields render on the member's own profile, but not on the add-user form", async () => {
   const gu = await profileMember("gu");
   const page = await (await fetch(`${site}/wp-admin/profile.php`, { headers: { cookie: gu.cookie } })).text();
-  for (const name of ["tp_address", "tp_links", "tp_sections"]) assert.match(page, new RegExp(`data-name="${name}"`), name);
+  for (const name of ["sp_address", "sp_links", "sp_sections"]) assert.match(page, new RegExp(`data-name="${name}"`), name);
   assert.deepEqual(successfulControls(page).find(([name]) => name === acf("address", "address_source")), [acf("address", "address_source"), "signup"], "new groups render their non-boolean defaults");
-  assert.doesNotMatch(page, /data-name="tp_notes"/, "a group holding a sub-field the member can't read isn't rendered");
+  assert.doesNotMatch(page, /data-name="sp_notes"/, "a group holding a sub-field the member can't read isn't rendered");
   // The collection's read rule ("self") decides the form too: an admin editing this member sees none of its fields.
-  wp("eval", `\\TypedPress\\Wp\\Runtime::plugin()->db()->update('members', ['address' => ['city' => 'Oslo']], ['id' => ${gu.id}]);`);
-  const asAdmin = await (await fetch(`${site}/wp-admin/user-edit.php?user_id=${gu.id}`, { headers: { cookie: await adminCookie("admin", "typedpress-test-admin") } })).text();
+  wp("eval", `\\SpacePress\\Wp\\Runtime::plugin()->db()->update('members', ['address' => ['city' => 'Oslo']], ['id' => ${gu.id}]);`);
+  const asAdmin = await (await fetch(`${site}/wp-admin/user-edit.php?user_id=${gu.id}`, { headers: { cookie: await adminCookie("admin", "spacepress-test-admin") } })).text();
   assert.match(asAdmin, /name="nickname"/, "the screen itself renders");
-  assert.doesNotMatch(asAdmin, /data-name="tp_/, "no member field, so no member value");
+  assert.doesNotMatch(asAdmin, /data-name="sp_/, "no member field, so no member value");
   assert.doesNotMatch(asAdmin, /Oslo/);
-  const addForm = await (await fetch(`${site}/wp-admin/user-new.php`, { headers: { cookie: await adminCookie("admin", "typedpress-test-admin") } })).text();
-  assert.match(addForm, /data-name="tp_plan"/);
-  assert.doesNotMatch(addForm, /data-name="tp_(address|links|sections)"/, "no checked path creates users with structured values");
+  const addForm = await (await fetch(`${site}/wp-admin/user-new.php`, { headers: { cookie: await adminCookie("admin", "spacepress-test-admin") } })).text();
+  assert.match(addForm, /data-name="sp_plan"/);
+  assert.doesNotMatch(addForm, /data-name="sp_(address|links|sections)"/, "no checked path creates users with structured values");
 });
 
-test("a profile save writes structured fields through TypedPress, in TypedPress's storage form and UTC", async () => {
+test("a profile save writes structured fields through SpacePress, in SpacePress's storage form and UTC", async () => {
   const hu = await profileMember("hu");
   // An untouched save of the whole form changes nothing and runs no member hook.
   const untouched = await saveProfile(hu.cookie, "profile.php");
   assert.equal(untouched.status, 302, untouched.text.slice(0, 400));
   assert.deepEqual([memberRow(hu.id).address, memberRow(hu.id).links, memberRow(hu.id).addressBy], [null, null, null], "never set, still unset");
-  // The date picker posts site time; TypedPress keeps UTC (Berlin is UTC+2 in July).
+  // The date picker posts site time; SpacePress keeps UTC (Berlin is UTC+2 in July).
   wp("option", "update", "timezone_string", "Europe/Berlin");
   try {
     const saved = await saveProfile(hu.cookie, "profile.php", {
@@ -494,11 +494,11 @@ test("a profile save writes structured fields through TypedPress, in TypedPress'
       [{ label: "visible", at: "2026-07-01T12:30:00.000Z", detail: "Site detail", metadata: { bio: null } }],
       [{ layout: "bio", body: "Hello" }],
     ]);
-    assert.deepEqual(JSON.parse(wp("typedpress", "find", "member_updates", JSON.stringify({ where: { memberId: hu.id } }))).data.map(({ name, city }: { name: string; city: string | null }) => ({ name, city })),
+    assert.deepEqual(JSON.parse(wp("spacepress", "find", "member_updates", JSON.stringify({ where: { memberId: hu.id } }))).data.map(({ name, city }: { name: string; city: string | null }) => ({ name, city })),
       [{ name: "Profile name", city: "Oslo" }], "afterUpdate sees the new core and structured fields together");
     assert.equal(row.addressBy, hu.id, "the member hook saw the signed-in member as ctx.user");
-    assert.deepEqual(JSON.parse(sql(`SELECT meta_value FROM wp_usermeta WHERE user_id = ${hu.id} AND meta_key = 'tp_address'`)[0].meta_value),
-      { city: "Oslo", source: "signup", defaults: { clock: { at: "2026-10-25T00:30:00.123Z" } }, channel: "member", since: "2026-10-25T00:30:00.123Z", verified: false, optional: true, prefs: null, district: null }, "one usermeta row in TypedPress's storage form, as the API writes it");
+    assert.deepEqual(JSON.parse(sql(`SELECT meta_value FROM wp_usermeta WHERE user_id = ${hu.id} AND meta_key = 'sp_address'`)[0].meta_value),
+      { city: "Oslo", source: "signup", defaults: { clock: { at: "2026-10-25T00:30:00.123Z" } }, channel: "member", since: "2026-10-25T00:30:00.123Z", verified: false, optional: true, prefs: null, district: null }, "one usermeta row in SpacePress's storage form, as the API writes it");
     // The form shows the saved values back in site time, so saving it again unchanged is a no-op.
     const again = await saveProfile(hu.cookie, "profile.php");
     assert.match(again.html, /value="2026-07-01 14:30:00"/);
@@ -513,10 +513,10 @@ test("a profile save writes structured fields through TypedPress, in TypedPress'
   // Saved instants the picker can't show exactly survive an untouched save: milliseconds, and the
   // hour the end of summer time repeats (00:30 and 01:30 UTC both show as 02:30 in Berlin).
   // A sub-field SCF doesn't post (its showIf hides it) keeps its value.
-  wp("eval", `\\TypedPress\\Wp\\Runtime::plugin()->db()->update('members', ['address' => ['city' => 'Bergen', 'district' => 'Sentrum', 'optional' => null], 'links' => [['label' => 'ms', 'at' => '2026-07-01T12:30:00.123Z', 'detail' => 'MS detail', 'metadata' => ['bio' => null]], ['label' => 'dst', 'at' => '2026-10-25T01:30:00.000Z', 'detail' => 'DST detail', 'metadata' => ['bio' => null]]], 'sections' => [['layout' => 'quote', 'text' => 'A', 'cite' => 'A cite'], ['layout' => 'quote', 'text' => 'B', 'cite' => 'B cite']]], ['id' => ${hu.id}]);`);
+  wp("eval", `\\SpacePress\\Wp\\Runtime::plugin()->db()->update('members', ['address' => ['city' => 'Bergen', 'district' => 'Sentrum', 'optional' => null], 'links' => [['label' => 'ms', 'at' => '2026-07-01T12:30:00.123Z', 'detail' => 'MS detail', 'metadata' => ['bio' => null]], ['label' => 'dst', 'at' => '2026-10-25T01:30:00.000Z', 'detail' => 'DST detail', 'metadata' => ['bio' => null]]], 'sections' => [['layout' => 'quote', 'text' => 'A', 'cite' => 'A cite'], ['layout' => 'quote', 'text' => 'B', 'cite' => 'B cite']]], ['id' => ${hu.id}]);`);
   wp("option", "update", "timezone_string", "Europe/Berlin");
   try {
-    const hidden = (name: string) => name === acf("address", "address_district") || name.endsWith("[field_tp_member_links_detail]") || name.endsWith("[field_tp_member_sections_quote_cite]");
+    const hidden = (name: string) => name === acf("address", "address_district") || name.endsWith("[field_sp_member_links_detail]") || name.endsWith("[field_sp_member_sections_quote_cite]");
     const kept = await saveProfile(hu.cookie, "profile.php", {}, hidden);
     assert.equal(kept.status, 302, kept.text.slice(0, 400));
     assert.deepEqual(memberRow(hu.id).links, [
@@ -541,11 +541,11 @@ test("a profile save writes structured fields through TypedPress, in TypedPress'
   const hooked = await saveProfile(hu.cookie, "profile.php", { display_name: "Name from form", [acf("address", "address_city")]: "Hooked" });
   assert.equal(hooked.status, 302, hooked.text.slice(0, 400));
   assert.equal(memberRow(hu.id).name, "Name from hook", "beforeUpdate core-field mutations apply after core's form write");
-  const updates = JSON.parse(wp("typedpress", "find", "member_updates", JSON.stringify({ where: { memberId: hu.id }, orderBy: { id: "asc" } }))).data;
+  const updates = JSON.parse(wp("spacepress", "find", "member_updates", JSON.stringify({ where: { memberId: hu.id }, orderBy: { id: "asc" } }))).data;
   assert.deepEqual([updates.at(-1).name, updates.at(-1).city], ["Name from hook", "Hooked"], "afterUpdate observes the hook's final core value too");
 });
 
-test("a refused profile save keeps nothing, core's user fields included, and answers with TypedPress's reason", async () => {
+test("a refused profile save keeps nothing, core's user fields included, and answers with SpacePress's reason", async () => {
   const iu = await profileMember("iu");
   await saveProfile(iu.cookie, "profile.php", { [acf("address", "address_city")]: "Oslo" });
   const name = () => sql(`SELECT display_name FROM wp_users WHERE ID = ${iu.id}`)[0].display_name;
@@ -556,7 +556,7 @@ test("a refused profile save keeps nothing, core's user fields included, and ans
   assert.equal(forged.status, 403);
   assert.match(forged.text, /verified/);
   // A field the form never rendered is refused whatever is posted, so a guess can't probe its value.
-  wp("eval", `\\TypedPress\\Wp\\Runtime::plugin()->db()->update('members', ['notes' => ['private' => 'secret']], ['id' => ${iu.id}]);`);
+  wp("eval", `\\SpacePress\\Wp\\Runtime::plugin()->db()->update('members', ['notes' => ['private' => 'secret']], ['id' => ${iu.id}]);`);
   for (const guess of ["secret", "wrong", ""]) {
     const probe = await saveProfile(iu.cookie, "profile.php", { [acf("notes", "notes_private")]: guess });
     assert.equal(probe.status, 403, `guess ${JSON.stringify(guess)}`);
@@ -570,18 +570,18 @@ test("a refused profile save keeps nothing, core's user fields included, and ans
     parse_str(str_replace('; ', '&', base64_decode('${Buffer.from(iu.cookie).toString("base64")}')), $_COOKIE);
     wp_set_current_user(${iu.id});
     parse_str(base64_decode('${encoded}'), $_POST);
-    $app = \\TypedPress\\Wp\\Plugin::instance()->db();
+    $app = \\SpacePress\\Wp\\Plugin::instance()->db();
     $spec = $app->schema()->collection('members');
     unset($spec['columns']['notes']['fields']['private']['access']);
-    $schema = new \\TypedPress\\Schema(['collections' => ['members' => $spec]]);
-    $other = new \\TypedPress\\Db($app->store(), $schema, $app->media(), 'wp');
+    $schema = new \\SpacePress\\Schema(['collections' => ['members' => $spec]]);
+    $other = new \\SpacePress\\Db($app->store(), $schema, $app->media(), 'wp');
     add_filter('wp_die_handler', static fn () => static function ($message, $title, $args): never {
-      throw new \\TypedPress\\HttpError((int) ($args['response'] ?? 500), (string) ($args['code'] ?? 'error'), strip_tags($message));
+      throw new \\SpacePress\\HttpError((int) ($args['response'] ?? 500), (string) ($args['code'] ?? 'error'), strip_tags($message));
     });
     $status = 200;
-    try { $other->current(static fn () => \\TypedPress\\Wp\\ProfileForm::begin(${iu.id})); \\TypedPress\\Wp\\ProfileForm::end(${iu.id}); }
-    catch (\\TypedPress\\HttpError $error) { $status = $error->status; }
-    echo wp_json_encode([$status, \\TypedPress\\db() === $app]);
+    try { $other->current(static fn () => \\SpacePress\\Wp\\ProfileForm::begin(${iu.id})); \\SpacePress\\Wp\\ProfileForm::end(${iu.id}); }
+    catch (\\SpacePress\\HttpError $error) { $status = $error->status; }
+    echo wp_json_encode([$status, \\SpacePress\\db() === $app]);
   `));
   assert.deepEqual(scoped, [403, true]);
   assert.deepEqual(memberRow(iu.id).notes, { private: "secret" });
@@ -591,9 +591,9 @@ test("a refused profile save keeps nothing, core's user fields included, and ans
   assert.equal(memberRow(empty.id).notes, null);
   // A hook's unique value keeps the profile viewer, although the original-row authorization is done.
   const prefix = `oracle-${run}-`;
-  wp("eval", `\\TypedPress\\Wp\\Plugin::instance()->db()->update('members', ['handle' => '${prefix}taken'], ['id' => ${empty.id}]);`);
-  const hook = `<?php add_action('tp_runtime_loaded', static function (): void {
-    \\TypedPress\\Extensions::onWrite(static function (string $op, string $collection, array &$data): void {
+  wp("eval", `\\SpacePress\\Wp\\Plugin::instance()->db()->update('members', ['handle' => '${prefix}taken'], ['id' => ${empty.id}]);`);
+  const hook = `<?php add_action('sp_runtime_loaded', static function (): void {
+    \\SpacePress\\Extensions::onWrite(static function (string $op, string $collection, array &$data): void {
       $city = $data['address']['city'] ?? null;
       if ($op === 'update' && $collection === 'members' && is_string($city) && str_starts_with($city, '${prefix}')) $data['handle'] = $city;
     });
@@ -609,7 +609,7 @@ test("a refused profile save keeps nothing, core's user fields included, and ans
   } finally {
     wp("eval", "unlink(WPMU_PLUGIN_DIR . '/r-profile-oracle.php');");
   }
-  // TypedPress still enforces required children after reconciling the effective group values.
+  // SpacePress still enforces required children after reconciling the effective group values.
   const missing = await saveProfile(iu.cookie, "profile.php", {
     [acf("links", "row-0", "links_label")]: "visible",
     [acf("links", "row-0", "links_metadata", "links_metadata_bio")]: "",
@@ -627,7 +627,7 @@ test("a refused profile save keeps nothing, core's user fields included, and ans
   assert.deepEqual([memberRow(iu.id).address, memberRow(iu.id).links, memberRow(iu.id).notes], [{ city: "Oslo", source: "signup", defaults: { clock: { at: "2026-10-25T00:30:00.123Z" } }, channel: "member", since: "2026-10-25T00:30:00.123Z", verified: false, optional: true, prefs: null, district: null }, null, { private: "secret" }]);
   // A real failed upgrade must refuse the form, never fall through to the trusted-code write path.
   const rendered = await (await fetch(`${site}/wp-admin/profile.php`, { headers: { cookie: iu.cookie } })).text();
-  const appDir = fileURLToPath(new URL(`.wp-content/plugins/${harness.plugin}/tp/app/`, import.meta.url));
+  const appDir = fileURLToPath(new URL(`.wp-content/plugins/${harness.plugin}/sp/app/`, import.meta.url));
   const schema = readFileSync(appDir + "schema.php");
   const migrationDir = appDir + "migrations/20990101000000_probe1_profile";
   mkdirSync(migrationDir);
@@ -656,8 +656,8 @@ test("a refused profile save keeps nothing, core's user fields included, and ans
 
 test("a profile save core rejects (mismatched passwords) keeps nothing, member fields included", async () => {
   const ku = await profileMember("ku");
-  wp("eval", `\\TypedPress\\Wp\\Runtime::plugin()->db()->update('members', ['links' => [['label' => 'hidden', 'detail' => 'Saved detail', 'metadata' => ['bio' => null]]]], ['id' => ${ku.id}]);`);
-  const hidden = (name: string) => name.endsWith("[field_tp_member_links_detail]");
+  wp("eval", `\\SpacePress\\Wp\\Runtime::plugin()->db()->update('members', ['links' => [['label' => 'hidden', 'detail' => 'Saved detail', 'metadata' => ['bio' => null]]]], ['id' => ${ku.id}]);`);
+  const hidden = (name: string) => name.endsWith("[field_sp_member_links_detail]");
   const rejected = await saveProfile(ku.cookie, "profile.php", { [acf("address", "address_city")]: "Paris", pass1: "new-password-one", pass2: "new-password-two" }, hidden);
   assert.equal(rejected.status, 200, "core shows the form again with its error");
   assert.match(rejected.text, /passwords do not match/i);
@@ -671,7 +671,7 @@ test("a profile save core rejects (mismatched passwords) keeps nothing, member f
 
 test("the update rule decides profile saves: an admin is refused another member under \"self\", and sets admin-only fields on their own", async () => {
   const ju = await profileMember("ju");
-  const admin = await adminCookie("admin", "typedpress-test-admin");
+  const admin = await adminCookie("admin", "spacepress-test-admin");
   const other = await saveProfile(admin, `user-edit.php?user_id=${ju.id}`, { [acf("address", "address_city")]: "Bergen" });
   assert.equal(other.status, 403);
   assert.match(other.text, /update members rows/);
@@ -690,19 +690,19 @@ test("the update rule decides profile saves: an admin is refused another member 
   assert.deepEqual(memberRow(harness.users.admin.id).address, { city: "Rome", source: "signup", defaults: { clock: { at: "2026-10-25T00:30:00.123Z" } }, channel: "member", since: "2026-10-25T00:30:00.123Z", verified: true, optional: true, prefs: null, district: null });
 });
 
-test("update_field on a structured member field is a trusted TypedPress write; get_field reads it back by name", () => {
+test("update_field on a structured member field is a trusted SpacePress write; get_field reads it back by name", () => {
   const id = wp("user", "create", `code-${run}`, `code-${run}@example.test`, "--porcelain");
   wp("option", "update", "timezone_string", "Europe/Berlin");
   try {
     const out = JSON.parse(wp("eval", [
-      `$before = get_field('tp_links', 'user_${id}');`,
-      `update_field('field_tp_member_links', [['field_tp_member_links_label' => 'Code', 'field_tp_member_links_detail' => 'Code detail', 'field_tp_member_links_metadata' => ['field_tp_member_links_metadata_bio' => ''], 'field_tp_member_links_at' => '2026-07-01 14:30:00']], 'user_${id}');`,
-      `echo wp_json_encode(['before' => $before, 'after' => get_field('tp_links', 'user_${id}', false)]);`,
+      `$before = get_field('sp_links', 'user_${id}');`,
+      `update_field('field_sp_member_links', [['field_sp_member_links_label' => 'Code', 'field_sp_member_links_detail' => 'Code detail', 'field_sp_member_links_metadata' => ['field_sp_member_links_metadata_bio' => ''], 'field_sp_member_links_at' => '2026-07-01 14:30:00']], 'user_${id}');`,
+      `echo wp_json_encode(['before' => $before, 'after' => get_field('sp_links', 'user_${id}', false)]);`,
     ].join("\n")));
-    assert.deepEqual(out, { before: false, after: [{ field_tp_member_links_label: "Code", field_tp_member_links_detail: "Code detail", field_tp_member_links_metadata: { field_tp_member_links_metadata_bio: "" }, field_tp_member_links_at: "2026-07-01 14:30:00" }] },
+    assert.deepEqual(out, { before: false, after: [{ field_sp_member_links_label: "Code", field_sp_member_links_detail: "Code detail", field_sp_member_links_metadata: { field_sp_member_links_metadata_bio: "" }, field_sp_member_links_at: "2026-07-01 14:30:00" }] },
       "same request: no stale SCF cache (an empty repeater formats as false), and the name resolves without SCF's reference meta");
     // An impossible date isn't laundered into a valid one by the timezone conversion.
-    const bad = wp("eval", `try { update_field('field_tp_member_links', [['field_tp_member_links_label' => 'X', 'field_tp_member_links_at' => '2026-02-30 10:00:00']], 'user_${id}'); echo 'saved'; } catch (\\TypedPress\\HttpError $e) { echo $e->status; }`);
+    const bad = wp("eval", `try { update_field('field_sp_member_links', [['field_sp_member_links_label' => 'X', 'field_sp_member_links_at' => '2026-02-30 10:00:00']], 'user_${id}'); echo 'saved'; } catch (\\SpacePress\\HttpError $e) { echo $e->status; }`);
     assert.equal(bad, "422");
   } finally {
     wp("option", "update", "timezone_string", "");
@@ -744,49 +744,49 @@ test("hidden columns can't be filtered or ordered on, also through relations; ro
   assert.equal((await call("GET", "/members/1", asSelf)).status, 404, "another user's row is not this member's");
 });
 
-test("identity work joins the TypedPress transaction: a rollback leaves no guest, tokens or cached user", () => {
-  // Inside one TypedPress transaction: create a guest (WordPress user + typedpress-identity session and tokens),
+test("identity work joins the SpacePress transaction: a rollback leaves no guest, tokens or cached user", () => {
+  // Inside one SpacePress transaction: create a guest (WordPress user + spacepress-identity session and tokens),
   // read it, then fail. Nothing may survive, and the object cache must not remember the user.
   const out = wp("eval", `
-    $plugin = \\TypedPress\\Wp\\Runtime::plugin(); $app = $plugin->app(); $db = $plugin->connection();
+    $plugin = \\SpacePress\\Wp\\Runtime::plugin(); $app = $plugin->app(); $db = $plugin->connection();
     global $wpdb; $before = (int) $wpdb->get_var("SELECT MAX(ID) FROM {$wpdb->users}");
     try { $db->transaction(function () use ($app, &$id) {
-        $id = $app->invoke('POST', '/auth/guest', [], '{}', new \\TypedPress\\Viewer(null, 'wp'))['user']['id'];
+        $id = $app->invoke('POST', '/auth/guest', [], '{}', new \\SpacePress\\Viewer(null, 'wp'))['user']['id'];
         get_userdata($id);
         throw new RuntimeException('rollback');
     }); } catch (RuntimeException $e) {}
     echo json_encode([
       'users' => (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->users} WHERE ID > $before"),
-      'tokens' => (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->prefix}tp_identity_tokens WHERE wp_user_id=%d", $id)),
+      'tokens' => (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->prefix}sp_identity_tokens WHERE wp_user_id=%d", $id)),
       'cached' => get_userdata($id) !== false,
     ]);`);
   assert.deepEqual(JSON.parse(out), { users: 0, tokens: 0, cached: false });
 });
 
-test("activation refuses user tables that can't roll back with TypedPress (auth rows live there)", () => {
+test("activation refuses user tables that can't roll back with SpacePress (auth rows live there)", () => {
   // MyISAM wp_usermeta would keep member or guest writes through a rollback: the storage gate
   // reports it whether or not the app has an auth collection (guests are users either way).
   sql("ALTER TABLE wp_usermeta ENGINE=MyISAM");
   try {
-    const bad = JSON.parse(wp("eval", `echo wp_json_encode(\\TypedPress\\Wp\\Runtime::plugin()->storageProblems());`));
+    const bad = JSON.parse(wp("eval", `echo wp_json_encode(\\SpacePress\\Wp\\Runtime::plugin()->storageProblems());`));
     assert.ok(bad.includes("wp_usermeta"), JSON.stringify(bad));
   } finally {
     sql("ALTER TABLE wp_usermeta ENGINE=InnoDB");
   }
-  const ok = JSON.parse(wp("eval", `echo wp_json_encode(\\TypedPress\\Wp\\Runtime::plugin()->storageProblems());`));
+  const ok = JSON.parse(wp("eval", `echo wp_json_encode(\\SpacePress\\Wp\\Runtime::plugin()->storageProblems());`));
   assert.deepEqual(ok, []);
 });
 
-test("without typedpress-identity, a member's password still goes through wp_set_password", () => {
+test("without spacepress-identity, a member's password still goes through wp_set_password", () => {
   const out = wp("eval", `
-    $db = \\TypedPress\\Wp\\Runtime::plugin()->app()->db;
-    \\TypedPress\\Auth\\Module::use(null); // as when typedpress-identity is inactive
+    $db = \\SpacePress\\Wp\\Runtime::plugin()->app()->db;
+    \\SpacePress\\Auth\\Module::use(null); // as when spacepress-identity is inactive
     $id = $db->insert('members', ['email' => 'noid-${run}@example.test', 'name' => 'noid', 'password' => 'a long password 1'], true)[0]['id'];
     echo wp_check_password('a long password 1', get_userdata($id)->user_pass, $id) ? 'set' : 'unset';`);
   assert.equal(out, "set");
 });
 
-test("deleting a member through TypedPress deletes its identity: tokens dead, the email signs up afresh", async () => {
+test("deleting a member through SpacePress deletes its identity: tokens dead, the email signs up afresh", async () => {
   const gy = await member("gy");
   const tokens = await signIn(gy.email, gy.password);
   const del = await http("DELETE", `${api}/members/${gy.id}`, { as: "admin" });
@@ -794,7 +794,7 @@ test("deleting a member through TypedPress deletes its identity: tokens dead, th
   assert.equal((await call("GET", "/me", { token: tokens.json.access_token })).status, 401, "its Bearer is dead");
   const reuse = await token({ grant_type: "refresh_token", client_id: app.id, refresh_token: tokens.json.refresh_token });
   assert.equal(reuse.status, 400, "its refresh token is dead");
-  assert.deepEqual(sql(`SELECT COUNT(*) AS n FROM wp_tp_identity_emails WHERE normalized = '${gy.email}'`), [{ n: "0" }], "its verified email is released");
+  assert.deepEqual(sql(`SELECT COUNT(*) AS n FROM wp_sp_identity_emails WHERE normalized = '${gy.email}'`), [{ n: "0" }], "its verified email is released");
 });
 
 test("a member can't set their own email where identity verifies emails; trusted writes can", async () => {
@@ -804,26 +804,26 @@ test("a member can't set their own email where identity verifies emails; trusted
   assert.deepEqual([claim.status, claim.json.code, claim.json.pointer], [403, "forbidden", "/email"]);
   // Nor can anyone (even with a public create rule) plant a member on an unverified address.
   const planted = wp("eval", `
-    \\TypedPress\\Wp\\Runtime::plugin()->app();
+    \\SpacePress\\Wp\\Runtime::plugin()->app();
     try {
-      \\TypedPress\\db()->insert('members', ['email' => 'planted-${run}@example.test', 'name' => 'x', 'password' => 'a long password 1'], true, new \\TypedPress\\Viewer(null, 'wp'));
+      \\SpacePress\\db()->insert('members', ['email' => 'planted-${run}@example.test', 'name' => 'x', 'password' => 'a long password 1'], true, new \\SpacePress\\Viewer(null, 'wp'));
       echo 'created';
-    } catch (\\TypedPress\\HttpError $e) { echo $e->status, ' ', $e->errorCode, ' ', $e->pointer, ' ', $e->getMessage(); }`);
+    } catch (\\SpacePress\\HttpError $e) { echo $e->status, ' ', $e->errorCode, ' ', $e->pointer, ' ', $e->getMessage(); }`);
   // The verified-email guard runs before the collection's create rule, so a public rule changes nothing.
   assert.equal(planted, "403 forbidden /email Members sign up on the account screen, where emails are verified");
-  // Trusted writes (admin tooling, imports: `wp typedpress update`) still set it directly.
-  const updated = JSON.parse(wp("typedpress", "update", "members", JSON.stringify({ id: hy.id }), JSON.stringify({ email: `hy-new-${run}@example.test` })));
+  // Trusted writes (admin tooling, imports: `wp spacepress update`) still set it directly.
+  const updated = JSON.parse(wp("spacepress", "update", "members", JSON.stringify({ id: hy.id }), JSON.stringify({ email: `hy-new-${run}@example.test` })));
   assert.equal(updated.data[0].email, `hy-new-${run}@example.test`);
 });
 
 test("deleting a member keeps the posts they authored", async () => {
   const iy = await member("iy");
-  const post = wp("post", "create", "--post_type=tp_posts", "--post_title=Authored", "--post_status=publish", `--post_author=${iy.id}`, "--porcelain");
+  const post = wp("post", "create", "--post_type=sp_posts", "--post_title=Authored", "--post_status=publish", `--post_author=${iy.id}`, "--porcelain");
   await http("DELETE", `${api}/members/${iy.id}`, { as: "admin" });
   assert.deepEqual(sql(`SELECT post_status, post_author FROM wp_posts WHERE ID = ${post}`), [{ post_status: "publish", post_author: "0" }]);
 });
 
-test("application passwords still authenticate /wp-json/typedpress/v1 as before", async () => {
+test("application passwords still authenticate /wp-json/spacepress/v1 as before", async () => {
   const me = await fetch(`${api}/me`, { headers: auth("editor") });
   assert.equal((await me.json()).data.role, "editor");
 });
@@ -841,12 +841,12 @@ function raw(method: string, path: string, headers: Record<string, string> = {},
     req.end(body);
   });
 }
-/** A scoped application password for the editor (`typedpress identity agent add`), as a Basic header. */
+/** A scoped application password for the editor (`spacepress identity agent add`), as a Basic header. */
 function agent(...flags: string[]): Record<string, string> {
-  const out = JSON.parse(wp("typedpress", "identity", "agent", "add", "editor", `--name=auth-${run}-${Math.random().toString(36).slice(2)}`, ...flags)).data;
+  const out = JSON.parse(wp("spacepress", "identity", "agent", "add", "editor", `--name=auth-${run}-${Math.random().toString(36).slice(2)}`, ...flags)).data;
   return { Authorization: "Basic " + btoa(`editor:${out.password}`) };
 }
-const apiPath = "/wp-json/typedpress/v1";
+const apiPath = "/wp-json/spacepress/v1";
 const form = { "content-type": "application/x-www-form-urlencoded" };
 
 // Core's rule, with nothing added: an application password signs in on a request WordPress itself
@@ -859,7 +859,7 @@ test("an application password signs nobody in on a page, whatever the URL starts
   // The probe sees a signed-in page when there is one: the editor's cookie reads the private post.
   const cookie = await loginCookie(site, "editor", `${site}/`);
   const asEditor = await raw("GET", `/?s=${secret}`, { cookie });
-  assert.deepEqual([asEditor.status, asEditor.body.includes(hidden), asEditor.body.includes("wpadminbar")], [200, true, true], "the cookie's page shows the private post");
+  assert.deepEqual([asEditor.status, asEditor.body.includes(hidden), /<body[^>]*\blogged-in\b/.test(asEditor.body)], [200, true, true], "the cookie's page shows the private post");
   const abilitiesOnly = agent("--abilities=blog/guestbook-create");
   for (const [who, header] of [["unscoped", auth("editor")], ["read-only", agent()], ["ability-limited", abilitiesOnly]] as const) {
     // WordPress lets `rest_route` in the query or the body replace the route in the path: an empty one makes this a page.
@@ -882,7 +882,7 @@ test("an application password signs nobody in on admin-ajax.php, reached by dot 
   const asEditor = await raw("GET", `${apiPath}/../../..${nonce}`, { cookie });
   assert.deepEqual([asEditor.status, /^[0-9a-f]{10}$/.test(asEditor.body)], [200, true], "the dot-segment path reaches admin-ajax.php");
   for (const [who, header] of [["unscoped", auth("editor")], ["admin", auth("admin")], ["read-only", agent()], ["read-write", agent("--write", "--personal")]] as const) {
-    for (const path of [`${apiPath}/../../..${nonce}`, `${apiPath}/%2e%2e/%2e%2e/%2e%2e${nonce}`, `/wp-json/wp/v2/../../..${nonce}`, nonce, `${nonce}&rest_route=/typedpress/v1/me`]) {
+    for (const path of [`${apiPath}/../../..${nonce}`, `${apiPath}/%2e%2e/%2e%2e/%2e%2e${nonce}`, `/wp-json/wp/v2/../../..${nonce}`, nonce, `${nonce}&rest_route=/spacepress/v1/me`]) {
       const res = await raw("GET", path, header);
       assert.deepEqual([res.status, res.body], [400, "0"], `${who} credential on ${path}: no nonce`);
     }
@@ -894,7 +894,7 @@ test("an application password signs nobody in on admin-ajax.php, reached by dot 
 test("on the API a wrong application password is 401, and a scoped one works with Polylang active", async () => {
   assert.ok(wp("plugin", "list", "--status=active", "--field=name").split("\n").includes("polylang"), "Polylang is active: it resolves the user while plugins load");
   const wrong = { Authorization: "Basic " + btoa("editor:abcd efgh ijkl mnop qrst uvwx") };
-  for (const url of [`${api}/me`, `${site}/?rest_route=/typedpress/v1/me`, `${api}/posts`]) {
+  for (const url of [`${api}/me`, `${site}/?rest_route=/spacepress/v1/me`, `${api}/posts`]) {
     const res = await fetch(url, { headers: wrong });
     assert.deepEqual([res.status, (await res.json()).code], [401, "incorrect_password"], url);
   }
@@ -904,7 +904,7 @@ test("on the API a wrong application password is 401, and a scoped one works wit
   // has booted to enforce a scope (mu-plugins/early-application-password.php): what was decided then is decided again.
   for (const extra of [{}, { "x-test-early-application-password": "1" }]) {
     const headers = { ...readOnly, ...extra };
-    for (const url of [`${api}/posts?limit=1`, `${site}/?rest_route=/typedpress/v1/posts&limit=1`, `${site}/wp-json/wp/v2/posts?per_page=1`, `${api}`]) {
+    for (const url of [`${api}/posts?limit=1`, `${site}/?rest_route=/spacepress/v1/posts&limit=1`, `${site}/wp-json/wp/v2/posts?per_page=1`, `${api}`]) {
       const res = await fetch(url, { headers });
       assert.equal(res.status, 200, `${url}: ${(await res.text()).slice(0, 200)}`);
     }
@@ -949,10 +949,10 @@ test("identity storage failures refuse every authentication path in the runtime"
 });
 
 // Core /wp/v2/users for the users kind (spec §2.2, §3a): member fields under `meta`, read and
-// written through TypedPress as the viewer, and TypedPress's `where`/`orderBy` on the list.
+// written through SpacePress as the viewer, and SpacePress's `where`/`orderBy` on the list.
 const coreUsers = `${harness.url}/wp-json/wp/v2/users`;
 
-test("core users meta holds member fields as TypedPress reads them, for whoever may read the member", async () => {
+test("core users meta holds member fields as SpacePress reads them, for whoever may read the member", async () => {
   const sub = harness.users.subscriber.id;
   first("update", "members", JSON.stringify({ id: sub }), JSON.stringify({ points: 3, tags: ["early"], notes: { private: "admin only" } }));
   const self = await http("GET", `${coreUsers}/me?context=edit`, { as: "subscriber" });
@@ -967,11 +967,11 @@ test("core users meta holds member fields as TypedPress reads them, for whoever 
   assert.deepEqual([schema.points.type, schema.tags.items.enum, "passwordHash" in schema], ["integer", ["early", "beta"], false]);
 });
 
-test("core users meta writes run TypedPress's update: rules, validation, one transaction with core's save", async () => {
+test("core users meta writes run SpacePress's update: rules, validation, one transaction with core's save", async () => {
   const sub = harness.users.subscriber.id;
   const ok = await http("POST", `${coreUsers}/me`, { as: "subscriber", body: { meta: { points: 11, tags: ["beta"] } } });
   assert.deepEqual([ok.status, ok.json.meta?.points, ok.json.meta?.tags], [200, 11, ["beta"]], JSON.stringify(ok.json));
-  assert.deepEqual(sql(`SELECT meta_value FROM wp_usermeta WHERE user_id = ${sub} AND meta_key = 'tp_tags'`)[0], { meta_value: 'a:1:{i:0;s:4:"beta";}' });
+  assert.deepEqual(sql(`SELECT meta_value FROM wp_usermeta WHERE user_id = ${sub} AND meta_key = 'sp_tags'`)[0], { meta_value: 'a:1:{i:0;s:4:"beta";}' });
   const name = sql(`SELECT display_name FROM wp_users WHERE ID = ${sub}`)[0].display_name;
   const bad = await http("POST", `${coreUsers}/me`, { as: "subscriber", body: { name: `Renamed ${run}`, meta: { plan: "gold" } } });
   assert.deepEqual([bad.status, bad.json.code, bad.json.data?.pointer], [422, "invalid_input", "/plan"]);
@@ -981,10 +981,10 @@ test("core users meta writes run TypedPress's update: rules, validation, one tra
   assert.deepEqual([sealed.status, sealed.json.data?.pointer], [403, "/address/source"]);
   const another = await http("POST", `${coreUsers}/${sub}`, { as: "admin", body: { meta: { points: 99 } } });
   assert.equal(another.status, 404, JSON.stringify(another.json));
-  assert.equal(JSON.parse(wp("typedpress", "find", "members", JSON.stringify({ where: { id: sub } }))).data[0].points, 11);
+  assert.equal(JSON.parse(wp("spacepress", "find", "members", JSON.stringify({ where: { id: sub } }))).data[0].points, 11);
 });
 
-test("core users list takes TypedPress's where and orderBy as the viewer", async () => {
+test("core users list takes SpacePress's where and orderBy as the viewer", async () => {
   const admin = harness.users.admin.id;
   const listed = await http("GET", `${coreUsers}?` + new URLSearchParams({ where: JSON.stringify({ plan: "free" }), context: "edit" }), { as: "admin" });
   assert.deepEqual(listed.json.map((u: any) => u.id), [admin], "the read rule (`self`) still decides");
@@ -996,7 +996,7 @@ test("core users meta writes never leave a transaction behind: late errors and t
   const sub = harness.users.subscriber.id;
   first("update", "members", JSON.stringify({ id: sub }), JSON.stringify({ points: 5 }));
   const out = JSON.parse(wp("eval", `
-    $db = \\TypedPress\\Wp\\Plugin::instance()->db();
+    $db = \\SpacePress\\Wp\\Plugin::instance()->db();
     $points = static fn () => (int) $db->findFirst('members', ['where' => ['id' => ${sub}]])['points'];
     $name = static fn () => (clean_user_cache(${sub}) || true) ? get_userdata(${sub})->display_name : '';
     $before = $name();
@@ -1014,7 +1014,7 @@ test("core users meta writes never leave a transaction behind: late errors and t
     $thrown->set_body_params(['name' => 'Thrown', 'meta' => ['points' => 7]]);
     try { rest_do_request($thrown); $caught = null; } catch (Throwable $e) { $caught = $e->getMessage(); }
     remove_action('profile_update', $throw);
-    $afterThrow = [$caught, $points(), $name() === $before, \\TypedPress\\Wp\\Plugin::instance()->connection()->inTransaction()];
+    $afterThrow = [$caught, $points(), $name() === $before, \\SpacePress\\Wp\\Plugin::instance()->connection()->inTransaction()];
     // The next member write opens and commits normally.
     $next = new WP_REST_Request('POST', '/wp/v2/users/me');
     $next->set_body_params(['meta' => ['points' => 8]]);
@@ -1024,15 +1024,15 @@ test("core users meta writes never leave a transaction behind: late errors and t
   assert.deepEqual(out, [["refused late", 5, true], ["hook threw", 5, true, false], [200, 8]]);
 });
 
-test("core users updates through TypedPress keep core's role check and password path", () => {
+test("core users updates through SpacePress keep core's role check and password path", () => {
   const sub = harness.users.subscriber.id;
   const out = JSON.parse(wp("eval", `
     wp_set_current_user(1);
-    // An admin can't demote themselves out of edit_users: core's own check runs before TypedPress's update.
+    // An admin can't demote themselves out of edit_users: core's own check runs before SpacePress's update.
     $demote = new WP_REST_Request('POST', '/wp/v2/users/me');
     $demote->set_body_params(['roles' => ['subscriber']]);
     $demoted = rest_do_request($demote);
-    // A password change stays core's (cookie re-issue, notice): the hash changes; member fields go to TypedPress.
+    // A password change stays core's (cookie re-issue, notice): the hash changes; member fields go to SpacePress.
     $before = get_userdata(${sub})->user_pass;
     $pass = new WP_REST_Request('POST', '/wp/v2/users/${sub}');
     $pass->set_body_params(['password' => 'another long password 2', 'meta' => ['points' => 4]]);
@@ -1046,7 +1046,7 @@ test("core users updates through TypedPress keep core's role check and password 
     $saved = rest_do_request($own);
     clean_user_cache(${sub});
     $ok = wp_check_password('another long password 2', get_userdata(${sub})->user_pass, ${sub});
-    wp_set_password('typedpress-test-subscriber', ${sub});
+    wp_set_password('spacepress-test-subscriber', ${sub});
     wp_set_current_user(1);
     echo wp_json_encode([$demoted->get_status(), $demoted->get_data()['code'] ?? null, array_values(wp_get_current_user()->roles), $changed->get_status(), $refused, $saved->get_status(), $ok, $saved->get_data()['meta']['points'] ?? null]);
   `));

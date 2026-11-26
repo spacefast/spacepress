@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use TypedPress\Wp\Connection;
+use SpacePress\Wp\Connection;
 
 require __DIR__ . '/wp.php';
 require __DIR__ . '/harness.php';

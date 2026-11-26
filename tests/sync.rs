@@ -1,9 +1,9 @@
-//! `typedpress sync` against a real WordPress site (design §5.7): a project is built with `typedpress build`,
+//! `spacepress sync` against a real WordPress site (design §5.7): a project is built with `spacepress build`,
 //! installed on a fresh WordPress-on-SQLite served by `php -S` (tests/php/wp.php serve), and synced
-//! with the `typedpress` binary over application passwords. Each step drives the CLI and checks the files,
+//! with the `spacepress` binary over application passwords. Each step drives the CLI and checks the files,
 //! the site (over its API) and the exit code.
 
-// Runs the `typedpress` binary: only with the cli feature (the browser build of the core has none).
+// Runs the `spacepress` binary: only with the cli feature (the browser build of the core has none).
 #![cfg(feature = "cli")]
 
 use std::io::{BufRead, Read, Write};
@@ -11,7 +11,7 @@ use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Output, Stdio};
 
-const CONFIG: &str = r#"import { collection, integer, richText, select, slug, text, defineConfig , table, ref } from "typedpress";
+const CONFIG: &str = r#"import { collection, integer, richText, select, slug, text, defineConfig , table, ref } from "spacepress";
 
 const people = table({
   name: text(),
@@ -117,7 +117,7 @@ struct Site {
     port: u16,
     /// The site's directory (its SQLite file lives below `content/database`).
     dir: PathBuf,
-    /// An editor's `user:application password`: the credential `typedpress sync` sends as Basic auth.
+    /// An editor's `user:application password`: the credential `spacepress sync` sends as Basic auth.
     token: String,
     /// An author's credential: signed in, but the collections' update rule is "editor".
     author: String,
@@ -161,7 +161,7 @@ impl Site {
     fn sql(&self, statement: &str) {
         let out = Command::new("php")
             .args(["-d", "memory_limit=512M", "-r"])
-            .arg("require $argv[1]; wpLoad($argv[2]); \\TypedPress\\Wp\\Runtime::plugin()->connection()->run(str_replace('{prefix}', \\TypedPress\\Wp\\Runtime::plugin()->connection()->prefix(), $argv[3]));")
+            .arg("require $argv[1]; wpLoad($argv[2]); \\SpacePress\\Wp\\Runtime::plugin()->connection()->run(str_replace('{prefix}', \\SpacePress\\Wp\\Runtime::plugin()->connection()->prefix(), $argv[3]));")
             .arg(root().join("tests/php/wp.php"))
             .arg(&self.dir)
             .arg(statement)
@@ -204,7 +204,7 @@ fn http_call(
     let mut s = TcpStream::connect(("127.0.0.1", port)).unwrap();
     let body = body.map(|b| b.to_string()).unwrap_or_default();
     let request = format!(
-        "{method} /wp-json/typedpress/v1{path} HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nAuthorization: Basic {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        "{method} /wp-json/spacepress/v1{path} HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nAuthorization: Basic {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
         base64(token.as_bytes()),
         body.len()
     );
@@ -237,7 +237,7 @@ fn base64(bytes: &[u8]) -> String {
 }
 
 fn first() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_typedpress"))
+    Command::new(env!("CARGO_BIN_EXE_spacepress"))
 }
 
 fn git(project: &Path, args: &[&str]) -> String {
@@ -258,14 +258,14 @@ fn setup() -> (PathBuf, Site) {
 fn setup_with(env: &[(&str, &str)]) -> (PathBuf, Site) {
     static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
     let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let project = std::env::temp_dir().join(format!("typedpress-sync-{}-{n}", std::process::id()));
+    let project = std::env::temp_dir().join(format!("spacepress-sync-{}-{n}", std::process::id()));
     let _ = std::fs::remove_dir_all(&project);
     std::fs::create_dir_all(project.join("content/notes")).unwrap();
-    std::fs::write(project.join("typedpress.config.ts"), CONFIG).unwrap();
+    std::fs::write(project.join("spacepress.config.ts"), CONFIG).unwrap();
     // A component content may use as a block (`<Note kind="tip">…</Note>` in a Markdown file).
-    std::fs::create_dir_all(project.join("tp/components")).unwrap();
+    std::fs::create_dir_all(project.join("sp/components")).unwrap();
     std::fs::write(
-        project.join("tp/components/Note.tsx"),
+        project.join("sp/components/Note.tsx"),
         "export const blocks = [\"Note\"];\nexport function Note({ kind, children }: { kind: \"tip\" | \"warning\"; children?: JSX.Element }) {\n  return <aside className={kind}>{children}</aside>;\n}\n",
     )
     .unwrap();
@@ -277,7 +277,7 @@ fn setup_with(env: &[(&str, &str)]) -> (PathBuf, Site) {
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/wp.php"))
         .arg("serve")
-        .arg(project.join("tp/dist/wp-content"))
+        .arg(project.join("sp/dist/wp-content"))
         .args(["ed=editor", "au=author", "root=admin"])
         .envs(env.iter().copied())
         .stdout(Stdio::piped())
@@ -329,7 +329,7 @@ fn sync(project: &Path, site: &Site, extra: &[&str]) -> Output {
         .arg("sync")
         .args(extra)
         .arg(project)
-        .env("TP_APP_PASSWORD", &site.token)
+        .env("SP_APP_PASSWORD", &site.token)
         .args(["--site", &site.url(), "--json"])
         .env("GIT_AUTHOR_NAME", "t")
         .env("GIT_AUTHOR_EMAIL", "t@example.test")
@@ -380,8 +380,8 @@ fn syncs_files_and_records_both_ways_against_a_wordpress_site() {
     // holding only what sync wrote.
     let ignore = read(&project, ".gitignore");
     assert!(
-        ignore.contains(".tp/*\n!.tp/sync-base.json\n"),
-        "typedpress build ignores .tp except the bases:\n{ignore}"
+        ignore.contains(".sp/*\n!.sp/sync-base.json\n"),
+        "spacepress build ignores .sp except the bases:\n{ignore}"
     );
     std::fs::write(project.join("unrelated.txt"), "not sync's").unwrap();
     let initial = sync(&project, &site, &[]);
@@ -414,10 +414,10 @@ fn syncs_files_and_records_both_ways_against_a_wordpress_site() {
     );
     assert!(pulled.ends_with("---\nMade **online**.\n"), "{pulled}");
     let committed = git(&project, &["show", "--name-only", "--format=%s", "HEAD"]);
-    assert!(committed.starts_with("typedpress sync: "), "{committed}");
+    assert!(committed.starts_with("spacepress sync: "), "{committed}");
     assert!(
         committed.contains("content/notes/hello.md")
-            && committed.contains(".tp/sync-base.json")
+            && committed.contains(".sp/sync-base.json")
             && !committed.contains("unrelated.txt"),
         "{committed}"
     );
@@ -492,7 +492,7 @@ fn syncs_files_and_records_both_ways_against_a_wordpress_site() {
     assert_eq!(conflicted.status.code(), Some(0));
     let report = data(&conflicted);
     assert_eq!(report["conflicts"].as_array().unwrap().len(), 1, "{report}");
-    let conflict = read(&project, &format!(".tp/conflicts/{uid}.md"));
+    let conflict = read(&project, &format!(".sp/conflicts/{uid}.md"));
     assert!(
         conflict.contains("# Fields: /fields/title")
             && conflict.contains("<<<<<<< files")
@@ -516,7 +516,7 @@ fn syncs_files_and_records_both_ways_against_a_wordpress_site() {
     let usage = sync(&project, &site, &["resolve", &uid, "--check"]);
     assert_eq!(usage.status.code(), Some(3), "resolve has no read-only mode");
     assert!(
-        project.join(format!(".tp/conflicts/{uid}.md")).exists(),
+        project.join(format!(".sp/conflicts/{uid}.md")).exists(),
         "and wrote nothing"
     );
     let refused = sync(&project, &site, &["resolve", &uid]);
@@ -534,7 +534,7 @@ fn syncs_files_and_records_both_ways_against_a_wordpress_site() {
         .map(|l| format!("{l}\n"))
         .collect();
     std::fs::write(
-        project.join(format!(".tp/conflicts/{uid}.md")),
+        project.join(format!(".sp/conflicts/{uid}.md")),
         format!(
             "{header}{}",
             theirs.replace("title: Remote title", "title: Agreed title")
@@ -549,7 +549,7 @@ fn syncs_files_and_records_both_ways_against_a_wordpress_site() {
         String::from_utf8_lossy(&resolved.stdout),
         String::from_utf8_lossy(&resolved.stderr)
     );
-    assert!(!project.join(format!(".tp/conflicts/{uid}.md")).exists());
+    assert!(!project.join(format!(".sp/conflicts/{uid}.md")).exists());
     assert_eq!(
         site.rows("notes").into_iter().find(|r| r["id"] == id).unwrap()["title"],
         "Agreed title"
@@ -585,7 +585,7 @@ fn syncs_files_and_records_both_ways_against_a_wordpress_site() {
     let denied = first()
         .arg("sync")
         .arg(&project)
-        .env("TP_APP_PASSWORD", "nobody:nope")
+        .env("SP_APP_PASSWORD", "nobody:nope")
         .args(["--site", &site.url()])
         .output()
         .unwrap();
@@ -607,8 +607,8 @@ fn a_first_run_against_a_new_site_never_deletes() {
     )
     .unwrap();
     // Bases from another site: none of them apply to this one.
-    std::fs::create_dir_all(project.join(".tp")).unwrap();
-    std::fs::write(project.join(".tp/sync-base.json"), r#"{"version":1,"sites":{"some-other-site":{"notes":{"zr_0123456789abcdef0123":{"digest":"sha256:x","record":{}}}}}}"#).unwrap();
+    std::fs::create_dir_all(project.join(".sp")).unwrap();
+    std::fs::write(project.join(".sp/sync-base.json"), r#"{"version":1,"sites":{"some-other-site":{"notes":{"zr_0123456789abcdef0123":{"digest":"sha256:x","record":{}}}}}}"#).unwrap();
     let out = sync(&project, &site, &[]);
     assert_eq!(out.status.code(), Some(0), "{}", String::from_utf8_lossy(&out.stdout));
     assert!(project.join("content/notes/kept.md").exists());
@@ -704,7 +704,7 @@ fn records_that_reference_each_other_are_created_in_one_run() {
         std::fs::create_dir_all(project.join(dir)).unwrap();
     }
     let (team, player) = ("zr_aaaaaaaaaaaaaaaaaaa1", "zr_aaaaaaaaaaaaaaaaaaa2");
-    // A required reference to a record already on the site must survive the identity-only typedpress push.
+    // A required reference to a record already on the site must survive the identity-only spacepress push.
     let (s, owner) = site.call("POST", "/people", Some(serde_json::json!({"name": "Owner"})));
     assert_eq!(s, 201, "{owner}");
     let owner = owner["data"]["uid"].as_str().unwrap().to_string();
@@ -749,7 +749,7 @@ fn access_refusals_exit_4_and_an_unreadable_directory_deletes_nothing() {
     let denied = first()
         .arg("sync")
         .arg(&project)
-        .env("TP_APP_PASSWORD", &author)
+        .env("SP_APP_PASSWORD", &author)
         .args(["--only", "notes", "--site", &site.url()])
         .output()
         .unwrap();
@@ -1012,7 +1012,7 @@ fn an_edit_made_between_passes_is_not_overwritten() {
     let editor = site.as_user(&site.token);
     let proxy = proxy_acting_on_first(
         &site,
-        "/wp-json/typedpress/v1/sync/players",
+        "/wp-json/spacepress/v1/sync/players",
         move || {
             let (s, _) = editor.call(
                 "PATCH",
@@ -1026,7 +1026,7 @@ fn an_edit_made_between_passes_is_not_overwritten() {
     let out = first()
         .arg("sync")
         .arg(&project)
-        .env("TP_APP_PASSWORD", &site.token)
+        .env("SP_APP_PASSWORD", &site.token)
         .args(["--only", "teams,players", "--site", &proxy, "--json", "--no-commit"])
         .output()
         .unwrap();
@@ -1182,7 +1182,7 @@ fn a_file_edited_while_its_push_waits_is_planned_again() {
     let path = team_file.clone();
     let proxy = proxy_acting_on_first(
         &site,
-        "/wp-json/typedpress/v1/sync/players",
+        "/wp-json/spacepress/v1/sync/players",
         move || {
             let t = std::fs::read_to_string(&path).unwrap();
             std::fs::write(
@@ -1196,7 +1196,7 @@ fn a_file_edited_while_its_push_waits_is_planned_again() {
     let out = first()
         .arg("sync")
         .arg(&project)
-        .env("TP_APP_PASSWORD", &site.token)
+        .env("SP_APP_PASSWORD", &site.token)
         .args(["--only", "teams,players", "--site", &proxy, "--json", "--no-commit"])
         .output()
         .unwrap();
@@ -1229,7 +1229,7 @@ fn creating_an_identity_counts_as_progress() {
     // create a row that references itself, so it's written straight into the site's table.
     let anchor = "zr_a0a0a0a0a0a0a0a0a0a0";
     site.sql(&format!(
-        "INSERT INTO {{prefix}}tp_rungs (id, nextId, headId, uid) VALUES (1000, 1000, NULL, '{anchor}')"
+        "INSERT INTO {{prefix}}sp_rungs (id, nextId, headId, uid) VALUES (1000, 1000, NULL, '{anchor}')"
     ));
     // head A -> rung B -> rung C -> anchor, all required; B and C name A as their head (optional).
     //   first pass:  A can't be created (B missing), B can't (C missing); C's identity is created.
@@ -1312,7 +1312,7 @@ fn an_identity_created_this_run_is_provisional_when_its_file_changes() {
         let path = team_file.clone();
         let proxy = proxy_acting_on_first(
             &site,
-            "/wp-json/typedpress/v1/sync/players",
+            "/wp-json/spacepress/v1/sync/players",
             move || {
                 if delete {
                     std::fs::remove_file(&path).unwrap();
@@ -1330,7 +1330,7 @@ fn an_identity_created_this_run_is_provisional_when_its_file_changes() {
         let out = first()
             .arg("sync")
             .arg(&project)
-            .env("TP_APP_PASSWORD", &site.token)
+            .env("SP_APP_PASSWORD", &site.token)
             .args(["--only", "teams,players", "--site", &proxy, "--json", "--no-commit"])
             .output()
             .unwrap();
@@ -1340,7 +1340,7 @@ fn an_identity_created_this_run_is_provisional_when_its_file_changes() {
         );
         let report = data_or_error(&out);
         let team_row = site.rows("teams").into_iter().find(|r| r["uid"] == team);
-        let base = std::fs::read_to_string(project.join(".tp/sync-base.json")).unwrap_or_default();
+        let base = std::fs::read_to_string(project.join(".sp/sync-base.json")).unwrap_or_default();
         if delete {
             assert!(
                 team_row.is_none(),
@@ -1396,7 +1396,7 @@ fn a_file_edited_during_the_push_itself_is_not_overwritten() {
     let path = file.clone();
     let proxy = proxy_acting_on_first(
         &site,
-        "/wp-json/typedpress/v1/sync/notes",
+        "/wp-json/spacepress/v1/sync/notes",
         move || {
             let t = std::fs::read_to_string(&path).unwrap();
             std::fs::write(&path, t.replace("First.", "Typed during the push.")).unwrap();
@@ -1406,7 +1406,7 @@ fn a_file_edited_during_the_push_itself_is_not_overwritten() {
     let out = first()
         .arg("sync")
         .arg(&project)
-        .env("TP_APP_PASSWORD", &site.token)
+        .env("SP_APP_PASSWORD", &site.token)
         .args(["--only", "notes", "--site", &proxy, "--json", "--no-commit"])
         .output()
         .unwrap();
@@ -1472,7 +1472,7 @@ fn hidden_content_round_trips_through_conflicts_resolve_and_trash() {
     assert_eq!(s, 200);
     let conflicted = sync(&project, &site, &["--only", "dossiers"]);
     let uid = made["data"]["uid"].as_str().unwrap().to_string();
-    let conflict_path = project.join(format!(".tp/conflicts/{uid}.md"));
+    let conflict_path = project.join(format!(".sp/conflicts/{uid}.md"));
     assert!(
         conflict_path.exists(),
         "{}",
@@ -1552,14 +1552,14 @@ fn an_unreadable_file_never_trashes_its_provisional_identity() {
     let path = team_file.clone();
     let proxy = proxy_acting_on_first(
         &site,
-        "/wp-json/typedpress/v1/sync/players",
+        "/wp-json/spacepress/v1/sync/players",
         move || std::fs::write(&path, "{ not json").unwrap(),
         edited.clone(),
     );
     let out = first()
         .arg("sync")
         .arg(&project)
-        .env("TP_APP_PASSWORD", &site.token)
+        .env("SP_APP_PASSWORD", &site.token)
         .args(["--only", "teams,players", "--site", &proxy, "--json", "--no-commit"])
         .output()
         .unwrap();
@@ -1594,7 +1594,7 @@ fn files_edited_mid_run_survive_plain_pushes_and_resolve() {
     let path = file.clone();
     let proxy = proxy_acting_on_first(
         &site,
-        "/wp-json/typedpress/v1/sync/notes",
+        "/wp-json/spacepress/v1/sync/notes",
         move || {
             let t = std::fs::read_to_string(&path).unwrap();
             std::fs::write(&path, t.replace("First.", "Typed during a plain push.")).unwrap();
@@ -1604,13 +1604,13 @@ fn files_edited_mid_run_survive_plain_pushes_and_resolve() {
     let out = first()
         .arg("sync")
         .arg(&project)
-        .env("TP_APP_PASSWORD", &site.token)
+        .env("SP_APP_PASSWORD", &site.token)
         .args(["--only", "notes", "--site", &proxy, "--json", "--no-commit"])
         .output()
         .unwrap();
     assert!(edited.load(std::sync::atomic::Ordering::SeqCst));
     assert_eq!(out.status.code(), Some(1), "{}", String::from_utf8_lossy(&out.stdout));
-    let base = std::fs::read_to_string(project.join(".tp/sync-base.json")).unwrap();
+    let base = std::fs::read_to_string(project.join(".sp/sync-base.json")).unwrap();
     assert!(
         !base.contains("\"intro\""),
         "the base didn't move to the pushed record: {base}"
@@ -1634,7 +1634,7 @@ fn files_edited_mid_run_survive_plain_pushes_and_resolve() {
     assert_eq!(s, 200);
     let conflicted = sync(&project, &site, &["--only", "notes"]);
     let uid = site.rows("notes")[0]["uid"].as_str().unwrap().to_string();
-    let draft = project.join(format!(".tp/conflicts/{uid}.md"));
+    let draft = project.join(format!(".sp/conflicts/{uid}.md"));
     assert!(draft.exists(), "{}", String::from_utf8_lossy(&conflicted.stdout));
     let conflict = std::fs::read_to_string(&draft).unwrap();
     let header: String = conflict
@@ -1658,7 +1658,7 @@ fn files_edited_mid_run_survive_plain_pushes_and_resolve() {
     let path = draft.clone();
     let proxy = proxy_acting_on_first(
         &site,
-        "/wp-json/typedpress/v1/sync/notes",
+        "/wp-json/spacepress/v1/sync/notes",
         move || {
             let t = std::fs::read_to_string(&path).unwrap();
             std::fs::write(&path, t.replace("title: Agreed", "title: Agreed, then reconsidered")).unwrap();
@@ -1669,7 +1669,7 @@ fn files_edited_mid_run_survive_plain_pushes_and_resolve() {
         .arg("sync")
         .args(["resolve", &uid])
         .arg(&project)
-        .env("TP_APP_PASSWORD", &site.token)
+        .env("SP_APP_PASSWORD", &site.token)
         .args(["--site", &proxy, "--json"])
         .output()
         .unwrap();
@@ -1716,7 +1716,7 @@ fn a_conflict_draft_is_never_rewritten_and_a_kept_draft_resolves_again() {
     );
     assert_eq!(s, 200);
     sync(&project, &site, &["--only", "notes"]);
-    let draft = project.join(format!(".tp/conflicts/{uid}.md"));
+    let draft = project.join(format!(".sp/conflicts/{uid}.md"));
     let conflict = std::fs::read_to_string(&draft).unwrap();
     let header: String = conflict
         .lines()
@@ -1746,7 +1746,7 @@ fn a_conflict_draft_is_never_rewritten_and_a_kept_draft_resolves_again() {
     let path = draft.clone();
     let proxy = proxy_acting_on_first(
         &site,
-        "/wp-json/typedpress/v1/sync/notes",
+        "/wp-json/spacepress/v1/sync/notes",
         move || {
             let t = std::fs::read_to_string(&path).unwrap();
             std::fs::write(&path, t.replace("title: Agreed", "title: Agreed, then reconsidered")).unwrap();
@@ -1757,7 +1757,7 @@ fn a_conflict_draft_is_never_rewritten_and_a_kept_draft_resolves_again() {
         .arg("sync")
         .args(["resolve", &uid])
         .arg(&project)
-        .env("TP_APP_PASSWORD", &site.token)
+        .env("SP_APP_PASSWORD", &site.token)
         .args(["--site", &proxy])
         .output()
         .unwrap();
@@ -1799,14 +1799,14 @@ fn a_file_restored_while_the_site_is_read_is_not_trashed() {
     let path = file.clone();
     let proxy = proxy_acting_on_first(
         &site,
-        "GET /wp-json/typedpress/v1/sync/notes",
+        "GET /wp-json/spacepress/v1/sync/notes",
         move || std::fs::write(&path, &kept).unwrap(),
         restored.clone(),
     );
     let out = first()
         .arg("sync")
         .arg(&project)
-        .env("TP_APP_PASSWORD", &site.token)
+        .env("SP_APP_PASSWORD", &site.token)
         .args(["--only", "notes", "--site", &proxy, "--json", "--no-commit"])
         .output()
         .unwrap();
@@ -1880,14 +1880,14 @@ fn a_file_restored_during_the_trash_request_comes_back_on_the_next_run() {
     let path = file.clone();
     let proxy = proxy_acting_on_first(
         &site,
-        "/wp-json/typedpress/v1/sync/notes/trash",
+        "/wp-json/spacepress/v1/sync/notes/trash",
         move || std::fs::write(&path, &kept).unwrap(),
         restored.clone(),
     );
     let out = first()
         .arg("sync")
         .arg(&project)
-        .env("TP_APP_PASSWORD", &site.token)
+        .env("SP_APP_PASSWORD", &site.token)
         .args(["--only", "notes", "--site", &proxy, "--json", "--no-commit"])
         .output()
         .unwrap();
@@ -1921,14 +1921,14 @@ fn an_unreadable_file_restored_mid_run_blocks_the_trash() {
     let path = file.clone();
     let proxy = proxy_acting_on_first(
         &site,
-        "GET /wp-json/typedpress/v1/sync/notes",
+        "GET /wp-json/spacepress/v1/sync/notes",
         move || std::fs::write(&path, "---\ntitle: &broken\n---\n").unwrap(),
         restored.clone(),
     );
     let out = first()
         .arg("sync")
         .arg(&project)
-        .env("TP_APP_PASSWORD", &site.token)
+        .env("SP_APP_PASSWORD", &site.token)
         .args(["--only", "notes", "--site", &proxy, "--json", "--no-commit"])
         .output()
         .unwrap();
@@ -1991,15 +1991,15 @@ fn a_failure_later_in_the_run_keeps_the_bases_already_moved() {
     let path = file.clone();
     let proxy = proxy_with_outage(
         &site,
-        "/wp-json/typedpress/v1/sync/notes/trash",
+        "/wp-json/spacepress/v1/sync/notes/trash",
         move || std::fs::write(&path, &kept).unwrap(),
         restored.clone(),
-        Some("/wp-json/typedpress/v1/sync/snippets"),
+        Some("/wp-json/spacepress/v1/sync/snippets"),
     );
     let out = first()
         .arg("sync")
         .arg(&project)
-        .env("TP_APP_PASSWORD", &site.token)
+        .env("SP_APP_PASSWORD", &site.token)
         .args(["--only", "notes,snippets", "--site", &proxy, "--json", "--no-commit"])
         .output()
         .unwrap();
@@ -2053,7 +2053,7 @@ fn a_delete_versus_edit_conflict_can_be_resolved_as_a_deletion_either_way() {
             assert_eq!(s, 200);
         }
         sync(&project, &site, &["--only", "notes"]);
-        let draft = project.join(format!(".tp/conflicts/{uid}.md"));
+        let draft = project.join(format!(".sp/conflicts/{uid}.md"));
         let conflict = std::fs::read_to_string(&draft).unwrap_or_else(|_| panic!("{case}: a conflict draft"));
         let header: String = conflict
             .lines()
@@ -2111,7 +2111,7 @@ fn a_file_edited_while_resolve_deletes_it_is_kept() {
     );
     assert_eq!(s, 200);
     sync(&project, &site, &["--only", "notes"]);
-    let draft = project.join(format!(".tp/conflicts/{uid}.md"));
+    let draft = project.join(format!(".sp/conflicts/{uid}.md"));
     let conflict = std::fs::read_to_string(&draft).unwrap();
     let header: String = conflict
         .lines()
@@ -2123,7 +2123,7 @@ fn a_file_edited_while_resolve_deletes_it_is_kept() {
     let path = file.clone();
     let proxy = proxy_acting_on_first(
         &site,
-        "/wp-json/typedpress/v1/sync/notes/trash",
+        "/wp-json/spacepress/v1/sync/notes/trash",
         move || {
             let t = std::fs::read_to_string(&path).unwrap();
             std::fs::write(&path, t.replace("First.", "Kept: typed during the delete.")).unwrap();
@@ -2134,7 +2134,7 @@ fn a_file_edited_while_resolve_deletes_it_is_kept() {
         .arg("sync")
         .args(["resolve", &uid])
         .arg(&project)
-        .env("TP_APP_PASSWORD", &site.token)
+        .env("SP_APP_PASSWORD", &site.token)
         .args(["--site", &proxy])
         .output()
         .unwrap();
@@ -2348,7 +2348,7 @@ fn a_folder_tree_syncs_with_a_hierarchical_kind_both_ways() {
     let _ = std::fs::remove_dir_all(&project);
 }
 
-/// A component block in a synced Markdown file round-trips through `typedpress sync`: pushed as the
+/// A component block in a synced Markdown file round-trips through `spacepress sync`: pushed as the
 /// app's block with its Markdown as inner blocks, edited on the site, and pulled back as the tag.
 #[test]
 fn a_component_block_in_markdown_syncs_both_ways() {
@@ -2390,7 +2390,7 @@ fn a_component_block_in_markdown_syncs_both_ways() {
     let _ = std::fs::remove_dir_all(&project);
 }
 
-/// A fake of the GitHub REST API's pull request calls, for `typedpress sync --pr`: it keeps pull requests
+/// A fake of the GitHub REST API's pull request calls, for `spacepress sync --pr`: it keeps pull requests
 /// and comments in memory and records every call. Never a real GitHub.
 #[derive(Default)]
 struct FakeGitHub {
@@ -2554,7 +2554,7 @@ fn sync_pr_opens_one_pull_request_with_the_sites_changes_and_keeps_it_up_to_date
     .unwrap();
     git(
         &project,
-        &["add", "typedpress.config.ts", "tp/components", ".gitignore", "content"],
+        &["add", "spacepress.config.ts", "sp/components", ".gitignore", "content"],
     );
     git_as_person(&project, &["commit", "-q", "-m", "a project"]);
     git(&project, &["remote", "add", "origin", origin.to_str().unwrap()]);
@@ -2567,7 +2567,7 @@ fn sync_pr_opens_one_pull_request_with_the_sites_changes_and_keeps_it_up_to_date
             .args(extra)
             .arg(&project)
             .args(["--site", &site.url(), "--json"])
-            .env("TP_APP_PASSWORD", &site.token)
+            .env("SP_APP_PASSWORD", &site.token)
             .env("GITHUB_TOKEN", "test-token")
             .env("GITHUB_API_URL", &api)
             .env_remove("GITHUB_REPOSITORY")
@@ -2601,9 +2601,9 @@ fn sync_pr_opens_one_pull_request_with_the_sites_changes_and_keeps_it_up_to_date
     assert_eq!(opened["pr"]["action"], "opened", "{opened}");
     assert_eq!(opened["pr"]["number"], 1);
     let branch = branch_of(&opened);
-    assert!(branch.starts_with("typedpress-sync/127.0.0.1-"), "{branch}");
+    assert!(branch.starts_with("spacepress-sync/127.0.0.1-"), "{branch}");
     assert!(show(&format!("{branch}:content/notes/from-the-site.md")).contains("Written in wp-admin."));
-    assert!(show(&format!("{branch}:.tp/sync-base.json")).contains("\"version\": 1"));
+    assert!(show(&format!("{branch}:.sp/sync-base.json")).contains("\"version\": 1"));
     assert!(
         site.rows("notes").iter().any(|r| r["title"] == "Hello"),
         "the file in git reached the site"
@@ -2697,7 +2697,7 @@ fn sync_pr_opens_one_pull_request_with_the_sites_changes_and_keeps_it_up_to_date
     assert_eq!(out.status.code(), Some(1), "{}", String::from_utf8_lossy(&out.stdout));
     let deleted = github.lock().unwrap().deleted.clone();
     assert_eq!(deleted.len(), 1, "{deleted:?}");
-    assert!(deleted[0].starts_with("typedpress-sync/127.0.0.1-"), "{deleted:?}");
+    assert!(deleted[0].starts_with("spacepress-sync/127.0.0.1-"), "{deleted:?}");
     github.lock().unwrap().refuse_pulls = false;
     git(&origin, &["push", "-q", ".", &format!(":refs/heads/{}", deleted[0])]);
     let (s, _) = site.call("DELETE", &format!("/notes/{}", refused_edit["data"]["id"]), None);
@@ -2751,7 +2751,7 @@ fn sync_pr_opens_one_pull_request_with_the_sites_changes_and_keeps_it_up_to_date
     assert_eq!(conflicted["conflicts"].as_array().unwrap().len(), 1, "{conflicted}");
     let branch = branch_of(&conflicted);
     let uid = hello_row["uid"].as_str().unwrap();
-    let conflict = show(&format!("{branch}:.tp/conflicts/{uid}.md"));
+    let conflict = show(&format!("{branch}:.sp/conflicts/{uid}.md"));
     assert!(
         conflict.contains("<<<<<<< files") && conflict.contains("Site title"),
         "{conflict}"
@@ -2768,7 +2768,7 @@ fn sync_pr_opens_one_pull_request_with_the_sites_changes_and_keeps_it_up_to_date
         let gh = github.lock().unwrap();
         let (n, comment) = gh.comments.last().expect("a comment listing the conflicts");
         assert_eq!(*n, 2);
-        assert!(comment.contains(&format!(".tp/conflicts/{uid}.md")), "{comment}");
+        assert!(comment.contains(&format!(".sp/conflicts/{uid}.md")), "{comment}");
     }
     // Run again: the same conflict, no second comment, nothing pushed.
     let comments = github.lock().unwrap().comments.len();
@@ -2826,7 +2826,7 @@ fn sync_pr_opens_one_pull_request_with_the_sites_changes_and_keeps_it_up_to_date
         .args(["sync", "--pr", "--repo", "acme/site", "--json"])
         .arg(&project)
         .args(["--site", &site.url()])
-        .env("TP_APP_PASSWORD", &site.token)
+        .env("SP_APP_PASSWORD", &site.token)
         .env_remove("GITHUB_TOKEN")
         .output()
         .unwrap();
@@ -2854,7 +2854,7 @@ fn sync_pr_opens_one_pull_request_with_the_sites_changes_and_keeps_it_up_to_date
     assert!(
         git(
             &origin,
-            &["ls-tree", "-r", "--name-only", &branch, "--", ".tp/conflicts"]
+            &["ls-tree", "-r", "--name-only", &branch, "--", ".sp/conflicts"]
         )
         .trim()
         .is_empty(),
@@ -2889,7 +2889,7 @@ fn sync_pr_opens_one_pull_request_with_the_sites_changes_and_keeps_it_up_to_date
         .args(["sync", "--pr", "--repo", "acme/site"])
         .arg(&project)
         .args(["--site", &site.url()])
-        .env("TP_APP_PASSWORD", &site.token)
+        .env("SP_APP_PASSWORD", &site.token)
         .env("GITHUB_TOKEN", "test-token")
         .env("GITHUB_API_URL", &api)
         .output()
@@ -2912,12 +2912,12 @@ fn sync_pr_opens_one_pull_request_with_the_sites_changes_and_keeps_it_up_to_date
 /// to the same file, and a collection with another loader stays Astro's.
 #[test]
 fn astro_content_collections_are_synced_kinds() {
-    let project = std::env::temp_dir().join(format!("typedpress-astro-content-{}", std::process::id()));
+    let project = std::env::temp_dir().join(format!("spacepress-astro-content-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&project);
     copy_dir(&root().join("tests/fixtures/astro-content"), &project);
     let out = first().arg("build").arg(&project).output().unwrap();
     assert!(out.status.success(), "build: {}", String::from_utf8_lossy(&out.stderr));
-    let db = std::fs::read_to_string(project.join("tp/_generated/db.d.ts")).unwrap();
+    let db = std::fs::read_to_string(project.join("sp/_generated/db.d.ts")).unwrap();
     assert!(
         db.contains("'blog'") && db.contains("'authors'") && !db.contains("'remote'"),
         "{db}"
@@ -2927,7 +2927,7 @@ fn astro_content_collections_are_synced_kinds() {
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/wp.php"))
         .arg("serve")
-        .arg(project.join("tp/dist/wp-content"))
+        .arg(project.join("sp/dist/wp-content"))
         .arg("ed=editor")
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
@@ -3039,46 +3039,46 @@ fn astro_content_collections_are_synced_kinds() {
     let _ = std::fs::remove_dir_all(&project);
 }
 
-/// A schema TypedPress can't make a field of is a build error at the field, with what to do instead.
+/// A schema SpacePress can't make a field of is a build error at the field, with what to do instead.
 #[test]
 fn astro_content_fields_first_cant_map_are_build_errors_naming_the_field() {
     let base = std::fs::read_to_string(root().join("tests/fixtures/astro-content/src/content.config.ts")).unwrap();
-    let project = std::env::temp_dir().join(format!("typedpress-astro-refusals-{}", std::process::id()));
+    let project = std::env::temp_dir().join(format!("spacepress-astro-refusals-{}", std::process::id()));
     for (from, to, message, help) in [
         (
             "    draft: z.boolean().default(false),",
             "    seo: z.object({ title: z.string() }),",
-            "field `seo`: `z.object()` has no TypedPress field type",
+            "field `seo`: `z.object()` has no SpacePress field type",
             "group()",
         ),
         (
             "    draft: z.boolean().default(false),",
             "    author: z.union([z.string(), z.number()]),",
-            "field `author`: `z.union()` has no TypedPress field type",
+            "field `author`: `z.union()` has no SpacePress field type",
             "pick it",
         ),
         (
             "    heroImage: z.string().optional(),",
             "    heroImage: image().optional(),",
-            "field `heroImage`: `image()` has no TypedPress field type",
+            "field `heroImage`: `image()` has no SpacePress field type",
             "media library",
         ),
         (
             "    pubDate: z.coerce.date(),",
             "    pubDate: z.string().transform((s) => new Date(s)),",
-            "field `pubDate`: `.transform()` on `z.string()` has no TypedPress field type",
+            "field `pubDate`: `.transform()` on `z.string()` has no SpacePress field type",
             "transforms",
         ),
         (
             "    tags: z.array(z.string()).default([]),",
             "    tags: z.array(z.object({ a: z.string() })),",
-            "field `tags`: a list of `z.object()` has no TypedPress field type",
+            "field `tags`: a list of `z.object()` has no SpacePress field type",
             "repeater()",
         ),
         (
             "    draft: z.boolean().default(false),",
             "    slug: z.string(),",
-            "field `slug` of `blog` can't be a TypedPress field",
+            "field `slug` of `blog` can't be a SpacePress field",
             "its slug",
         ),
         (
@@ -3090,31 +3090,31 @@ fn astro_content_fields_first_cant_map_are_build_errors_naming_the_field() {
         (
             "pattern: \"**/*.md\" }",
             "pattern: \"**/*.{md,mdx}\" }",
-            "the loader of `blog` can't be read as a TypedPress kind's files",
+            "the loader of `blog` can't be read as a SpacePress kind's files",
             ".mdx",
         ),
         (
             "pattern: \"**/*.md\" }",
             "pattern: \"[^_]*.md\" }",
-            "the loader of `blog` can't be read as a TypedPress kind's files",
+            "the loader of `blog` can't be read as a SpacePress kind's files",
             "leave files out",
         ),
         (
             "  blog,",
             "  \"blog-posts\": blog,",
-            "collection `blog-posts` can't be a TypedPress kind's name",
+            "collection `blog-posts` can't be a SpacePress kind's name",
             "letters, digits",
         ),
         (
             "  blog,",
             "  media: blog,",
-            "collection `media` can't be a TypedPress kind's name",
+            "collection `media` can't be a SpacePress kind's name",
             "route of its own",
         ),
         (
             "  blog,",
             "  aVeryLongCollectionName: blog,",
-            "collection `aVeryLongCollectionName` can't be a TypedPress kind's name",
+            "collection `aVeryLongCollectionName` can't be a SpacePress kind's name",
             "at most 17",
         ),
         (
@@ -3126,13 +3126,13 @@ fn astro_content_fields_first_cant_map_are_build_errors_naming_the_field() {
         (
             "    draft: z.boolean().default(false),",
             "    locale: z.string(),",
-            "field `locale` of `blog` can't be a TypedPress field",
+            "field `locale` of `blog` can't be a SpacePress field",
             "translations",
         ),
         (
             "    draft: z.boolean().default(false),",
             "    \"hero-image\": z.string(),",
-            "field `hero-image` of `blog` can't be a TypedPress field",
+            "field `hero-image` of `blog` can't be a SpacePress field",
             "letters, digits",
         ),
         (
@@ -3144,7 +3144,7 @@ fn astro_content_fields_first_cant_map_are_build_errors_naming_the_field() {
         (
             "    rank: z.number().int().nonnegative().optional(),",
             "    rank: z.number().positive(),",
-            "field `rank`: `.positive()` on `z.number()` has no TypedPress field type",
+            "field `rank`: `.positive()` on `z.number()` has no SpacePress field type",
             ".min()",
         ),
     ] {
@@ -3186,16 +3186,16 @@ fn copy_dir(from: &Path, to: &Path) {
 
 /// The loop end to end, with nothing real but WordPress: an edit saved in wp-admin (core's REST
 /// route, as the block editor saves) sends the site's debounced `repository_dispatch`; the run the
-/// workflow starts for it (`typedpress sync --pr`) puts the edit on the sync pull request's branch; a
+/// workflow starts for it (`spacepress sync --pr`) puts the edit on the sync pull request's branch; a
 /// file change merged into the default branch reaches the site on the next run (a push).
 #[test]
 fn an_edit_in_wp_admin_reaches_a_pull_request_and_a_merged_file_reaches_the_site() {
     let (api, github) = fake_github("acme/docs");
     let (project, site) = setup_with(&[
-        ("TP_GITHUB_REPOSITORY", "acme/docs"),
-        ("TP_GITHUB_DISPATCH_TOKEN", "dispatch-token"),
-        ("TP_GITHUB_API_URL", api.as_str()),
-        ("TP_GITHUB_DISPATCH_WINDOW", "0"),
+        ("SP_GITHUB_REPOSITORY", "acme/docs"),
+        ("SP_GITHUB_DISPATCH_TOKEN", "dispatch-token"),
+        ("SP_GITHUB_API_URL", api.as_str()),
+        ("SP_GITHUB_DISPATCH_WINDOW", "0"),
     ]);
     let origin = project.with_extension("origin.git");
     let _ = std::fs::remove_dir_all(&origin);
@@ -3216,7 +3216,7 @@ fn an_edit_in_wp_admin_reaches_a_pull_request_and_a_merged_file_reaches_the_site
     .unwrap();
     git(
         &project,
-        &["add", "typedpress.config.ts", "tp/components", ".gitignore", "content"],
+        &["add", "spacepress.config.ts", "sp/components", ".gitignore", "content"],
     );
     git_as_person(&project, &["commit", "-q", "-m", "docs"]);
     git(&project, &["remote", "add", "origin", origin.to_str().unwrap()]);
@@ -3237,7 +3237,7 @@ fn an_edit_in_wp_admin_reaches_a_pull_request_and_a_merged_file_reaches_the_site
             .args(["sync", "--pr"])
             .arg(clone.path())
             .args(["--site", &site.url(), "--json"])
-            .env("TP_APP_PASSWORD", &site.token)
+            .env("SP_APP_PASSWORD", &site.token)
             .env("GITHUB_TOKEN", "test-token")
             .env("GITHUB_API_URL", &api)
             .env("GITHUB_REPOSITORY", "acme/docs")
@@ -3260,13 +3260,13 @@ fn an_edit_in_wp_admin_reaches_a_pull_request_and_a_merged_file_reaches_the_site
     let tick = || {
         let out = Command::new("php")
             .args(["-d", "memory_limit=512M", "-r"])
-            .arg("require $argv[1]; wpLoad($argv[2]); [$code, $out] = \\TypedPress\\Wp\\Runtime::plugin()->app()->cli(['jobs', 'tick']); echo $out;")
+            .arg("require $argv[1]; wpLoad($argv[2]); [$code, $out] = \\SpacePress\\Wp\\Runtime::plugin()->app()->cli(['jobs', 'tick']); echo $out;")
             .arg(root().join("tests/php/wp.php"))
             .arg(&site.dir)
             .envs([
-                ("TP_GITHUB_REPOSITORY", "acme/docs"),
-                ("TP_GITHUB_DISPATCH_TOKEN", "dispatch-token"),
-                ("TP_GITHUB_API_URL", api.as_str()),
+                ("SP_GITHUB_REPOSITORY", "acme/docs"),
+                ("SP_GITHUB_DISPATCH_TOKEN", "dispatch-token"),
+                ("SP_GITHUB_API_URL", api.as_str()),
             ])
             .output()
             .unwrap();
@@ -3309,7 +3309,7 @@ fn an_edit_in_wp_admin_reaches_a_pull_request_and_a_merged_file_reaches_the_site
         }
     };
 
-    // The typedpress run pushes git's docs to the site; the file gains its uid, which comes back as a
+    // The spacepress run pushes git's docs to the site; the file gains its uid, which comes back as a
     // pull request. Merged, the next run finds nothing to do.
     let first_run = workflow_run();
     assert_eq!(first_run["pr"]["action"], "opened", "{first_run}");
@@ -3318,7 +3318,7 @@ fn an_edit_in_wp_admin_reaches_a_pull_request_and_a_merged_file_reaches_the_site
     tick();
     assert!(
         github.lock().unwrap().dispatches.is_empty(),
-        "typedpress sync's own writes send no dispatch"
+        "spacepress sync's own writes send no dispatch"
     );
     let intro = site
         .rows("docs")
@@ -3330,14 +3330,14 @@ fn an_edit_in_wp_admin_reaches_a_pull_request_and_a_merged_file_reaches_the_site
     let (s, saved) = core_call(
         &site,
         "POST",
-        &format!("/wp/v2/tp_docs/{}", intro["id"]),
+        &format!("/wp/v2/sp_docs/{}", intro["id"]),
         serde_json::json!({"title": "Intro, edited in wp-admin"}),
     );
     assert_eq!(s, 200, "{saved}");
     tick();
     let dispatches = github.lock().unwrap().dispatches.clone();
     assert_eq!(dispatches.len(), 1, "{dispatches:?}");
-    assert_eq!(dispatches[0]["event_type"], "typedpress-content-changed");
+    assert_eq!(dispatches[0]["event_type"], "spacepress-content-changed");
 
     // The run that dispatch starts: a pull request whose branch has the edit.
     let run = workflow_run();

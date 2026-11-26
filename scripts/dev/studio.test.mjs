@@ -25,18 +25,18 @@ test('native WordPress creation selects the stable update offered from the floor
 });
 
 test('the CLI runs through a symlink with and without Node path preservation', async (t) => {
-  const root = await mkdtemp(join(tmpdir(), 'typedpress-studio-entry-'));
+  const root = await mkdtemp(join(tmpdir(), 'spacepress-studio-entry-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const link = join(root, 'studio.mjs');
   await symlink(fileURLToPath(new URL('./studio.mjs', import.meta.url)), link);
   for (const flags of [[], ['--preserve-symlinks-main']]) {
     assert.throws(() => execFileSync(process.execPath, [...flags, link, 'start', join(root, 'missing')], { encoding: 'utf8' }),
-      (error) => error.status === 1 && /typedpress dev:.*ENOENT/.test(error.stderr));
+      (error) => error.status === 1 && /spacepress dev:.*ENOENT/.test(error.stderr));
   }
 });
 
 test('a failed export startup exits even while its parent keeps stdin open', async (t) => {
-  const root = await mkdtemp(join(tmpdir(), 'typedpress-studio-export-'));
+  const root = await mkdtemp(join(tmpdir(), 'spacepress-studio-export-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const bin = join(root, 'bin');
   const studio = join(root, 'wp-studio');
@@ -56,7 +56,7 @@ test('a failed export startup exits even while its parent keeps stdin open', asy
 });
 
 test('a preserved file symlink gives Studio the physical setup file', async (t) => {
-  const root = await mkdtemp(join(tmpdir(), 'typedpress-studio-setup-'));
+  const root = await mkdtemp(join(tmpdir(), 'spacepress-studio-setup-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const bin = join(root, 'bin');
   const studio = join(root, 'wp-studio');
@@ -70,7 +70,7 @@ test('a preserved file symlink gives Studio the physical setup file', async (t) 
       console.error('physical setup file read'); process.exit(7);
     }
   `);
-  await writeFile(join(content, 'typedpress-manifest.json'), JSON.stringify({ app: 'test', plugins: {}, dependencies: [], locales: null }));
+  await writeFile(join(content, 'spacepress-manifest.json'), JSON.stringify({ app: 'test', plugins: {}, dependencies: [], locales: null }));
   const link = join(root, 'studio.mjs');
   await symlink(fileURLToPath(new URL('./studio.mjs', import.meta.url)), link);
   const fetchStub = 'data:text/javascript,' + encodeURIComponent('globalThis.fetch = async () => ({ ok: true, json: async () => ({ offers: [] }) });');
@@ -86,23 +86,23 @@ test('a preserved file symlink gives Studio the physical setup file', async (t) 
 });
 
 test('local site ownership refuses foreign directories, copied receipts and redirected state', async (t) => {
-  const root = await mkdtemp(join(tmpdir(), 'typedpress-dev-ownership-'));
+  const root = await mkdtemp(join(tmpdir(), 'spacepress-dev-ownership-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const project = join(root, 'project');
   await mkdir(project);
-  await mkdir(join(project, '.tp/dev'), { recursive: true });
-  await writeFile(join(project, '.tp/dev/important'), 'foreign data');
+  await mkdir(join(project, '.sp/dev'), { recursive: true });
+  await writeFile(join(project, '.sp/dev/important'), 'foreign data');
   await assert.rejects(ownedState(project, true), /Unowned development directory/);
-  assert.equal(await readFile(join(project, '.tp/dev/important'), 'utf8'), 'foreign data');
-  await rm(join(project, '.tp/dev'), { recursive: true });
+  assert.equal(await readFile(join(project, '.sp/dev/important'), 'utf8'), 'foreign data');
+  await rm(join(project, '.sp/dev'), { recursive: true });
   const managed = await ownedState(project, true);
-  assert.equal((await ownedState(project, false)).owner.site, join(project, '.tp/dev/wordpress'));
+  assert.equal((await ownedState(project, false)).owner.site, join(project, '.sp/dev/wordpress'));
   const other = join(root, 'other');
-  await mkdir(join(other, '.tp/dev'), { recursive: true });
-  await writeFile(join(other, '.tp/dev/owner.json'), await readFile(managed.marker));
+  await mkdir(join(other, '.sp/dev'), { recursive: true });
+  await writeFile(join(other, '.sp/dev/owner.json'), await readFile(managed.marker));
   await assert.rejects(ownedState(other, true), /ownership does not match/);
-  await rm(join(other, '.tp/dev'), { recursive: true });
-  await symlink(managed.state, join(other, '.tp/dev'), 'junction');
+  await rm(join(other, '.sp/dev'), { recursive: true });
+  await symlink(managed.state, join(other, '.sp/dev'), 'junction');
   await assert.rejects(ownedState(other, true), /symbolic link/);
   const exited = spawn(process.execPath, ['-e', '']);
   await once(exited, 'exit');
@@ -110,39 +110,39 @@ test('local site ownership refuses foreign directories, copied receipts and redi
   const contenders = await Promise.allSettled([lock(managed.state), lock(managed.state)]);
   assert.equal(contenders.filter((attempt) => attempt.status === 'fulfilled').length, 1);
   assert.equal(JSON.parse(await readFile(join(managed.state, 'session.json'), 'utf8')).pid, process.pid);
-  await assert.rejects(lock(managed.state), /Another typedpress dev command/);
+  await assert.rejects(lock(managed.state), /Another spacepress dev command/);
   await contenders.find((attempt) => attempt.status === 'fulfilled').value();
 });
 
 test('publishing replaces managed plugins while retaining extra plugins and refusing collisions before writes', async (t) => {
-  const project = await mkdtemp(join(tmpdir(), 'typedpress-dev-plugins-'));
+  const project = await mkdtemp(join(tmpdir(), 'spacepress-dev-plugins-'));
   t.after(() => rm(project, { recursive: true, force: true }));
   const managed = await ownedState(project, true);
   const plugins = join(managed.owner.site, 'wp-content/plugins');
   await mkdir(join(plugins, 'extra'), { recursive: true });
   await writeFile(join(plugins, 'extra/extra.php'), 'user-installed');
   const content = join(project, 'artifact');
-  const source = join(content, 'plugins/typedpress-app-test');
+  const source = join(content, 'plugins/spacepress-app-test');
   await mkdir(source, { recursive: true });
-  await writeFile(join(source, 'typedpress-app-test.php'), 'typedpress build');
+  await writeFile(join(source, 'spacepress-app-test.php'), 'spacepress build');
   await writeFile(join(source, 'stale.php'), 'old');
-  const manifest = { app: 'test', plugins: { 'typedpress-app-test': '0.3' }, dependencies: [], locales: null };
-  await writeFile(join(content, 'typedpress-manifest.json'), JSON.stringify(manifest));
+  const manifest = { app: 'test', plugins: { 'spacepress-app-test': '0.3' }, dependencies: [], locales: null };
+  await writeFile(join(content, 'spacepress-manifest.json'), JSON.stringify(manifest));
   await publishPlugins(content, managed);
   await rm(join(source, 'stale.php'));
-  await writeFile(join(source, 'typedpress-app-test.php'), 'second build');
+  await writeFile(join(source, 'spacepress-app-test.php'), 'second build');
   await publishPlugins(content, managed);
-  assert.equal(await readFile(join(plugins, 'typedpress-app-test/typedpress-app-test.php'), 'utf8'), 'second build');
-  await assert.rejects(readFile(join(plugins, 'typedpress-app-test/stale.php')), { code: 'ENOENT' });
+  assert.equal(await readFile(join(plugins, 'spacepress-app-test/spacepress-app-test.php'), 'utf8'), 'second build');
+  await assert.rejects(readFile(join(plugins, 'spacepress-app-test/stale.php')), { code: 'ENOENT' });
   assert.equal(await readFile(join(plugins, 'extra/extra.php'), 'utf8'), 'user-installed');
-  await writeFile(join(source, 'typedpress-app-test.php'), 'must not be published');
-  await writeFile(join(content, 'typedpress-manifest.json'), JSON.stringify({ ...manifest, plugins: { ...manifest.plugins, extra: '1' } }));
-  await assert.rejects(publishPlugins(content, managed), /not managed by TypedPress/);
-  assert.equal(await readFile(join(plugins, 'typedpress-app-test/typedpress-app-test.php'), 'utf8'), 'second build');
+  await writeFile(join(source, 'spacepress-app-test.php'), 'must not be published');
+  await writeFile(join(content, 'spacepress-manifest.json'), JSON.stringify({ ...manifest, plugins: { ...manifest.plugins, extra: '1' } }));
+  await assert.rejects(publishPlugins(content, managed), /not managed by SpacePress/);
+  assert.equal(await readFile(join(plugins, 'spacepress-app-test/spacepress-app-test.php'), 'utf8'), 'second build');
 });
 
 test('watch inputs include imported TypeScript, public files and Markdown pages without reacting to generated output', async (t) => {
-  const root = await mkdtemp(join(tmpdir(), 'typedpress-dev-watch-'));
+  const root = await mkdtemp(join(tmpdir(), 'spacepress-dev-watch-'));
   const project = join(root, 'project');
   let watcher;
   let observing = Promise.resolve();
@@ -152,12 +152,12 @@ test('watch inputs include imported TypeScript, public files and Markdown pages 
     await rm(root, { recursive: true, force: true });
   });
   await mkdir(project);
-  await mkdir(join(project, 'tp/lib'), { recursive: true });
+  await mkdir(join(project, 'sp/lib'), { recursive: true });
   await mkdir(join(project, 'public'));
-  await writeFile(join(project, 'typedpress.config.ts'), 'config');
-  await writeFile(join(project, 'tp/lib/fields.ts'), 'tp');
-  const plugins = join(project, '.tp/dev/wordpress/wp-content/plugins');
-  const generated = join(plugins, 'typedpress-app-watch');
+  await writeFile(join(project, 'spacepress.config.ts'), 'config');
+  await writeFile(join(project, 'sp/lib/fields.ts'), 'sp');
+  const plugins = join(project, '.sp/dev/wordpress/wp-content/plugins');
+  const generated = join(plugins, 'spacepress-app-watch');
   await mkdir(join(generated, 'blocks/deep/assets'), { recursive: true });
   await writeFile(join(generated, 'blocks/deep/assets/generated.ts'), 'initial output');
   const first = await sourceDigest(project);
@@ -182,14 +182,14 @@ test('watch inputs include imported TypeScript, public files and Markdown pages 
       assert.equal(watchError, undefined);
     } finally { clearTimeout(timeout); }
   }
-  await writeFile(join(project, 'tp/lib/fields.ts'), 'second');
+  await writeFile(join(project, 'sp/lib/fields.ts'), 'second');
   const second = await sourceDigest(project);
   assert.notEqual(second, first);
   await waitForDigest(second);
-  await mkdir(join(project, 'tp/_generated'), { recursive: true });
-  await writeFile(join(project, 'tp/_generated/db.d.ts'), 'generated');
+  await mkdir(join(project, 'sp/_generated'), { recursive: true });
+  await writeFile(join(project, 'sp/_generated/db.d.ts'), 'generated');
   for (let build = 0; build < 16; build++) {
-    const staged = join(plugins, `.typedpress-app-watch-${build}`);
+    const staged = join(plugins, `.spacepress-app-watch-${build}`);
     const previous = `${staged}.previous`;
     await mkdir(join(staged, 'blocks/deep/assets'), { recursive: true });
     await writeFile(join(staged, 'blocks/deep/assets/generated.ts'), `build ${build}`);
@@ -197,14 +197,14 @@ test('watch inputs include imported TypeScript, public files and Markdown pages 
     await rename(staged, generated);
     await rm(previous, { recursive: true });
   }
-  for (const ignored of ['.git', 'node_modules', 'tp/node_modules', 'tp/dist', 'tp/_generated/client', 'public/typedpress-styles', 'public/typedpress-assets']) {
+  for (const ignored of ['.git', 'node_modules', 'sp/node_modules', 'sp/dist', 'sp/_generated/client', 'public/spacepress-styles', 'public/spacepress-assets']) {
     const directory = join(project, ignored, 'nested/generated');
     await mkdir(directory, { recursive: true });
     await writeFile(join(directory, 'output.ts'), 'generated');
     await rm(join(project, ignored), { recursive: true });
   }
   assert.equal(await sourceDigest(project), second);
-  await writeFile(join(project, 'tp/lib/fields.ts'), 'after generated plugin replacement');
+  await writeFile(join(project, 'sp/lib/fields.ts'), 'after generated plugin replacement');
   const afterBuild = await sourceDigest(project);
   assert.notEqual(afterBuild, second);
   await waitForDigest(afterBuild);
@@ -224,54 +224,54 @@ test('watch inputs include imported TypeScript, public files and Markdown pages 
   assert.notEqual(nestedChange, newDirectory);
   await waitForDigest(nestedChange);
   // A stylesheet or an image a page imports is a build input: its bytes name the file the page links.
-  await mkdir(join(project, 'tp/app'), { recursive: true });
-  await writeFile(join(project, 'tp/app/site.css'), 'body { margin: 0 }');
+  await mkdir(join(project, 'sp/app'), { recursive: true });
+  await writeFile(join(project, 'sp/app/site.css'), 'body { margin: 0 }');
   const stylesheet = await sourceDigest(project);
   assert.notEqual(stylesheet, nestedChange);
   await waitForDigest(stylesheet);
-  await writeFile(join(project, 'tp/app/site.css'), 'body { margin: 1px }');
+  await writeFile(join(project, 'sp/app/site.css'), 'body { margin: 1px }');
   const restyled = await sourceDigest(project);
   assert.notEqual(restyled, stylesheet);
   await waitForDigest(restyled);
-  await writeFile(join(project, 'tp/app/logo.svg'), '<svg xmlns="http://www.w3.org/2000/svg"/>');
+  await writeFile(join(project, 'sp/app/logo.svg'), '<svg xmlns="http://www.w3.org/2000/svg"/>');
   const image = await sourceDigest(project);
   assert.notEqual(image, restyled);
   await waitForDigest(image);
   // A Markdown page is a build input; Markdown elsewhere (a README, notes) is not.
-  await mkdir(join(project, 'tp/app/about'), { recursive: true });
-  await writeFile(join(project, 'tp/app/about/page.md'), '# About');
+  await mkdir(join(project, 'sp/app/about'), { recursive: true });
+  await writeFile(join(project, 'sp/app/about/page.md'), '# About');
   const markdownPage = await sourceDigest(project);
   assert.notEqual(markdownPage, image);
   await waitForDigest(markdownPage);
-  await writeFile(join(project, 'tp/app/about/page.md'), '# About us');
+  await writeFile(join(project, 'sp/app/about/page.md'), '# About us');
   const markdownEdit = await sourceDigest(project);
   assert.notEqual(markdownEdit, markdownPage);
   await waitForDigest(markdownEdit);
   // The project's styles are a build input too.
-  await writeFile(join(project, 'tp/theme.json'), '{"version":3}');
+  await writeFile(join(project, 'sp/theme.json'), '{"version":3}');
   const styles = await sourceDigest(project);
   assert.notEqual(styles, markdownEdit);
   await waitForDigest(styles);
   await writeFile(join(project, 'README.md'), 'notes');
-  await writeFile(join(project, 'tp/app/about/notes.md'), 'notes');
+  await writeFile(join(project, 'sp/app/about/notes.md'), 'notes');
   assert.equal(await sourceDigest(project), styles);
-  await writeFile(join(project, 'package.json'), '{"devDependencies":{"@typedpress/frontend":"0.1.0"}}');
+  await writeFile(join(project, 'package.json'), '{"devDependencies":{"@spacepress/frontend":"0.1.0"}}');
   const frontend = await sourceDigest(project);
   await waitForDigest(frontend);
-  await writeFile(join(project, 'tp/app/about/notes.md'), '<aside class="text-lg">Notes</aside>');
+  await writeFile(join(project, 'sp/app/about/notes.md'), '<aside class="text-lg">Notes</aside>');
   const tailwind = await sourceDigest(project);
   assert.notEqual(tailwind, frontend);
   await waitForDigest(tailwind);
 });
 
-test('--url and --host name one address for WordPress and one for TypedPress to listen on, and refuse what names none', () => {
+test('--url and --host name one address for WordPress and one for SpacePress to listen on, and refuse what names none', () => {
   // Neither: Studio's own http://localhost:<port>, and nothing but its loopback listener.
   assert.deepEqual(siteAddress(['--no-watch'], 8791), { url: null, listen: null });
-  // --host: TypedPress listens there on the site's port, and that is the address WordPress writes.
+  // --host: SpacePress listens there on the site's port, and that is the address WordPress writes.
   assert.deepEqual(siteAddress(['--host=10.0.0.24'], 8791), { url: 'http://10.0.0.24:8791', listen: '10.0.0.24' });
   assert.deepEqual(siteAddress(['--host=dev-box.lan'], 8791), { url: 'http://dev-box.lan:8791', listen: 'dev-box.lan' });
   assert.deepEqual(siteAddress(['--host=fd7a:115c::57'], 8791), { url: 'http://[fd7a:115c::57]:8791', listen: 'fd7a:115c::57' });
-  // --url: a proxy in front serves another scheme, host or port; TypedPress listens nowhere new.
+  // --url: a proxy in front serves another scheme, host or port; SpacePress listens nowhere new.
   assert.deepEqual(siteAddress(['--no-watch', '--url=https://box.example.ts.net:8443/'], 8791), { url: 'https://box.example.ts.net:8443', listen: null });
   assert.deepEqual(siteAddress(['--url=https://box.example.ts.net'], 8791), { url: 'https://box.example.ts.net', listen: null });
   // Both: listen on one address, announce another.
@@ -288,8 +288,8 @@ test('--url and --host name one address for WordPress and one for TypedPress to 
   for (const host of ['fe80::1%eth0', '0.0.0.0', '::', '0:0:0:0:0:0:0:0', '::ffff:0.0.0.0', '::ffff:0:0', '0::0', '0', '2130706433', '*', '', 'a/b', 'http://10.0.0.24', '10.0.0.24:8791', 'a b', "a'b"]) {
     assert.throws(() => siteAddress([`--host=${host}`], 8791), /--host takes one address or name of this machine/, host);
   }
-  // The listener lives in the typedpress dev process, and --no-watch leaves none.
-  assert.throws(() => siteAddress(['--no-watch', '--host=10.0.0.24'], 8791), /--host needs typedpress dev to keep running/);
+  // The listener lives in the spacepress dev process, and --no-watch leaves none.
+  assert.throws(() => siteAddress(['--no-watch', '--host=10.0.0.24'], 8791), /--host needs spacepress dev to keep running/);
 });
 
 test('--host is bound as the address it resolves to, never every interface', { timeout: 10000 }, async () => {
@@ -304,7 +304,7 @@ test('--host is bound as the address it resolves to, never every interface', { t
 });
 
 test('the address file is PHP that only holds the address', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'tp-address-'));
+  const dir = mkdtempSync(join(tmpdir(), 'sp-address-'));
   try {
     for (const url of ['https://box.example.ts.net:8443', "http://it's.example", 'http://a\\\\b']) {
       const file = join(dir, 'address.php');
@@ -317,9 +317,9 @@ test('the address file is PHP that only holds the address', () => {
   }
 });
 
-// wp-config.php patched as typedpress dev patches it, with this machine's `php` in place of Studio's.
+// wp-config.php patched as spacepress dev patches it, with this machine's `php` in place of Studio's.
 function patch(source) {
-  const dir = mkdtempSync(join(tmpdir(), 'tp-config-'));
+  const dir = mkdtempSync(join(tmpdir(), 'sp-config-'));
   try {
     const file = join(dir, 'wp-config.php');
     writeFileSync(file, source);
@@ -330,7 +330,7 @@ function patch(source) {
   }
 }
 
-const ADDRESS = "if ( is_file( ABSPATH . 'tp-dev-address.php' ) ) { require ABSPATH . 'tp-dev-address.php'; } // typedpress dev --url / --host";
+const ADDRESS = "if ( is_file( ABSPATH . 'sp-dev-address.php' ) ) { require ABSPATH . 'sp-dev-address.php'; } // spacepress dev --url / --host";
 
 test('PHP prints an offset, or the start is refused', async () => {
   // Anything but a number from PHP (a notice, a warning) is refused, never read as an offset.
@@ -339,7 +339,7 @@ test('PHP prints an offset, or the start is refused', async () => {
   // The path reaches PHP as one escaped string: a quote in it doesn't end the string.
   let seen = '';
   await settingsOffset(async (code) => { seen = code; return '-1'; }, "/tmp/it's/wp-config.php");
-  assert.ok(seen.startsWith("$tp_config = '/tmp/it\\'s/wp-config.php';"), seen);
+  assert.ok(seen.startsWith("$sp_config = '/tmp/it\\'s/wp-config.php';"), seen);
 });
 
 test('the address reaches WordPress before it loads, from one line in wp-config.php', async () => {
@@ -352,8 +352,8 @@ test('the address reaches WordPress before it loads, from one line in wp-config.
   const config = "<?php\ndefine( 'WP_DEBUG', false );\n/* That's all, stop editing! Happy publishing. */\n\nif ( ! defined( 'ABSPATH' ) ) {\n\tdefine( 'ABSPATH', __DIR__ . '/' );\n}\n\n/** Sets up WordPress vars and included files. */\nrequire_once ABSPATH . 'wp-settings.php';\n";
   const patched = await patch(config);
   const lines = patched.split('\n');
-  const at = lines.findIndex((line) => line.includes('tp-dev-address.php'));
-  assert.match(lines[at], /^if \( is_file\( ABSPATH \. 'tp-dev-address\.php' \) \) \{ require ABSPATH \. 'tp-dev-address\.php'; \}/);
+  const at = lines.findIndex((line) => line.includes('sp-dev-address.php'));
+  assert.match(lines[at], /^if \( is_file\( ABSPATH \. 'sp-dev-address\.php' \) \) \{ require ABSPATH \. 'sp-dev-address\.php'; \}/);
   assert.equal(lines[at + 1], "require_once ABSPATH . 'wp-settings.php';");
   assert.equal(patched.replace(`${lines[at]}\n`, ''), config);
   assert.equal(withAddressLine(patched, -1), patched);
@@ -410,11 +410,11 @@ test('the address reaches WordPress before it loads, from one line in wp-config.
   // The require must start its line: another statement before it on the line is refused.
   await assert.rejects(patch(`<?php\n$a = 1; ${settings}\n`), /in a statement of its own/);
   // A closing tag and blank text after it are fine.
-  assert.match(await patch(`<?php\n${settings}\n?>\n\n`), /tp-dev-address\.php/);
+  assert.match(await patch(`<?php\n${settings}\n?>\n\n`), /sp-dev-address\.php/);
   // Only in a decoy: nothing runs it, so nothing is changed.
   await assert.rejects(patch(`<?php\n/*\n${settings}\n*/\n`), /in a statement of its own/);
   const commented = await patch("<?php\ndefine( 'A', 1 ); // one\n/** Sets up WordPress vars and included files. */\nrequire_once( ABSPATH . 'wp-settings.php' );\n");
-  assert.match(commented, /tp-dev-address\.php/);
+  assert.match(commented, /sp-dev-address\.php/);
 });
 
 test('--host passes connections to the loopback listener untouched and lets go of them when it closes', { timeout: 20000 }, async (t) => {
@@ -425,7 +425,7 @@ test('--host passes connections to the loopback listener untouched and lets go o
   const relay = await forward('127.0.0.1', 0, upstream.address().port);
   const response = await fetch(`http://127.0.0.1:${relay.port}/`);
   assert.equal(await response.text(), `127.0.0.1:${relay.port} ${body}`);
-  // A browser's idle connection (this one is kept alive) does not keep typedpress dev from stopping.
+  // A browser's idle connection (this one is kept alive) does not keep spacepress dev from stopping.
   await relay.close();
   await assert.rejects(fetch(`http://127.0.0.1:${relay.port}/`));
   // An address that is not this machine's is refused with the address in the message.
@@ -433,7 +433,7 @@ test('--host passes connections to the loopback listener untouched and lets go o
 });
 
 test('Vite is put where the browser that opens the site can reach it, or not used', async () => {
-  const vite = { host: 'localhost', listen: false, port: 5199, ping: '/__tp_vite/@typedpress/ping', token: 'tok' };
+  const vite = { host: 'localhost', listen: false, port: 5199, ping: '/__sp_vite/@spacepress/ping', token: 'tok' };
   const local = 'http://localhost:8787';
   const asked = [];
   const answers = (body, ok = true) => async (url) => { asked.push(url); return { ok, text: async () => body }; };
@@ -441,10 +441,10 @@ test('Vite is put where the browser that opens the site can reach it, or not use
   // Opened on this machine: Vite's own address, and nothing is asked of the site.
   assert.equal(await viteAddress({ ...vite, site: local, local, fetcher: unreachable }), 'http://localhost:5199');
   assert.deepEqual(asked, []);
-  // A proxy that passes /__tp_vite/ on: the site's own address, http or https.
+  // A proxy that passes /__sp_vite/ on: the site's own address, http or https.
   for (const site of ['https://box.example.ts.net:8443', 'http://box.example.ts.net:8080']) {
     assert.equal(await viteAddress({ ...vite, site, local, fetcher: answers('tok\n') }), '');
-    assert.equal(asked.at(-1), `${site}/__tp_vite/@typedpress/ping`);
+    assert.equal(asked.at(-1), `${site}/__sp_vite/@spacepress/ping`);
   }
   // A proxy that passes only WordPress on answers the ping with a page, a 404, or not at all:
   // an https page may not load Vite over http, and another machine cannot reach localhost.
@@ -463,57 +463,57 @@ test('Vite is put where the browser that opens the site can reach it, or not use
 
 test('each built launcher of a served entry is replaced, and a stylesheet entry is left as built', () => {
   const entries = {
-    main: { source: 'browser/index.ts', scripts: ['/typedpress-assets/entrypoints/main-abc.js'], links: ['/typedpress-assets/assets/main-abc.css'] },
-    style: { source: 'browser/site.css', scripts: [], links: ['/typedpress-assets/assets/style-def.css'] },
+    main: { source: 'browser/index.ts', scripts: ['/spacepress-assets/entrypoints/main-abc.js'], links: ['/spacepress-assets/assets/main-abc.css'] },
+    style: { source: 'browser/site.css', scripts: [], links: ['/spacepress-assets/assets/style-def.css'] },
   };
-  assert.deepEqual(launcherMap(entries, { main: '/__tp_vite/@typedpress/main.js' }), {
-    '/typedpress-assets/entrypoints/main-abc.js': '/__tp_vite/@typedpress/main.js',
+  assert.deepEqual(launcherMap(entries, { main: '/__sp_vite/@spacepress/main.js' }), {
+    '/spacepress-assets/entrypoints/main-abc.js': '/__sp_vite/@spacepress/main.js',
   });
   // The filter only touches the app's own script modules on this site, and resolves a path against the site.
-  assert.match(FRONTEND_PLUGIN, /str_starts_with\(\$id, 'typedpress-app-script-'\)/);
+  assert.match(FRONTEND_PLUGIN, /str_starts_with\(\$id, 'spacepress-app-script-'\)/);
   assert.match(FRONTEND_PLUGIN, /str_starts_with\(\$vite, '\/'\) \? home_url\(\$vite\) : \$vite/);
   const lint = execFileSync('php', ['-l'], { input: FRONTEND_PLUGIN, encoding: 'utf8' });
   assert.match(lint, /No syntax errors/);
 });
 
 test('a rebuild copies only the plugins whose files changed', async (t) => {
-  const project = await mkdtemp(join(tmpdir(), 'typedpress-dev-prints-'));
+  const project = await mkdtemp(join(tmpdir(), 'spacepress-dev-prints-'));
   t.after(() => rm(project, { recursive: true, force: true }));
   const managed = await ownedState(project, true);
   const plugins = join(managed.owner.site, 'wp-content/plugins');
   await mkdir(plugins, { recursive: true });
   const content = join(project, 'artifact');
   const manifest = {
-    app: 'test', plugins: { 'typedpress-app-test': '0.3', 'typedpress-runtime': '0.3', 'action-scheduler': '4.2.0' },
+    app: 'test', plugins: { 'spacepress-app-test': '0.3', 'spacepress-runtime': '0.3', 'action-scheduler': '4.2.0' },
     dependencies: [{ slug: 'action-scheduler', treeSha256: 'tree-1' }], locales: null,
   };
   for (const slug of Object.keys(manifest.plugins)) {
     await mkdir(join(content, 'plugins', slug), { recursive: true });
     await writeFile(join(content, 'plugins', slug, `${slug}.php`), 'first');
   }
-  await writeFile(join(content, 'plugins/typedpress-app-test.zip'), 'app zip 1');
-  await writeFile(join(content, 'plugins/typedpress-runtime.zip'), 'runtime zip 1');
-  await writeFile(join(content, 'typedpress-manifest.json'), JSON.stringify(manifest));
+  await writeFile(join(content, 'plugins/spacepress-app-test.zip'), 'app zip 1');
+  await writeFile(join(content, 'plugins/spacepress-runtime.zip'), 'runtime zip 1');
+  await writeFile(join(content, 'spacepress-manifest.json'), JSON.stringify(manifest));
   // The print is the build's ZIP, a dependency's pinned tree hash, else the version.
   const first = await pluginPrints(content, manifest);
   assert.equal(first['action-scheduler'], 'tree-1');
-  assert.match(first['typedpress-app-test'], /^[0-9a-f]{64}$/);
+  assert.match(first['spacepress-app-test'], /^[0-9a-f]{64}$/);
   await publishPlugins(content, managed);
 
   // A page edit: the app plugin's files and ZIP change, nothing else does.
   for (const slug of Object.keys(manifest.plugins)) await writeFile(join(content, 'plugins', slug, `${slug}.php`), 'second');
-  await writeFile(join(content, 'plugins/typedpress-app-test.zip'), 'app zip 2');
+  await writeFile(join(content, 'plugins/spacepress-app-test.zip'), 'app zip 2');
   const second = await pluginPrints(content, manifest);
-  assert.deepEqual(Object.keys(second).filter((slug) => second[slug] !== first[slug]), ['typedpress-app-test']);
+  assert.deepEqual(Object.keys(second).filter((slug) => second[slug] !== first[slug]), ['spacepress-app-test']);
   await publishPlugins(content, managed, (slug) => second[slug] !== first[slug]);
   const published = (slug) => readFile(join(plugins, slug, `${slug}.php`), 'utf8');
-  assert.equal(await published('typedpress-app-test'), 'second');
-  assert.equal(await published('typedpress-runtime'), 'first');
+  assert.equal(await published('spacepress-app-test'), 'second');
+  assert.equal(await published('spacepress-runtime'), 'first');
   assert.equal(await published('action-scheduler'), 'first');
   // A plugin the site lost is copied again even when its print did not change.
-  await rm(join(plugins, 'typedpress-runtime'), { recursive: true });
+  await rm(join(plugins, 'spacepress-runtime'), { recursive: true });
   await publishPlugins(content, managed, () => false);
-  assert.equal(await published('typedpress-runtime'), 'second');
+  assert.equal(await published('spacepress-runtime'), 'second');
 });
 
 test('the reload signal names a session and its builds, carries the build error, and is cleared on stop', async () => {
@@ -525,7 +525,7 @@ test('the reload signal names a session and its builds, carries the build error,
   await live.updated(true);
   assert.deepEqual(published.at(-1), { session, revision: 1, diagnostics: [] });
   // A failed build keeps the revision: the page stays, with the error over it.
-  const diagnostics = [{ code: 'F1001', message: 'Unexpected token', location: { file: 'tp/app/page.tsx', line: 1, column: 44 } }];
+  const diagnostics = [{ code: 'F1001', message: 'Unexpected token', location: { file: 'sp/app/page.tsx', line: 1, column: 44 } }];
   await live.failed(Object.assign(new Error('build failed'), { diagnostics }));
   assert.deepEqual(published.at(-1), { session, revision: 1, diagnostics });
   // An error that is no compiler diagnostic (a refused migration) is shown by its message.
@@ -544,7 +544,7 @@ test('the reload signal names a session and its builds, carries the build error,
 
 test('--detach reports a failed first build on standard error and exits 1', () => {
   const summary = '\nWebsite:   http://localhost:8787/';
-  const log = '/work/app/.tp/dev/dev.log';
+  const log = '/work/app/.sp/dev/dev.log';
   assert.deepEqual(detachedReport({ summary, failed: null }, 41822, log), {
     out: `${summary}\nRunning in the background (pid 41822), rebuilding on save.\nLog:  ${log}`, error: '', code: 0,
   });
@@ -552,19 +552,19 @@ test('--detach reports a failed first build on standard error and exits 1', () =
   assert.equal(failed.code, 1);
   // The site's address and the log are still printed: the process is running.
   assert.equal(failed.out, `${summary}\nRunning in the background (pid 41822), rebuilding on save.\nLog:  ${log}`);
-  assert.match(failed.error, /^typedpress dev: the first build failed, so the site does not serve this source yet:\nFailed \(1\): build\nerror\[F1001\]: Unexpected token\nWordPress is running in the background \(pid 41822\)\./);
-  assert.match(failed.error, /typedpress dev status --json reports the error/);
+  assert.match(failed.error, /^spacepress dev: the first build failed, so the site does not serve this source yet:\nFailed \(1\): build\nerror\[F1001\]: Unexpected token\nWordPress is running in the background \(pid 41822\)\./);
+  assert.match(failed.error, /spacepress dev status --json reports the error/);
 });
 
 test('the dev plugin adds the reload client only while dev watches, and never to a page rendered to be kept', async (t) => {
-  const root = await mkdtemp(join(tmpdir(), 'typedpress-dev-plugin-'));
+  const root = await mkdtemp(join(tmpdir(), 'spacepress-dev-plugin-'));
   t.after(() => rm(root, { recursive: true, force: true }));
-  await mkdir(join(root, 'typedpress-dev'));
-  await writeFile(join(root, 'typedpress-dev-runtime.php'), DEV_PLUGIN);
+  await mkdir(join(root, 'spacepress-dev'));
+  await writeFile(join(root, 'spacepress-dev-runtime.php'), DEV_PLUGIN);
   await writeFile(join(root, 'page.html'), '<html><body><h1>Public file</h1></body></html>');
   // WordPress as far as the plugin uses it: hooks are recorded, and the public file's answer is replayed.
   await writeFile(join(root, 'run.php'), `<?php
-namespace TypedPress\\Wp {
+namespace SpacePress\\Wp {
     final class Plugin {
         public string $dir = '/app';
         public object $schema;
@@ -572,7 +572,7 @@ namespace TypedPress\\Wp {
         public static function instance(): self { return new self(); }
     }
     final class PublicFiles {
-        public static function fallbackFile(Plugin $plugin): ?string { return getenv('TP_TEST_FILE') ?: null; }
+        public static function fallbackFile(Plugin $plugin): ?string { return getenv('SP_TEST_FILE') ?: null; }
     }
 }
 namespace {
@@ -585,54 +585,54 @@ namespace {
     function doing_filter(string $hook): bool { return $hook === 'do_parse_request'; }
     function wp_enqueue_script(string $handle, string $src): void { $GLOBALS['enqueued'] = $src; }
     foreach (['PRERENDER', 'EXPORT'] as $name) {
-        if (getenv('TP_TEST_' . $name) !== false) $_SERVER['HTTP_X_TYPEDPRESS_' . $name] = getenv('TP_TEST_' . $name);
+        if (getenv('SP_TEST_' . $name) !== false) $_SERVER['HTTP_X_SPACEPRESS_' . $name] = getenv('SP_TEST_' . $name);
     }
-    $_SERVER['REQUEST_METHOD'] = getenv('TP_TEST_METHOD') ?: 'GET';
-    require __DIR__ . '/typedpress-dev-runtime.php';
+    $_SERVER['REQUEST_METHOD'] = getenv('SP_TEST_METHOD') ?: 'GET';
+    require __DIR__ . '/spacepress-dev-runtime.php';
     $names = array_keys($GLOBALS['hooks']);
     sort($names);
     if (isset($GLOBALS['hooks']['wp_enqueue_scripts'])) ($GLOBALS['hooks']['wp_enqueue_scripts'])();
-    fwrite(STDERR, json_encode(['hooks' => $names, 'enqueued' => $GLOBALS['enqueued'] ?? null, 'http' => TP_IDENTITY_DEV_HTTP]));
+    fwrite(STDERR, json_encode(['hooks' => $names, 'enqueued' => $GLOBALS['enqueued'] ?? null, 'http' => SP_IDENTITY_DEV_HTTP]));
     if (isset($GLOBALS['hooks']['status_header'])) {
         // PublicFiles::emit: every buffer dropped, the status, then the file.
         while (ob_get_level() > 0) ob_end_clean();
-        ($GLOBALS['hooks']['status_header'])('HTTP/1.1 ' . getenv('TP_TEST_STATUS') . ' OK', (int) getenv('TP_TEST_STATUS'));
+        ($GLOBALS['hooks']['status_header'])('HTTP/1.1 ' . getenv('SP_TEST_STATUS') . ' OK', (int) getenv('SP_TEST_STATUS'));
         readfile(__DIR__ . '/page.html');
     }
 }
 `);
   const run = (env = {}) => {
-    const child = spawnSync('php', [join(root, 'run.php')], { encoding: 'utf8', env: { ...process.env, TP_TEST_STATUS: '200', ...env } });
+    const child = spawnSync('php', [join(root, 'run.php')], { encoding: 'utf8', env: { ...process.env, SP_TEST_STATUS: '200', ...env } });
     assert.equal(child.status, 0, child.stderr + child.stdout);
     return { ...JSON.parse(child.stderr), body: child.stdout };
   };
   const quiet = { hooks: [], enqueued: null, http: true, body: '' };
   // Not watching: no live.json, or the one a stop or --no-watch leaves.
   assert.deepEqual(run(), quiet);
-  await writeFile(join(root, 'typedpress-dev/live.json'), 'null\n');
+  await writeFile(join(root, 'spacepress-dev/live.json'), 'null\n');
   assert.deepEqual(run(), quiet);
   // Watching.
-  await writeFile(join(root, 'typedpress-dev/live.json'), JSON.stringify({ session: 'abc', revision: 7, diagnostics: [] }));
-  const client = 'https://box.example.ts.net:8443/wp-content/mu-plugins/typedpress-dev/live-client.js?build=abc.7';
+  await writeFile(join(root, 'spacepress-dev/live.json'), JSON.stringify({ session: 'abc', revision: 7, diagnostics: [] }));
+  const client = 'https://box.example.ts.net:8443/wp-content/mu-plugins/spacepress-dev/live-client.js?build=abc.7';
   const watching = run();
-  assert.deepEqual(watching.hooks, ['admin_enqueue_scripts', 'login_enqueue_scripts', 'status_header', 'tp_admin_init', 'tp_prebuilt_serve', 'wp_enqueue_scripts']);
+  assert.deepEqual(watching.hooks, ['admin_enqueue_scripts', 'login_enqueue_scripts', 'sp_admin_init', 'sp_prebuilt_serve', 'status_header', 'wp_enqueue_scripts']);
   // The client comes from the site's own address, whatever --url made it.
   assert.equal(watching.enqueued, client);
   // A 200 that is no file from public/ passes through untouched.
   assert.equal(watching.body, '<html><body><h1>Public file</h1></body></html>');
   // A prerender or an export request renders the page as a build stores it.
-  assert.deepEqual(run({ TP_TEST_PRERENDER: '1790000000.' + 'a'.repeat(64) }), quiet);
-  assert.deepEqual(run({ TP_TEST_EXPORT: '1' }), quiet);
+  assert.deepEqual(run({ SP_TEST_PRERENDER: '1790000000.' + 'a'.repeat(64) }), quiet);
+  assert.deepEqual(run({ SP_TEST_EXPORT: '1' }), quiet);
   // The answer to a form submission (wp-login.php after a failed login): a reload would send it
   // again, so neither the enqueue hooks nor the public/ HTML filter are added.
-  assert.deepEqual(run({ TP_TEST_METHOD: 'POST' }), { ...quiet, hooks: ['tp_prebuilt_serve'] });
+  assert.deepEqual(run({ SP_TEST_METHOD: 'POST' }), { ...quiet, hooks: ['sp_prebuilt_serve'] });
   // public/index.html: the answer carries the client; the file is read, never written.
   const page = join(root, 'page.html');
-  assert.equal(run({ TP_TEST_FILE: page }).body, `<html><body><h1>Public file</h1><script src="${client}" defer></script></body></html>`);
+  assert.equal(run({ SP_TEST_FILE: page }).body, `<html><body><h1>Public file</h1><script src="${client}" defer></script></body></html>`);
   assert.equal(await readFile(page, 'utf8'), '<html><body><h1>Public file</h1></body></html>');
   // Not a 304, and not a file that is no HTML document.
-  assert.equal(run({ TP_TEST_FILE: page, TP_TEST_STATUS: '304' }).body, '<html><body><h1>Public file</h1></body></html>');
-  assert.equal(run({ TP_TEST_FILE: join(root, 'data.json') }).body, '<html><body><h1>Public file</h1></body></html>');
+  assert.equal(run({ SP_TEST_FILE: page, SP_TEST_STATUS: '304' }).body, '<html><body><h1>Public file</h1></body></html>');
+  assert.equal(run({ SP_TEST_FILE: join(root, 'data.json') }).body, '<html><body><h1>Public file</h1></body></html>');
 });
 
 test('a reload the page cancels leaves the reload client polling', async () => {
@@ -645,7 +645,7 @@ test('a reload the page cancels leaves the reload client polling', async () => {
   runInNewContext(source, {
     window, URL,
     document: {
-      hidden: false, currentScript: { src: 'http://localhost:8881/wp-content/mu-plugins/typedpress-dev/live-client.js?build=abc.1' },
+      hidden: false, currentScript: { src: 'http://localhost:8881/wp-content/mu-plugins/spacepress-dev/live-client.js?build=abc.1' },
       addEventListener() {},
     },
     location: { origin: 'http://localhost:8881', reload() { reloads += 1; } },
@@ -667,10 +667,10 @@ test('a reload the page cancels leaves the reload client polling', async () => {
 });
 
 test('migrationHistory hashes folder-based ops.json and migration.sql entries in lexicographic order', async (t) => {
-  const project = await mkdtemp(join(tmpdir(), 'typedpress-dev-migrations-'));
+  const project = await mkdtemp(join(tmpdir(), 'spacepress-dev-migrations-'));
   t.after(() => rm(project, { recursive: true, force: true }));
   assert.deepEqual(await migrationHistory(project), {});
-  const dir = join(project, 'tp/_generated/migrations');
+  const dir = join(project, 'sp/_generated/migrations');
   await mkdir(join(dir, '20261121120000_000001_init'), { recursive: true });
   await mkdir(join(dir, '20261121120100_000002_add_col'), { recursive: true });
   await writeFile(join(dir, '20261121120000_000001_init/ops.json'), '{"version":1,"ops":[]}\n');

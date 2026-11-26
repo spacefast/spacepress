@@ -1,6 +1,6 @@
-import { Page } from '@typedpress-admin/admin-toolkit';
-import { useViewConfig } from '@typedpress-admin/views';
-import { useFieldCollections } from '@typedpress-admin/core-data-next';
+import { Page } from '@spacepress-admin/admin-toolkit';
+import { useViewConfig } from '@spacepress-admin/views';
+import { useFieldCollections } from '@spacepress-admin/core-data-next';
 import { Button } from '@wordpress/ui';
 import { __ } from '@wordpress/i18n';
 import { useSelect } from '@wordpress/data';
@@ -12,10 +12,10 @@ import {
 } from '@wordpress/components';
 import { useNavigate } from '@wordpress/route';
 import { useEffect, useMemo } from '@wordpress/element';
-import { DataForm, useFormValidity } from '@typedpress-admin/dataviews';
-import type { Field, Form } from '@typedpress-admin/dataviews';
+import { DataForm, useFormValidity } from '@spacepress-admin/dataviews';
+import type { Field, Form } from '@spacepress-admin/dataviews';
 import type { User } from '@wordpress/core-data';
-import { useTrack } from '@typedpress-admin/telemetry';
+import { useTrack } from '@spacepress-admin/telemetry';
 import { useAddUserForm } from '../user/hooks';
 import { isInInviteMode } from '../user/utils';
 import type { UserViewConfigData } from '../user/types';
@@ -110,13 +110,13 @@ function Content() {
 				<Page.Breadcrumbs
 					items={ [
 						{
-							label: __( 'Users', 'typedpress-admin' ),
+							label: __( 'Users', 'spacepress-admin' ),
 							to: '/users/list/all',
 						},
 						{
 							label: isInviteModeEnabled
-								? __( 'Invite user', 'typedpress-admin' )
-								: __( 'Add user', 'typedpress-admin' ),
+								? __( 'Invite user', 'spacepress-admin' )
+								: __( 'Add user', 'spacepress-admin' ),
 						},
 					] }
 				/>
@@ -166,7 +166,7 @@ function Content() {
 				<div>
 					{ __(
 						'Sorry, you are not allowed to create users.',
-						'typedpress-admin'
+						'spacepress-admin'
 					) }
 				</div>
 			) }

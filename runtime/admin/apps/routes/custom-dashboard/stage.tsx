@@ -4,16 +4,16 @@ import { useDispatch, useSelect } from '@wordpress/data';
 import { __ } from '@wordpress/i18n';
 import { store as preferencesStore } from '@wordpress/preferences';
 import { useParams } from '@wordpress/route';
-import { Page, RouterLink } from '@typedpress-admin/admin-toolkit';
+import { Page, RouterLink } from '@spacepress-admin/admin-toolkit';
 import {
-	store as tpAdminStore,
+	store as spAdminStore,
 	type StoreSelectors,
-} from '@typedpress-admin/boot';
+} from '@spacepress-admin/boot';
 import {
 	Dashboard,
 	type DashboardWidget,
-} from '@typedpress-admin/dashboard';
-import { useSpacePressWidgetTypes } from '@typedpress-admin/widgets';
+} from '@spacepress-admin/dashboard';
+import { useSpacePressWidgetTypes } from '@spacepress-admin/widgets';
 
 export default function CustomDashboardStage() {
 	const { id } = useParams( { from: '/dashboards/$id' } ) as { id: string };
@@ -21,7 +21,7 @@ export default function CustomDashboardStage() {
 
 	const { registeredWidgetTypes, dashboardContext } = useSelect(
 		( select ) => {
-			const selectors = select( tpAdminStore ) as StoreSelectors;
+			const selectors = select( spAdminStore ) as StoreSelectors;
 			return {
 				registeredWidgetTypes: selectors.getDashboardWidgetTypes(),
 				dashboardContext: selectors.getDashboardContext(),
@@ -35,7 +35,7 @@ export default function CustomDashboardStage() {
 		[ dashboardContext, id ]
 	);
 
-	const prefKey = `tpDashboardLayout:${ id }`;
+	const prefKey = `spDashboardLayout:${ id }`;
 	const storedLayout = useSelect(
 		( select ) =>
 			select( preferencesStore ).get( 'core/admin', prefKey ) as
@@ -72,16 +72,16 @@ export default function CustomDashboardStage() {
 
 	if ( ! dashboard ) {
 		return (
-			<Page title={ __( 'Dashboard not found', 'typedpress-admin' ) }>
+			<Page title={ __( 'Dashboard not found', 'spacepress-admin' ) }>
 				<Notice status="warning" isDismissible={ false }>
 					{ __(
 						'This dashboard is unavailable or you do not have permission to view it.',
-						'typedpress-admin'
+						'spacepress-admin'
 					) }
 				</Notice>
 				<p>
 					<RouterLink to="/">
-						{ __( 'Back to Home', 'typedpress-admin' ) }
+						{ __( 'Back to Home', 'spacepress-admin' ) }
 					</RouterLink>
 				</p>
 			</Page>
@@ -103,7 +103,7 @@ export default function CustomDashboardStage() {
 					<>
 						<Dashboard.Actions />
 						<Button variant="tertiary" size="compact" onClick={ onReset }>
-							{ __( 'Restore defaults', 'typedpress-admin' ) }
+							{ __( 'Restore defaults', 'spacepress-admin' ) }
 						</Button>
 					</>
 				}

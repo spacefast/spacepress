@@ -1,6 +1,6 @@
 import { ToggleControl } from '@wordpress/components';
 import type { User } from '@wordpress/core-data';
-import type { Field } from '@typedpress-admin/dataviews';
+import type { Field } from '@spacepress-admin/dataviews';
 
 export const fieldExtensions: Partial< Field< User > > = {
 	getValue: ( { item } ) => ! item.syntax_highlighting,

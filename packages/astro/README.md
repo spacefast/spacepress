@@ -1,4 +1,4 @@
-# `@typedpress/astro`
+# `@spacepress/astro`
 
 Use a **SpacePress** (`spacepress.dev`) WordPress backend as the content source for an **Astro 7+** site — with build-time and live Content Layer loaders, automatic cache tags, signed webhook invalidation, and EmDash integration.
 
@@ -10,31 +10,31 @@ Use a **SpacePress** (`spacepress.dev`) WordPress backend as the content source 
 ## Installation
 
 ```bash
-npm install @typedpress/astro
+npm install @spacepress/astro
 ```
 
 ## Configuration
 
 Set environment variables (or pass options directly to each loader):
 
-- `TP_URL` — your SpacePress site URL (e.g. `https://cms.example.com`)
-- `TP_APP_PASSWORD` — optional `user:application-password` for Basic auth (needed for drafts/private kinds)
-- `TP_TOKEN` — optional SpacePress Identity bearer token
-- `TP_WEBHOOK_SECRET` — shared secret matching `webhooks[].secret` in `typedpress.config.ts`
+- `SP_URL` — your SpacePress site URL (e.g. `https://cms.example.com`)
+- `SP_APP_PASSWORD` — optional `user:application-password` for Basic auth (needed for drafts/private kinds)
+- `SP_TOKEN` — optional SpacePress Identity bearer token
+- `SP_WEBHOOK_SECRET` — shared secret matching `webhooks[].secret` in `spacepress.config.ts`
 
-In your SpacePress project's `typedpress.config.ts`, set `frontend: "https://your-astro-site.com"` so WordPress permalinks, previews, and feeds point to your Astro site.
+In your SpacePress project's `spacepress.config.ts`, set `frontend: "https://your-astro-site.com"` so WordPress permalinks, previews, and feeds point to your Astro site.
 
 ## Build-Time & Live Content Collections
 
 ```ts
 // src/content.config.ts
 import { defineCollection } from "astro:content";
-import { tpLoader, tpLiveLoader } from "@typedpress/astro";
+import { spLoader, spLiveLoader } from "@spacepress/astro";
 
 export const collections = {
   // Fetched at build time with media & relation expansion
   docs: defineCollection({
-    loader: tpLoader("docs", {
+    loader: spLoader("docs", {
       where: { status: "published" },
       with: { parent: true },
     }),
@@ -42,7 +42,7 @@ export const collections = {
 
   // Fetched live per request; returns cacheHint.tags (<kind>, <kind>:<id>)
   posts: defineCollection({
-    loader: tpLiveLoader("posts", {
+    loader: spLiveLoader("posts", {
       rendered: "entries",
       with: { cover: true },
     }),
@@ -52,13 +52,13 @@ export const collections = {
 
 ## Signed Webhook Cache Invalidation
 
-Mount `tpWebhook()` as an Astro endpoint to verify `TypedPress-Signature` HMAC-SHA256 headers (with 5-minute replay tolerance) and purge matching cache tags (`<collection>` and `<collection>:<id>`):
+Mount `spWebhook()` as an Astro endpoint to verify `SpacePress-Signature` HMAC-SHA256 headers (with 5-minute replay tolerance) and purge matching cache tags (`<collection>` and `<collection>:<id>`):
 
 ```ts
-// src/pages/api/tp-webhook.ts
-import { tpWebhook } from "@typedpress/astro";
+// src/pages/api/sp-webhook.ts
+import { spWebhook } from "@spacepress/astro";
 
-export const POST = tpWebhook({
+export const POST = spWebhook({
   onEvent: async ({ tags, event }) => {
     console.log("Invalidated tags:", tags, event.event);
   },
@@ -69,8 +69,8 @@ export const POST = tpWebhook({
 
 - `connect(options)` — shared low-level HTTP client (`request`, `describe`)
 - `verifySignature(secret, header, body)` & `eventTags(event)` — manual webhook verification helpers
-- `TypedPressError` — structured API error class (`status`, `code`, `detail`, `pointer`)
-- `@typedpress/astro/emdash` — integration adapter for running EmDash templates against a SpacePress backend
+- `SpacePressError` — structured API error class (`status`, `code`, `detail`, `pointer`)
+- `@spacepress/astro/emdash` — integration adapter for running EmDash templates against a SpacePress backend
 
 ## License
 

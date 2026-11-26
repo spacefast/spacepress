@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Webauthn\CeremonyStep;
+namespace SpacePress\Identity\Vendor\Webauthn\CeremonyStep;
 
 interface TopOriginValidator
 {

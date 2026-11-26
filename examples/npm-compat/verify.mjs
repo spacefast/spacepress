@@ -14,10 +14,10 @@ const { values: options } = parseArgs({ options: {
   isolated: { type: "boolean", default: false },
   only: { type: "string", multiple: true },
 } });
-const work = options.isolated ? await mkdtemp(path.join(tmpdir(), "typedpress-framework-compiler-npm-")) : path.join(root, ".work");
+const work = options.isolated ? await mkdtemp(path.join(tmpdir(), "spacepress-framework-compiler-npm-")) : path.join(root, ".work");
 const modules = path.resolve(process.env.NPM_COMPAT_NODE_MODULES ?? path.join(root, "node_modules"));
-const compiler = path.resolve(process.env.TP_BIN ?? path.resolve(root, "../../target/debug/typedpress"));
-const first = path.join(work, process.platform === "win32" ? "typedpress.exe" : "first");
+const compiler = path.resolve(process.env.SP_BIN ?? path.resolve(root, "../../target/debug/spacepress"));
+const first = path.join(work, process.platform === "win32" ? "spacepress.exe" : "first");
 const run = (command, args) => {
   const result = spawnSync(command, args, {
     cwd: root,
@@ -61,8 +61,8 @@ function typedSource(probe, source) {
 const importLine = (entry, specifier) =>
   `import ${entry.named ? "{" + entry.binding + "}" : entry.binding} from ${JSON.stringify(specifier)};`;
 // Each case builds this app and runs only its action in PHP: no admin plugin to write and zip.
-const config = `import {defineConfig, query} from "typedpress";
-import {run} from "./tp/run";
+const config = `import {defineConfig, query} from "spacepress";
+import {run} from "./sp/run";
 export const probe = query({ access: "anyone" }, () => run());
 export default defineConfig({name: "npm-compat", admin: false});
 `;
@@ -118,11 +118,11 @@ for (const probe of selected) {
     ...(libraries.some((entry) => entry.typedAdapter) ? ["typed-source", "typed-installed"] : []),
   ]) {
     const directory = path.join(oracleDirectory, mode);
-    // App code the config imports lives under tp/ (#229); copied library sources sit beside it.
-    const app = path.join(directory, "tp");
+    // App code the config imports lives under sp/ (#229); copied library sources sit beside it.
+    const app = path.join(directory, "sp");
     await mkdir(app, { recursive: true });
     if (probe.fixture) await writeFile(path.join(app, "fixture.mjs"), probe.fixture);
-    await writeFile(path.join(directory, "typedpress.config.ts"), config);
+    await writeFile(path.join(directory, "spacepress.config.ts"), config);
     const imports = [];
     for (const entry of libraries) {
       const source = await readFile(
@@ -139,7 +139,7 @@ for (const probe of selected) {
       let specifier = mode === "bare" ? (entry.specifier ?? entry.name) : "./" + filename;
       if (mode === "typed-installed") {
         const packageName =
-          "@typedpress-npm-compat/" + entry.name.replaceAll("/", "-").replaceAll("@", "");
+          "@spacepress-npm-compat/" + entry.name.replaceAll("/", "-").replaceAll("@", "");
         const packageDirectory = path.join(directory, "node_modules", packageName);
         await mkdir(packageDirectory, { recursive: true });
         await writeFile(
@@ -200,7 +200,7 @@ for (const probe of selected) {
               ? "module-resolution"
               : message.includes("needs a type") || message.startsWith("unknown type")
                 ? "typing"
-                : message.includes("TypedPress code doesn't support")
+                : message.includes("SpacePress code doesn't support")
                   ? "language"
                   : "typing-or-runtime-capability";
     result.routes.push(route);

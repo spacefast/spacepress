@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Webauthn\Util;
+namespace SpacePress\Identity\Vendor\Webauthn\Util;
 
-use TypedPress\Identity\Vendor\Cose\Algorithm\Signature\ECDSA\ECSignature;
-use TypedPress\Identity\Vendor\Cose\Algorithm\Signature\ECDSA\ES256;
-use TypedPress\Identity\Vendor\Cose\Algorithm\Signature\ECDSA\ES256K;
-use TypedPress\Identity\Vendor\Cose\Algorithm\Signature\ECDSA\ES384;
-use TypedPress\Identity\Vendor\Cose\Algorithm\Signature\ECDSA\ES512;
-use TypedPress\Identity\Vendor\Cose\Algorithm\Signature\Signature;
+use SpacePress\Identity\Vendor\Cose\Algorithm\Signature\ECDSA\ECSignature;
+use SpacePress\Identity\Vendor\Cose\Algorithm\Signature\ECDSA\ES256;
+use SpacePress\Identity\Vendor\Cose\Algorithm\Signature\ECDSA\ES256K;
+use SpacePress\Identity\Vendor\Cose\Algorithm\Signature\ECDSA\ES384;
+use SpacePress\Identity\Vendor\Cose\Algorithm\Signature\ECDSA\ES512;
+use SpacePress\Identity\Vendor\Cose\Algorithm\Signature\Signature;
 use function strlen;
 
 /**

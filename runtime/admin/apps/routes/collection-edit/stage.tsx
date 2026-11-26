@@ -1,1 +1,1 @@
-export { PlainDocument as default } from '@typedpress-admin/schema';
+export { PlainDocument as default } from '@spacepress-admin/schema';

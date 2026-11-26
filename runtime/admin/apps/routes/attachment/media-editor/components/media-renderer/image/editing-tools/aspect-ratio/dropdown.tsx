@@ -100,19 +100,19 @@ export default function AspectRatioDropdown( {
 		const name = aspectRatio?.slug
 			? findAspectRatioBySlug( aspectRatio.slug, allRatios )?.name
 			: undefined;
-		setAspectRatioName( name || __( 'Aspect Ratio', 'typedpress-admin' ) );
+		setAspectRatioName( name || __( 'Aspect Ratio', 'spacepress-admin' ) );
 	}, [ aspectRatio?.slug, allRatios ] );
 
 	return (
 		<DropdownMenu
 			icon={ aspectRatioIcon }
-			label={ __( 'Aspect Ratio', 'typedpress-admin' ) }
+			label={ __( 'Aspect Ratio', 'spacepress-admin' ) }
 			popoverProps={ { placement: 'bottom-start' } }
 			text={ displayAspectRatioName ? aspectRatioName : undefined }
 			toggleProps={ {
 				variant: 'tertiary',
 				className:
-					'typedpress-admin-media-editor__aspect-ratio-dropdown-button',
+					'spacepress-admin-media-editor__aspect-ratio-dropdown-button',
 			} }
 		>
 			{ ( { onClose } ) => (
@@ -128,7 +128,7 @@ export default function AspectRatioDropdown( {
 					/>
 					{ themeRatios?.length > 0 && (
 						<AspectRatioGroup
-							label={ __( 'Theme', 'typedpress-admin' ) }
+							label={ __( 'Theme', 'spacepress-admin' ) }
 							onClick={ ( newAspectRatio ) => {
 								onChange( newAspectRatio );
 								onClose();
@@ -140,7 +140,7 @@ export default function AspectRatioDropdown( {
 					) }
 					{ landscapeRatios?.length > 0 && (
 						<AspectRatioGroup
-							label={ __( 'Landscape', 'typedpress-admin' ) }
+							label={ __( 'Landscape', 'spacepress-admin' ) }
 							onClick={ ( newAspectRatio ) => {
 								onChange( newAspectRatio );
 								onClose();
@@ -152,7 +152,7 @@ export default function AspectRatioDropdown( {
 					) }
 					{ portraitRatios?.length > 0 && (
 						<AspectRatioGroup
-							label={ __( 'Portrait', 'typedpress-admin' ) }
+							label={ __( 'Portrait', 'spacepress-admin' ) }
 							onClick={ ( newAspectRatio ) => {
 								onChange( newAspectRatio );
 								onClose();

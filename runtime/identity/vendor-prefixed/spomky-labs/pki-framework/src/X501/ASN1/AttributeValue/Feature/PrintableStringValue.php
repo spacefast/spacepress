@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeValue\Feature;
+namespace SpacePress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeValue\Feature;
 
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\PrintableString;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeValue\AttributeValue;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\DN\DNParser;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\MatchingRule\CaseIgnoreMatch;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\MatchingRule\MatchingRule;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Element;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\PrintableString;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X501\ASN1\AttributeValue\AttributeValue;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X501\DN\DNParser;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X501\MatchingRule\CaseIgnoreMatch;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X501\MatchingRule\MatchingRule;
 
 /**
  * Base class for attribute values having *PrintableString* syntax.

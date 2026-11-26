@@ -2,7 +2,7 @@
 // Accounts, emails, providers, sessions, challenges and the issuer's code + refresh grants.
 declare(strict_types=1);
 require __DIR__ . '/bootstrap.php';
-use TypedPress\Identity\{Plugin, Security, OAuth, Keys};
+use SpacePress\Identity\{Plugin, Security, OAuth, Keys};
 
 $db = Plugin::$db;
 $accounts = Plugin::$accounts;

@@ -15,7 +15,7 @@
 // Each step is a `t.test` subtest when a node:test context is passed, so failures name the step.
 
 import assert from "node:assert/strict";
-import { TypedPressError, type Client, type Media, type Post } from "../wp/app/tp/_generated/client/index.ts";
+import { SpacePressError, type Client, type Media, type Post } from "../wp/app/sp/_generated/client/index.ts";
 
 export type ScenarioRole = "anonymous" | "subscriber" | "author" | "editor" | "admin";
 
@@ -31,15 +31,15 @@ interface Steps {
 
 const PNG_1X1 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 
-/** Runs `fn` and returns the TypedPressError it throws; fails when it resolves or throws anything else. */
-async function rejects(fn: () => Promise<unknown>, expect: { status: number; code: string; pointer?: string }): Promise<TypedPressError> {
+/** Runs `fn` and returns the SpacePressError it throws; fails when it resolves or throws anything else. */
+async function rejects(fn: () => Promise<unknown>, expect: { status: number; code: string; pointer?: string }): Promise<SpacePressError> {
   let thrown: unknown;
   try {
     await fn();
   } catch (e) {
     thrown = e;
   }
-  assert.ok(thrown instanceof TypedPressError, `expected a TypedPressError ${expect.status} ${expect.code}, got ${String(thrown)}`);
+  assert.ok(thrown instanceof SpacePressError, `expected a SpacePressError ${expect.status} ${expect.code}, got ${String(thrown)}`);
   assert.deepEqual(
     { status: thrown.status, code: thrown.code, pointer: thrown.pointer },
     { status: expect.status, code: expect.code, pointer: expect.pointer },
@@ -124,16 +124,16 @@ export async function blogScenario(env: BlogScenarioEnv, t?: Steps): Promise<voi
   });
 
   await step("revisions list, read and restore through the update pipeline", async () => {
-    const p = await author.posts.create({ title: `TypedPress ${run}` });
+    const p = await author.posts.create({ title: `SpacePress ${run}` });
     await author.posts.update(p.id, { title: `Second ${run}` });
     const revs = await author.posts.revisions.list(p.id);
     assert.ok(revs.length >= 2, `expected ≥ 2 revisions, got ${revs.length}`);
     assert.equal(revs[0].user?.id, me.id, "newest first, attributed to the writer");
     const oldest = revs[revs.length - 1];
-    assert.equal((await author.posts.revisions.get(p.id, oldest.id)).title, `TypedPress ${run}`);
+    assert.equal((await author.posts.revisions.get(p.id, oldest.id)).title, `SpacePress ${run}`);
     const restored = await author.posts.revisions.restore(p.id, oldest.id);
-    assert.deepEqual([restored.title, restored.slug], [`TypedPress ${run}`, p.slug], "the slug is the row's, not the revision post's");
-    assert.equal((await author.posts.get(p.id)).title, `TypedPress ${run}`);
+    assert.deepEqual([restored.title, restored.slug], [`SpacePress ${run}`, p.slug], "the slug is the row's, not the revision post's");
+    assert.equal((await author.posts.get(p.id)).title, `SpacePress ${run}`);
     assert.equal((await author.posts.revisions.list(p.id)).length, revs.length + 1, "the restore is itself a revision");
     // Revisions need `update` access; posts' update rule is a filter for non-staff, so a reader
     // outside it gets 404 (existence never leaks, §1.6), not 401/403.

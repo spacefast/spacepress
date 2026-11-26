@@ -1,14 +1,14 @@
 import { useNavigate, useParams } from '@wordpress/route';
-import { Page } from '@typedpress-admin/admin-toolkit';
+import { Page } from '@spacepress-admin/admin-toolkit';
 import { Button } from '@wordpress/ui';
-import { useTaxonomyTermFields } from '@typedpress-admin/fields-next';
-import { useViewConfig } from '@typedpress-admin/views';
+import { useTaxonomyTermFields } from '@spacepress-admin/fields-next';
+import { useViewConfig } from '@spacepress-admin/views';
 import {
 	DataForm,
 	useFormValidity,
 	type Field,
 	type Form,
-} from '@typedpress-admin/dataviews';
+} from '@spacepress-admin/dataviews';
 import type { FormEvent } from 'react';
 import { useCallback, useMemo, useState } from '@wordpress/element';
 import { useSelect, useDispatch } from '@wordpress/data';
@@ -110,7 +110,7 @@ export default function TermAddStage() {
 			createSuccessNotice(
 				sprintf(
 					// translators: %s is the name of the created term.
-					__( '"%s" created successfully.', 'typedpress-admin' ),
+					__( '"%s" created successfully.', 'spacepress-admin' ),
 					createdTerm.name
 				),
 				{
@@ -167,7 +167,7 @@ export default function TermAddStage() {
 		taxonomyObject?.labels?.menu_name || taxonomyObject?.name || taxonomy;
 
 	const addLabel =
-		taxonomyObject?.labels?.add_new_item || __( 'Add New', 'typedpress-admin' );
+		taxonomyObject?.labels?.add_new_item || __( 'Add New', 'spacepress-admin' );
 
 	if ( ! taxonomyObject || isFieldsLoading ) {
 		return null;
@@ -199,7 +199,7 @@ export default function TermAddStage() {
 					} }
 					disabled={ ! canSave }
 				>
-					{ __( 'Save', 'typedpress-admin' ) }
+					{ __( 'Save', 'spacepress-admin' ) }
 				</Button>
 			}
 		>

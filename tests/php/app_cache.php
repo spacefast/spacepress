@@ -3,11 +3,11 @@
 declare(strict_types=1);
 
 /*
- * Cache policy and URL purges for tp/app/ pages over HTTP (tests/app_router.rs
+ * Cache policy and URL purges for sp/app/ pages over HTTP (tests/app_router.rs
  * `app_pages_cache_and_purge_by_what_they_read`): the app-router fixture with a must-use plugin
- * standing in for the host, recording each `tp_purge_urls` announcement. Prints JSON.
+ * standing in for the host, recording each `sp_purge_urls` announcement. Prints JSON.
  *
- *   TP_WP_THEMES=1 php tests/php/app_cache.php <wp-content dir>
+ *   SP_WP_THEMES=1 php tests/php/app_cache.php <wp-content dir>
  */
 
 require __DIR__ . '/wp.php';
@@ -15,17 +15,17 @@ require __DIR__ . '/wp.php';
 $site = wpSite('app-cache', ['wpContent' => $argv[1], 'identity' => true, 'users' => ['chief' => 'editor'], 'muPlugins' => [
     'host' => <<<'PHP'
         <?php
-        add_action('tp_purge_urls', static function (array $paths): void {
+        add_action('sp_purge_urls', static function (array $paths): void {
             $seen = get_option('test_purges', []);
             $seen[] = $paths;
             update_option('test_purges', $seen, false);
         });
         PHP,
-    // Stand-ins for the page caches TypedPress purges by itself: Batcache's and VIP's purge functions,
+    // Stand-ins for the page caches SpacePress purges by itself: Batcache's and VIP's purge functions,
     // and Jetpack Boost's public action. Each records the URLs it was asked to clear.
     'page-caches' => <<<'PHP'
         <?php
-        function tp_test_cleared(string $cache, string $url): void
+        function sp_test_cleared(string $cache, string $url): void
         {
             $seen = get_option('test_cleared', []);
             $seen[] = "$cache $url";
@@ -33,7 +33,7 @@ $site = wpSite('app-cache', ['wpContent' => $argv[1], 'identity' => true, 'users
         }
         // Batcache counts only while its drop-in runs: that is what sets $batcache.
         $GLOBALS['batcache'] = new stdClass();
-        function batcache_clear_url($url) { tp_test_cleared('batcache', $url); }
+        function batcache_clear_url($url) { sp_test_cleared('batcache', $url); }
         // Batcache's opt-out, marked on the response so a test sees which answers it would drop.
         function batcache_cancel(): void
         {
@@ -48,21 +48,21 @@ $site = wpSite('app-cache', ['wpContent' => $argv[1], 'identity' => true, 'users
                 setcookie('test_cookie', '1');
             }
         });
-        function wpvip_purge_edge_cache_for_url($url) { tp_test_cleared('vip', $url); }
-        function wpvip_purge_edge_cache_for_site() { tp_test_cleared('vip', '*'); }
-        add_action('jetpack_boost_clear_page_cache_url', static fn ($url) => tp_test_cleared('boost', $url));
-        add_action('jetpack_boost_clear_page_cache_home', static fn () => tp_test_cleared('boost', 'home'));
+        function wpvip_purge_edge_cache_for_url($url) { sp_test_cleared('vip', $url); }
+        function wpvip_purge_edge_cache_for_site() { sp_test_cleared('vip', '*'); }
+        add_action('jetpack_boost_clear_page_cache_url', static fn ($url) => sp_test_cleared('boost', $url));
+        add_action('jetpack_boost_clear_page_cache_home', static fn () => sp_test_cleared('boost', 'home'));
         // The WP Cloud platform's edge purge actions, as an Atomic site registers them.
         add_action('edge_cache_purge_uris', static function (array $urls): void {
-            tp_test_cleared('edge', implode(' ', $urls));
+            sp_test_cleared('edge', implode(' ', $urls));
         });
-        add_action('edge_cache_purge_domain', static fn () => tp_test_cleared('edge', '*'));
+        add_action('edge_cache_purge_domain', static fn () => sp_test_cleared('edge', '*'));
         PHP,
 ]]);
 wp_set_current_user(1);
-$hello = \TypedPress\db()->insert('notes', ['title' => 'Hello', 'slug' => 'hello', 'status' => 'published'], true)[0];
-$other = \TypedPress\db()->insert('notes', ['title' => 'Other', 'slug' => 'other', 'status' => 'published'], true)[0];
-$third = \TypedPress\db()->insert('notes', ['title' => 'Third', 'slug' => 'third', 'status' => 'published'], true)[0];
+$hello = \SpacePress\db()->insert('notes', ['title' => 'Hello', 'slug' => 'hello', 'status' => 'published'], true)[0];
+$other = \SpacePress\db()->insert('notes', ['title' => 'Other', 'slug' => 'other', 'status' => 'published'], true)[0];
+$third = \SpacePress\db()->insert('notes', ['title' => 'Third', 'slug' => 'third', 'status' => 'published'], true)[0];
 $site->actAs(null);
 $site->startServer();
 $url = $site->url();
@@ -113,30 +113,30 @@ $out = [
     'identity session' => fetch("$url/about/", ['Cookie: zi_session=x']),
     'sets a cookie' => fetch("$url/about/", ['X-Test-Set-Cookie: 1']),
     // Batcache keeps what any request without a WordPress cookie printed, whatever its Cache-Control:
-    // TypedPress's API and Identity's answer for whoever asks, signed in by a header or by the
+    // SpacePress's API and Identity's answer for whoever asks, signed in by a header or by the
     // Identity cookie (which never sets the WordPress user for Identity's own API).
-    'api anonymous' => fetch("$url/wp-json/typedpress/v1/me"),
-    'api app password' => fetch("$url/wp-json/typedpress/v1/me", ['Authorization: Basic ' . base64_encode("chief:$appPassword")]),
-    'identity api' => fetch("$url/?rest_route=/typedpress-identity/v1/account", ['Cookie: zi_session=x']),
+    'api anonymous' => fetch("$url/wp-json/spacepress/v1/me"),
+    'api app password' => fetch("$url/wp-json/spacepress/v1/me", ['Authorization: Basic ' . base64_encode("chief:$appPassword")]),
+    'identity api' => fetch("$url/?rest_route=/spacepress-identity/v1/account", ['Cookie: zi_session=x']),
 ];
 // Every policy Cache::policy() hands out, as Batcache reads it: a shareable page is kept for its
 // window (also a filtered one), anything else for none.
 foreach ([[200, true, false], [200, false, false], [200, true, true], [404, true, false], [500, true, false]] as [$status, $anonymous, $guarded]) {
-    [$header, $shared] = \TypedPress\Render\Cache::policy($status, $anonymous, $guarded);
+    [$header, $shared] = \SpacePress\Render\Cache::policy($status, $anonymous, $guarded);
     $out['batcache'][] = [$status, $anonymous, $guarded, $shared, batcacheWindow($header)];
 }
-add_filter('tp_app_cache_window', static fn () => 60);
-$out['batcache'][] = ['window 60', batcacheWindow(\TypedPress\Render\Cache::policy(200, true, false)[0])];
-remove_all_filters('tp_app_cache_window');
+add_filter('sp_app_cache_window', static fn () => 60);
+$out['batcache'][] = ['window 60', batcacheWindow(\SpacePress\Render\Cache::policy(200, true, false)[0])];
+remove_all_filters('sp_app_cache_window');
 $out['batcache served'] = array_map(static fn (string $key) => batcacheWindow($out[$key]['cache']), ['home' => 'home', 'as editor' => 'as editor', 'missing' => 'missing']);
 // A count reads no rows, but what it answers changes with every write to the kind: the render
 // that counts records the kind as listed, as a list would.
-\TypedPress\Render\Reads::during(static fn () => \TypedPress\db()->count('notes'), $counted);
+\SpacePress\Render\Reads::during(static fn () => \SpacePress\db()->count('notes'), $counted);
 $out['count reads'] = $counted;
 // Dependency IDs keep the order and type of their first appearance across overlapping reads.
-\TypedPress\Render\Reads::during(static function (): void {
+\SpacePress\Render\Reads::during(static function (): void {
     foreach ([[7, '7', '07'], ['7', 8, 7]] as $ids) {
-        \TypedPress\Extensions::read(array_map(static fn ($id) => ['id' => $id], $ids), 'notes', null);
+        \SpacePress\Extensions::read(array_map(static fn ($id) => ['id' => $id], $ids), 'notes', null);
     }
 }, $overlap);
 if ($overlap !== ['notes' => ['ids' => [7, '7', '07', 8], 'listed' => true]]) {
@@ -146,14 +146,14 @@ if ($overlap !== ['notes' => ['ids' => [7, '7', '07', 8], 'listed' => true]]) {
 // its own to a cache that no purge names: answered privately, recorded under no page.
 $out['double slash'] = fetch("$url//notes/other/");
 global $wpdb;
-$out['double slash index'] = $wpdb->get_col("SELECT DISTINCT url FROM {$wpdb->prefix}tp__app_reads WHERE url NOT IN ('/', '/notes/hello/', '/notes/other/', '/notes/third/') ORDER BY url");
-$out['index'] = array_map(static fn ($r) => "{$r['kind']} {$r['item']} {$r['url']}", $wpdb->get_results("SELECT kind, item, url FROM {$wpdb->prefix}tp__app_reads ORDER BY url, kind, item", ARRAY_A));
+$out['double slash index'] = $wpdb->get_col("SELECT DISTINCT url FROM {$wpdb->prefix}sp__app_reads WHERE url NOT IN ('/', '/notes/hello/', '/notes/other/', '/notes/third/') ORDER BY url");
+$out['index'] = array_map(static fn ($r) => "{$r['kind']} {$r['item']} {$r['url']}", $wpdb->get_results("SELECT kind, item, url FROM {$wpdb->prefix}sp__app_reads ORDER BY url, kind, item", ARRAY_A));
 // An edit to one note purges the URLs that read it and the ones that listed notes, nothing else.
-\TypedPress\Wp\Purges::flush(); // what setting the site up wrote outside a transaction goes out first
+\SpacePress\Wp\Purges::flush(); // what setting the site up wrote outside a transaction goes out first
 delete_option('test_purges');
 delete_option('test_cleared');
 wp_set_current_user(1);
-\TypedPress\db()->update('notes', ['title' => 'Hello again'], ['id' => (int) $hello['id']]);
+\SpacePress\db()->update('notes', ['title' => 'Hello again'], ['id' => (int) $hello['id']]);
 wp_cache_delete('test_purges', 'options');
 $out['purged'] = get_option('test_purges', []);
 wp_cache_delete('test_cleared', 'options');
@@ -161,26 +161,26 @@ $out['cleared'] = str_replace($url, '', get_option('test_cleared', []));
 // A twin a page cache kept before its HTML page was ever rendered: fetched alone, then its row
 // changes. The twin is a shared answer too, so its URL is purged with the page's.
 $out['twin only'] = fetch("$url/notes/third.md");
-$out['twin index'] = array_map(static fn ($r) => "{$r['kind']} " . ($r['item'] === (string) $third['id'] ? 'third' : $r['item']) . " {$r['url']}", $wpdb->get_results("SELECT kind, item, url FROM {$wpdb->prefix}tp__app_reads WHERE url LIKE '/notes/third%' ORDER BY url, kind, item", ARRAY_A));
+$out['twin index'] = array_map(static fn ($r) => "{$r['kind']} " . ($r['item'] === (string) $third['id'] ? 'third' : $r['item']) . " {$r['url']}", $wpdb->get_results("SELECT kind, item, url FROM {$wpdb->prefix}sp__app_reads WHERE url LIKE '/notes/third%' ORDER BY url, kind, item", ARRAY_A));
 delete_option('test_purges');
 wp_set_current_user(1);
-\TypedPress\db()->update('notes', ['title' => 'Third again'], ['id' => (int) $third['id']]);
+\SpacePress\db()->update('notes', ['title' => 'Third again'], ['id' => (int) $third['id']]);
 wp_cache_delete('test_purges', 'options');
 $out['twin purged'] = get_option('test_purges', []);
 // A whole-host purge bans the VIP site and reaches Boost's clear-all; Batcache has none.
 delete_option('test_cleared');
-add_action('jetpack_boost_clear_page_cache_all', static fn () => tp_test_cleared('boost', '*'));
-\TypedPress\Wp\PageCaches::purge(['/*']);
+add_action('jetpack_boost_clear_page_cache_all', static fn () => sp_test_cleared('boost', '*'));
+\SpacePress\Wp\PageCaches::purge(['/*']);
 $out['cleared all'] = get_option('test_cleared', []);
 // More paths than VIP queues in one request: one site ban for VIP, each path still for the others.
 delete_option('test_cleared');
-\TypedPress\Wp\PageCaches::purge(array_map(static fn (int $n): string => "/n/$n", range(1, 101)));
+\SpacePress\Wp\PageCaches::purge(array_map(static fn (int $n): string => "/n/$n", range(1, 101)));
 $cleared = get_option('test_cleared', []);
 $out['cleared many'] = [count(array_filter($cleared, static fn ($c) => str_starts_with($c, 'vip '))), in_array('vip *', $cleared, true), count(array_filter($cleared, static fn ($c) => str_starts_with($c, 'batcache ')))];
 // Without the drop-in ($batcache unset), Batcache's manager plugin alone is not a page cache.
 unset($GLOBALS['batcache']);
 delete_option('test_cleared');
-\TypedPress\Wp\PageCaches::purge(['/about']);
+\SpacePress\Wp\PageCaches::purge(['/about']);
 $out['without batcache drop-in'] = str_replace($url, '', get_option('test_cleared', []));
 // Batcache keeps any response to a request without a WordPress cookie, whatever its Cache-Control:
 // a request signed in another way (an application password, a bearer token) cancels it, as soon as

@@ -1,1 +1,1 @@
-<?php return array('name' => 'collection-list', 'dependencies' => array(), 'moduleDependencies' => array('@typedpress-admin/schema'), 'version' => '11f75e754050ade0a0b3');
+<?php return array('name' => 'collection-list', 'dependencies' => array(), 'moduleDependencies' => array('@spacepress-admin/schema'), 'version' => '7f1b746892e6ec266b43');

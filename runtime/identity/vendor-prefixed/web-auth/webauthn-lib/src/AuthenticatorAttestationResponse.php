@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Webauthn;
+namespace SpacePress\Identity\Vendor\Webauthn;
 
-use TypedPress\Identity\Vendor\Webauthn\AttestationStatement\AttestationObject;
+use SpacePress\Identity\Vendor\Webauthn\AttestationStatement\AttestationObject;
 
 /**
  * @see https://www.w3.org/TR/webauthn/#authenticatorattestationresponse

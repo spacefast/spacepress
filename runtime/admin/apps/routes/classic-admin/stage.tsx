@@ -4,8 +4,8 @@ import {
 	privateApis as routePrivateApis,
 } from '@wordpress/route';
 import { useEffect, useRef, useState } from 'react';
-import { unlock } from '@typedpress-admin/admin-toolkit';
-import { siteConfig } from '@typedpress-admin/boot';
+import { unlock } from '@spacepress-admin/admin-toolkit';
+import { siteConfig } from '@spacepress-admin/boot';
 import { isUnderAdmin, resolveAdminUrl, slugOf } from './admin-url';
 
 const { useRouter } = unlock( routePrivateApis );
@@ -121,7 +121,7 @@ function ClassicAdmin() {
 			ref={ iframeRef }
 			src={ iframeUrlState }
 			onLoad={ handleIframeLoad }
-			data-tp-classic-admin=""
+			data-sp-classic-admin=""
 			style={ {
 				width: '100%',
 				height: '100%',

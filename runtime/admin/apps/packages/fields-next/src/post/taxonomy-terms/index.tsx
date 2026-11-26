@@ -10,7 +10,7 @@ function TaxonomyTerms( { termNames }: TaxonomyTermsProps ) {
 		return (
 			<span className="taxonomy-terms-empty">
 				{ /* translators: Em dash displayed when there is no content to show */ }
-				{ __( '—', 'typedpress-admin' ) }
+				{ __( '—', 'spacepress-admin' ) }
 			</span>
 		);
 	}

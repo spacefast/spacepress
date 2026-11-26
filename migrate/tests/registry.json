@@ -158,7 +158,7 @@
     },
     {
       "code": "Z08_ENDPOINT_RESERVED_PATH",
-      "feature": "endpoint path owned by WordPress or TypedPress"
+      "feature": "endpoint path owned by WordPress or SpacePress"
     },
     {
       "code": "Z08_ENDPOINT_PATH",

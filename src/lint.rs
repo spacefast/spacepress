@@ -1,8 +1,8 @@
 //! Compile-time OXC AST lint checks with deterministic auto-fix support.
 //!
-//! Warnings are non-fatal: they are reported during `typedpress check`, `typedpress build`,
+//! Warnings are non-fatal: they are reported during `spacepress check`, `spacepress build`,
 //! and in the browser WASM compiler (`Output.lintWarnings`), and can be auto-fixed via
-//! `typedpress check --fix` or the one-click Auto-fix button in browser sandboxes.
+//! `spacepress check --fix` or the one-click Auto-fix button in browser sandboxes.
 
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{
@@ -69,8 +69,8 @@ fn should_lint(rel: &Path) -> bool {
     let normalized = rel.to_string_lossy().replace('\\', "/");
     if normalized.starts_with("node_modules/")
         || normalized.contains("/node_modules/")
-        || normalized.starts_with("tp/_generated/")
-        || normalized.contains("/tp/_generated/")
+        || normalized.starts_with("sp/_generated/")
+        || normalized.contains("/sp/_generated/")
     {
         return false;
     }
@@ -305,7 +305,7 @@ mod tests {
 
     fn lint_tsx(src: &str) -> Vec<Warning> {
         let mut out = Vec::new();
-        check_source(Path::new("/app/tp/app/page.tsx"), "tp/app/page.tsx", src, &mut out);
+        check_source(Path::new("/app/sp/app/page.tsx"), "sp/app/page.tsx", src, &mut out);
         out
     }
 
@@ -346,7 +346,7 @@ export default function Page() {
     #[test]
     fn ignores_urls_imports_property_keys_and_lowercase_slugs() {
         let src = r#"
-import { defineConfig } from "typedpress";
+import { defineConfig } from "spacepress";
 export * from "./Wordpress";
 const cfg = {
   Wordpress: "https://Wordpress.org",

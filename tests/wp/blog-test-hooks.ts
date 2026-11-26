@@ -1,4 +1,4 @@
-// run.sh appends this to the frozen blog it copies to tests/wp/app/tp/blog/typedpress.config.ts: the
+// run.sh appends this to the frozen blog it copies to tests/wp/app/sp/blog/spacepress.config.ts: the
 // WP suites' extra post hooks, declared in the file that declares `posts`, as `.on()` requires.
 // Every post titled "Audit…" gets a comment naming the hook and the user that triggered it.
 posts.on({

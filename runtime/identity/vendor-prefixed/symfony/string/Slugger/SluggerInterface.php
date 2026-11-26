@@ -9,9 +9,9 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\String\Slugger;
+namespace SpacePress\Identity\Vendor\Symfony\Component\String\Slugger;
 
-use TypedPress\Identity\Vendor\Symfony\Component\String\AbstractUnicodeString;
+use SpacePress\Identity\Vendor\Symfony\Component\String\AbstractUnicodeString;
 
 /**
  * Creates a URL-friendly slug from a given string.

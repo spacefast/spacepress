@@ -5,15 +5,15 @@ declare(strict_types=1);
 /*
  * Host connectors (`connectors.call` / `connectors.enqueue` from "spacepress") on an in-process
  * WordPress (tests/php/wp.php). `call` asks the `sp_connectors_call` filter now and returns its answer.
- * `enqueue` queues the built-in `typedpress.connector` job in the action's transaction: a rollback
+ * `enqueue` queues the built-in `spacepress.connector` job in the action's transaction: a rollback
  * queues nothing, the host is asked only after commit and outside any transaction, a `key` keeps one
  * queued call, and a failing call is retried with the runner's backoff until it gives up.
  */
 
-use TypedPress\Connectors;
-use TypedPress\HttpError;
-use TypedPress\Jobs\Runner;
-use TypedPress\JsObject;
+use SpacePress\Connectors;
+use SpacePress\HttpError;
+use SpacePress\Jobs\Runner;
+use SpacePress\JsObject;
 
 require __DIR__ . '/wp.php';
 require __DIR__ . '/harness.php';
@@ -23,29 +23,29 @@ $schema['actions']['ship'] = ['input' => ['order' => ['type' => 'text', 'notNull
     'handler' => 'action__ship', 'access' => ['role' => 'anyone'], 'agents' => false, 'idempotent' => false, 'signature' => null];
 $schema['actions']['lookup'] = ['input' => ['q' => ['type' => 'text', 'notNull' => true]],
     'handler' => 'action__lookup', 'access' => ['role' => 'anyone'], 'agents' => false, 'idempotent' => false, 'signature' => null];
-// What `typedpress build` writes for connectors.enqueue(...) and connectors.call(...) (tests/spacepress_cutover.rs).
+// What `spacepress build` writes for connectors.enqueue(...) and connectors.call(...) (tests/spacepress_cutover.rs).
 $functions = file_get_contents(dirname(__DIR__) . '/fixtures/blog/functions.php') . <<<'PHP'
 
-    function action__ship(\TypedPress\JsObject $input, $ctx)
+    function action__ship(\SpacePress\JsObject $input, $ctx)
     {
-        $queued = \TypedPress\Connectors::enqueue('fulfilment', 'create_shipment', new \TypedPress\JsObject(['order' => $input->p['order']]), new \TypedPress\JsObject(['key' => 'ship-' . $input->p['order']]));
+        $queued = \SpacePress\Connectors::enqueue('fulfilment', 'create_shipment', new \SpacePress\JsObject(['order' => $input->p['order']]), new \SpacePress\JsObject(['key' => 'ship-' . $input->p['order']]));
         if (($input->p['fail'] ?? false) === true) {
-            throw new \TypedPress\HttpError(409, 'rolled_back', 'after queueing');
+            throw new \SpacePress\HttpError(409, 'rolled_back', 'after queueing');
         }
         return $queued->p['id'];
     }
 
-    function action__lookup(\TypedPress\JsObject $input, $ctx)
+    function action__lookup(\SpacePress\JsObject $input, $ctx)
     {
-        return \TypedPress\Connectors::call('crm', 'find', new \TypedPress\JsObject(['q' => $input->p['q']]));
+        return \SpacePress\Connectors::call('crm', 'find', new \SpacePress\JsObject(['q' => $input->p['q']]));
     }
     PHP;
 
 $wp = wpSite('connectors', ['schema' => $schema, 'functions' => $functions]);
-$jobs = static fn () => $wp->sql("SELECT `id`, `state`, `attempts`, `lastError`, `input`, `key` FROM {prefix}tp__jobs WHERE `job` = 'typedpress.connector' ORDER BY `createdAt`, `id`");
-$job = static fn (string $id) => $wp->sql('SELECT `state`, `attempts`, `lastError`, `runAt` FROM {prefix}tp__jobs WHERE `id` = ?', [$id])[0];
-$due = static fn (string $id) => $wp->sql("UPDATE {prefix}tp__jobs SET `runAt` = '2000-01-01T00:00:00.000Z' WHERE `id` = ?", [$id]);
-$connection = \TypedPress\Wp\Runtime::plugin()->connection();
+$jobs = static fn () => $wp->sql("SELECT `id`, `state`, `attempts`, `lastError`, `input`, `key` FROM {prefix}sp__jobs WHERE `job` = 'spacepress.connector' ORDER BY `createdAt`, `id`");
+$job = static fn (string $id) => $wp->sql('SELECT `state`, `attempts`, `lastError`, `runAt` FROM {prefix}sp__jobs WHERE `id` = ?', [$id])[0];
+$due = static fn (string $id) => $wp->sql("UPDATE {prefix}sp__jobs SET `runAt` = '2000-01-01T00:00:00.000Z' WHERE `id` = ?", [$id]);
+$connection = \SpacePress\Wp\Runtime::plugin()->connection();
 
 // ---- without a host transport, both refuse before doing anything
 [$status, $problem] = $wp->call('POST', '/actions/ship', ['order' => 'A-1']);
@@ -128,10 +128,10 @@ remove_all_filters('sp_connectors_call', 40);
 
 // ---- undefined fields are left out of the arguments, now and queued alike
 $calls = [];
-Connectors::call('crm', 'find', new JsObject(['q' => 'ada', 'page' => \TypedPress\JsUndefined::Value, 'filter' => new JsObject(['tag' => \TypedPress\JsUndefined::Value, 'kind' => 'a'])]));
-$undefinedJob = Connectors::enqueue('fulfilment', 'create_shipment', new JsObject(['order' => 'F-1', 'note' => \TypedPress\JsUndefined::Value]));
+Connectors::call('crm', 'find', new JsObject(['q' => 'ada', 'page' => \SpacePress\JsUndefined::Value, 'filter' => new JsObject(['tag' => \SpacePress\JsUndefined::Value, 'kind' => 'a'])]));
+$undefinedJob = Connectors::enqueue('fulfilment', 'create_shipment', new JsObject(['order' => 'F-1', 'note' => \SpacePress\JsUndefined::Value]));
 eq('call() and enqueue() both send JSON-shaped arguments without undefined fields',
-    [$calls[0]['args'] ?? null, json_decode($wp->sql('SELECT `input` FROM {prefix}tp__jobs WHERE `id` = ?', [$undefinedJob->p['id']])[0]['input'], true)['args']],
+    [$calls[0]['args'] ?? null, json_decode($wp->sql('SELECT `input` FROM {prefix}sp__jobs WHERE `id` = ?', [$undefinedJob->p['id']])[0]['input'], true)['args']],
     [['q' => 'ada', 'filter' => ['kind' => 'a']], ['order' => 'F-1']]);
 
 // ---- enqueue checks its input before queueing
@@ -153,8 +153,8 @@ eq('bad enqueue input is refused with a pointer, and queues nothing', [
     count($jobs()),
 ], ['/role Connector role must be a non-empty string.', '/tool Connector tool must be a non-empty string.', '/args Connector arguments must be an object.',
     '/opts/retries Unknown connector option retries.', '/key key must be a string of 1 to 191 characters', '/delay delay must be a non-negative number of seconds', 5]);
-$delayed = Connectors::enqueue('fulfilment', 'create_shipment', new JsObject(['order' => 'D-1']), new JsObject(['delay' => 120, 'key' => \TypedPress\JsUndefined::Value]));
-$row = $wp->sql('SELECT `runAt`, `key` FROM {prefix}tp__jobs WHERE `id` = ?', [$delayed->p['id']])[0];
+$delayed = Connectors::enqueue('fulfilment', 'create_shipment', new JsObject(['order' => 'D-1']), new JsObject(['delay' => 120, 'key' => \SpacePress\JsUndefined::Value]));
+$row = $wp->sql('SELECT `runAt`, `key` FROM {prefix}sp__jobs WHERE `id` = ?', [$delayed->p['id']])[0];
 eq('delay sets when the call runs, and an undefined key is no key', [strtotime($row['runAt']) >= time() + 115, $row['key']], [true, null]);
 
 finish('connectors');

@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 /*
  * WordPress's own posts in an app (`wp.posts.extend()`, `wp.posts.clone()`), in-process
- * (tests/php/wp.php), on tests/fixtures/native-posts as `typedpress build` emits it
+ * (tests/php/wp.php), on tests/fixtures/native-posts as `spacepress build` emits it
  * (tests/compiler.rs `native_posts_run_on_wordpress` builds it and runs this):
  *
  * - a post written in WordPress (wp_insert_post, as the editor does) is a row of the app's `posts`:
@@ -26,20 +26,20 @@ $wp = wpSite('native-posts', [
     'wpContent' => $argv[1],
     'users' => ['ed' => 'editor', 'alice' => 'author', 'bob' => 'author', 'sub' => 'subscriber'],
 ]);
-$db = \TypedPress\db();
+$db = \SpacePress\db();
 
-/** A request to the facade (`/wp-json/typedpress/v1`), where the staged-version routes live: [status, data or problem]. */
+/** A request to the facade (`/wp-json/spacepress/v1`), where the staged-version routes live: [status, data or problem]. */
 function facade(string $method, string $path, mixed $body = null, ?string $as = null): array
 {
     global $wp;
     $wp->actAs($as);
     try {
-        [$code, , $out] = \TypedPress\Wp\Facade::route(\TypedPress\Wp\Plugin::instance(), $method, $path, [], $body === null ? '' : (string) json_encode($body));
+        [$code, , $out] = \SpacePress\Wp\Facade::route(\SpacePress\Wp\Plugin::instance(), $method, $path, [], $body === null ? '' : (string) json_encode($body));
         $json = json_decode((string) $out, true);
 
         return [$code, $json['data'] ?? $json];
-    } catch (\TypedPress\HttpError | \TypedPress\JsError $e) {
-        return [\TypedPress\App::problem($e)['status'], \TypedPress\App::problem($e)];
+    } catch (\SpacePress\HttpError | \SpacePress\JsError $e) {
+        return [\SpacePress\App::problem($e)['status'], \SpacePress\App::problem($e)];
     } finally {
         wp_set_current_user(0);
     }
@@ -50,7 +50,7 @@ wp_set_current_user($wp->userId('ed'));
 $hello = wp_insert_post(['post_type' => 'post', 'post_status' => 'publish', 'post_title' => 'Hello native', 'post_name' => 'hello-native',
     'post_content' => '<!-- wp:paragraph --><p>Body</p><!-- /wp:paragraph -->', 'post_excerpt' => 'Short'], true);
 check('wp_insert_post writes a post', is_int($hello) && $hello > 0, $hello);
-update_post_meta($hello, 'tp_minutes', '4');
+update_post_meta($hello, 'sp_minutes', '4');
 wp_set_current_user(0);
 
 $row = $db->findFirst('posts', ['where' => ['id' => $hello]]);
@@ -64,7 +64,7 @@ check('get_permalink follows url', get_permalink($hello) === home_url('/blog/hel
 
 // The fields are an SCF field group on posts, so the block editor shows them.
 $groups = array_column(acf_get_field_groups(['post_type' => 'post']), 'key');
-check('posts get the app\'s field group', in_array('group_tp_wp_posts', $groups, true), $groups);
+check('posts get the app\'s field group', in_array('group_sp_wp_posts', $groups, true), $groups);
 // Other plugins' fields on posts are not the app's to lock (SchemaLock leaves `post` alone).
 check('core keeps registering posts', post_type_exists('post') && get_post_type_object('post')->_builtin, null);
 
@@ -75,7 +75,7 @@ check('anyone lists published posts', $s === 200 && in_array('Hello native', arr
 check('an author creates a post through the API', $s === 201 && ($created['title'] ?? null) === 'From the API' && ($created['minutes'] ?? null) === 2, [$s, $created]);
 $apiId = (int) ($created['id'] ?? 0);
 check('it is core\'s post type', get_post_type($apiId) === 'post' && get_post($apiId)->post_excerpt === 'Via API', get_post($apiId));
-check('its field is post meta tp_minutes', get_post_meta($apiId, 'tp_minutes', true) === '2', get_post_meta($apiId));
+check('its field is post meta sp_minutes', get_post_meta($apiId, 'sp_minutes', true) === '2', get_post_meta($apiId));
 check('it has a uid of its own', is_string($created['uid'] ?? null) ? true : !array_key_exists('uid', (array) $created), $created);
 
 [$s, $p] = $wp->call('POST', '/posts', ['title' => 'Nope'], 'sub');
@@ -88,13 +88,13 @@ check('core keeps revisions of the edit', count(wp_get_post_revisions($apiId)) >
 [$s, $p] = $wp->call('PATCH', "/posts/$apiId", ['minutes' => 0], 'alice');
 check('a field rule still applies', $s === 422, [$s, $p]);
 
-// Core's own REST route for posts answers through TypedPress's controller, as the block editor uses it.
+// Core's own REST route for posts answers through SpacePress's controller, as the block editor uses it.
 wp_set_current_user($wp->userId('alice'));
 $request = new WP_REST_Request('POST', "/wp/v2/posts/$apiId");
 $request->set_body_params(['title' => 'Edited in the editor', 'meta' => ['minutes' => 5]]);
 $response = rest_do_request($request);
 wp_set_current_user(0);
-check('core\'s /wp/v2/posts writes the app\'s field', $response->get_status() === 200 && get_post_meta($apiId, 'tp_minutes', true) === '5'
+check('core\'s /wp/v2/posts writes the app\'s field', $response->get_status() === 200 && get_post_meta($apiId, 'sp_minutes', true) === '5'
     && get_post($apiId)->post_title === 'Edited in the editor', [$response->get_status(), $response->get_data()['message'] ?? null]);
 
 // Comments: open on posts, through core's comment API.
@@ -168,13 +168,13 @@ check('a taken slug is made unique', $sa === 201 && $sb === 201 && ($a['slug'] ?
 check('the author stages a change to their post', $st === 200, [$st, $staged]);
 // A preview link shows the staged excerpt on the theme's page too, not only the staged title.
 [, $link] = facade('POST', "/posts/$apiId/staged/preview", null, 'alice');
-$_GET[\TypedPress\Wp\Staged::PREVIEW_PARAM] = wp_slash((string) ($link['token'] ?? ''));
+$_GET[\SpacePress\Wp\Staged::PREVIEW_PARAM] = wp_slash((string) ($link['token'] ?? ''));
 $GLOBALS['wp_query'] = new WP_Query(['p' => $apiId, 'post_type' => 'post']);
 $GLOBALS['wp_the_query'] = $GLOBALS['wp_query'];
-\TypedPress\Wp\Staged::previewPage();
+\SpacePress\Wp\Staged::previewPage();
 check('a staged preview shows the staged excerpt', ($GLOBALS['wp_query']->posts[0]->post_excerpt ?? null) === 'Staged excerpt'
     && ($GLOBALS['wp_query']->posts[0]->post_title ?? null) === 'Staged title', [$link, $GLOBALS['wp_query']->posts[0] ?? null]);
-unset($_GET[\TypedPress\Wp\Staged::PREVIEW_PARAM]);
+unset($_GET[\SpacePress\Wp\Staged::PREVIEW_PARAM]);
 foreach ([['GET', ''], ['DELETE', ''], ['GET', '/compare']] as [$verb, $sub]) {
     [$sx] = facade($verb, "/posts/$apiId/staged$sub", null, 'bob');
     check("another author can't $verb staged$sub of it", $sx === 404, $sx);
@@ -184,44 +184,44 @@ check('another author can\'t mint its preview link', in_array($sp, [404, 405], t
 
 // wp.posts.clone(): its own post type, shaped like posts.
 [$s, $note] = $wp->call('POST', '/notes', ['title' => 'A note', 'excerpt' => 'Note excerpt', 'mood' => 'calm'], 'alice');
-check('a clone is its own post type', $s === 201 && get_post_type((int) ($note['id'] ?? 0)) === 'tp_notes'
+check('a clone is its own post type', $s === 201 && get_post_type((int) ($note['id'] ?? 0)) === 'sp_notes'
     && get_post((int) $note['id'])->post_excerpt === 'Note excerpt' && ($note['mood'] ?? null) === 'calm', [$s, $note]);
 check('a clone has comments on', comments_open((int) ($note['id'] ?? 0)), null);
 check('a clone item\'s URL follows its url', str_contains((string) get_permalink((int) ($note['id'] ?? 0)), '/notes/a-note'), get_permalink((int) ($note['id'] ?? 0)));
 check('posts are not in the clone', $db->findFirst('notes', ['where' => ['id' => $hello]]) === null, null);
 
-// A site that ran the app's `posts` as a collection (post type tp_posts): the deploy that switches it to
+// A site that ran the app's `posts` as a collection (post type sp_posts): the deploy that switches it to
 // wp.posts makes those items core posts in place, keeping ids, fields, uids and history.
-$old = wp_insert_post(['post_type' => 'tp_posts', 'post_status' => 'publish', 'post_title' => 'From the collection', 'post_name' => 'from-the-collection', 'comment_status' => 'closed'], true);
-update_post_meta($old, 'tp_excerpt', 'Kept excerpt');
-update_post_meta($old, 'tp_minutes', '7');
-update_post_meta($old, '_tp_uid', 'zr_0123456789abcdef0123');
+$old = wp_insert_post(['post_type' => 'sp_posts', 'post_status' => 'publish', 'post_title' => 'From the collection', 'post_name' => 'from-the-collection', 'comment_status' => 'closed'], true);
+update_post_meta($old, 'sp_excerpt', 'Kept excerpt');
+update_post_meta($old, 'sp_minutes', '7');
+update_post_meta($old, '_sp_uid', 'zr_0123456789abcdef0123');
 $rev = wp_insert_post(['post_type' => 'revision', 'post_status' => 'inherit', 'post_parent' => $old, 'post_title' => 'From the collection', 'post_name' => "$old-revision-v1"], true);
-add_metadata('post', $rev, 'tp_excerpt', 'Kept excerpt'); // revision meta, as acf_copy_metadata writes it
+add_metadata('post', $rev, 'sp_excerpt', 'Kept excerpt'); // revision meta, as acf_copy_metadata writes it
 // One of them has the slug a core post already has.
-$clash = wp_insert_post(['post_type' => 'tp_posts', 'post_status' => 'publish', 'post_title' => 'Clash', 'post_name' => 'hello-native'], true);
+$clash = wp_insert_post(['post_type' => 'sp_posts', 'post_status' => 'publish', 'post_title' => 'Clash', 'post_name' => 'hello-native'], true);
 global $wpdb;
 $wpdb->update($wpdb->posts, ['post_name' => 'hello-native'], ['ID' => $clash]); // as the collection stored it
 $plugin = $wp->plugin();
-$postTypes = 'tp_' . $plugin->schema->name() . '_post_types';
-$schemaOption = 'tp_' . $plugin->schema->name() . '_schema';
-$adopted = 'tp_' . $plugin->schema->name() . '_adopted_posts';
-$nativeInstall = ['schemaHash' => get_option($schemaOption), 'types' => ['post', 'tp_notes']];
+$postTypes = 'sp_' . $plugin->schema->name() . '_post_types';
+$schemaOption = 'sp_' . $plugin->schema->name() . '_schema';
+$adopted = 'sp_' . $plugin->schema->name() . '_adopted_posts';
+$nativeInstall = ['schemaHash' => get_option($schemaOption), 'types' => ['post', 'sp_notes']];
 eq('installation records the app’s actual post types', get_option($postTypes), $nativeInstall);
 check('an earlier build with no matching collection leaves other apps’ posts alone',
-    \TypedPress\Wp\NativePosts::adopt($plugin) === 0 && get_post_type($old) === 'tp_posts' && get_option($adopted) === false, get_post_type($old));
+    \SpacePress\Wp\NativePosts::adopt($plugin) === 0 && get_post_type($old) === 'sp_posts' && get_option($adopted) === false, get_post_type($old));
 // Model a deployment from a runtime that predates tracking the app's post types.
 delete_option($postTypes);
 check('a schema hash alone does not authorize adoption',
-    \TypedPress\Wp\NativePosts::adopt($plugin) === 0 && get_post_type($old) === 'tp_posts' && get_option($adopted) === false, get_post_type($old));
+    \SpacePress\Wp\NativePosts::adopt($plugin) === 0 && get_post_type($old) === 'sp_posts' && get_option($adopted) === false, get_post_type($old));
 // Record a preceding installation in which this app used the custom post type.
 $previous = $plugin->schema->raw();
 $previous['collections']['posts']['native'] = false;
-$previous['collections']['posts']['wp']['postType'] = 'tp_posts';
+$previous['collections']['posts']['wp']['postType'] = 'sp_posts';
 $previousHash = hash('sha256', 'previous collection build');
-\TypedPress\Wp\NativePosts::rememberPostTypes(new \TypedPress\Schema($previous), $previousHash);
+\SpacePress\Wp\NativePosts::rememberPostTypes(new \SpacePress\Schema($previous), $previousHash);
 check('a post type recorded for a different build cannot authorize adoption',
-    \TypedPress\Wp\NativePosts::adopt($plugin) === 0 && get_post_type($old) === 'tp_posts', get_post_type($old));
+    \SpacePress\Wp\NativePosts::adopt($plugin) === 0 && get_post_type($old) === 'sp_posts', get_post_type($old));
 update_option($schemaOption, $previousHash);
 // A failure part way leaves nothing moved: the whole adoption is one transaction, and it runs again.
 $calls = 0;
@@ -240,17 +240,17 @@ try {
 }
 remove_filter('wp_unique_post_slug', $fail);
 clean_post_cache($old);
-check('an interrupted adoption moves nothing and records nothing', $threw && get_post_type($old) === 'tp_posts' && get_option($adopted) === false, [$threw, get_post_type($old), get_option($adopted)]);
+check('an interrupted adoption moves nothing and records nothing', $threw && get_post_type($old) === 'sp_posts' && get_option($adopted) === false, [$threw, get_post_type($old), get_option($adopted)]);
 $plugin->initialize();
 eq('deployment records the two old items it moved', get_option($adopted), '2');
 eq('deployment replaces the ownership record with the new post types', get_option($postTypes), $nativeInstall);
 clean_post_cache($old);
 $moved = $db->findFirst('posts', ['where' => ['id' => $old]]);
 check('an adopted item is a post with its excerpt, fields and uid', get_post_type($old) === 'post' && ($moved['excerpt'] ?? null) === 'Kept excerpt'
-    && ($moved['minutes'] ?? null) === 7 && get_post_meta($old, '_tp_uid', true) === 'zr_0123456789abcdef0123', $moved);
+    && ($moved['minutes'] ?? null) === 7 && get_post_meta($old, '_sp_uid', true) === 'zr_0123456789abcdef0123', $moved);
 check('an adopted item takes comments, as posts do', comments_open($old), get_post($old)->comment_status);
 check('its revisions keep the excerpt', get_post($rev)->post_excerpt === 'Kept excerpt' && (int) get_post($rev)->post_parent === $old, get_post($rev));
-check('adopting again moves nothing', \TypedPress\Wp\NativePosts::adopt($plugin) === 0, null);
+check('adopting again moves nothing', \SpacePress\Wp\NativePosts::adopt($plugin) === 0, null);
 check('a slug a core post already had is made unique, and the old one redirects', get_post($clash)->post_name !== 'hello-native'
     && in_array('hello-native', get_post_meta($clash, '_wp_old_slug'), true) && get_post($hello)->post_name === 'hello-native', [get_post($clash)->post_name, get_post($hello)->post_name]);
 

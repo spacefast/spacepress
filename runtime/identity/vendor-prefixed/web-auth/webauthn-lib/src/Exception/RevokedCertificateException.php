@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Webauthn\Exception;
+namespace SpacePress\Identity\Vendor\Webauthn\Exception;
 
 final class RevokedCertificateException extends CertificateException
 {

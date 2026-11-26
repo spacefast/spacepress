@@ -1,0 +1,16 @@
+{
+  "name": "create-spacepress",
+  "version": "0.3.0",
+  "description": "Create a SpacePress site with pages, sample content and a form, running on local WordPress",
+  "type": "module",
+  "license": "MIT",
+  "homepage": "https://github.com/spacefast/spacepress/tree/main/packages/create-spacepress#readme",
+  "bugs": "https://github.com/spacefast/spacepress/issues",
+  "keywords": ["spacepress", "wordpress", "create", "scaffold"],
+  "engines": { "node": ">=22" },
+  "bin": { "create-spacepress": "bin/create-spacepress.mjs" },
+  "files": ["bin", "template", "LICENSE", "README.md"],
+  "scripts": { "prepack": "node ../cli/scripts/prepare-scaffolder.mjs", "test": "node --test test/*.test.mjs" },
+  "repository": { "type": "git", "url": "https://github.com/spacefast/spacepress.git", "directory": "packages/create-spacepress" },
+  "publishConfig": { "access": "public" }
+}

@@ -1,6 +1,6 @@
 /**
  * Which history the router runs on. Under the mount path (`/blog/wp-admin/new/media`)
- * the browser's own history carries the route; anywhere else (`wp-admin/admin.php?page=typedpress-admin`,
+ * the browser's own history carries the route; anywhere else (`wp-admin/admin.php?page=spacepress-admin`,
  * which every server serves) the route travels in a `p` query parameter.
  */
 export function historyKind(

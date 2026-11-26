@@ -1,5 +1,5 @@
 {
-	"name": "@typedpress-admin/term-list",
+	"name": "@spacepress-admin/term-list",
 	"version": "1.0.0",
 	"private": true,
 	"route": {
@@ -13,13 +13,13 @@
 		}
 	},
 	"dependencies": {
-		"@typedpress-admin/admin-toolkit": "workspace:*",
-		"@typedpress-admin/core-data-next": "workspace:*",
-		"@typedpress-admin/design-system": "workspace:*",
-		"@typedpress-admin/fields-next": "workspace:*",
-		"@typedpress-admin/views": "workspace:*",
-		"@typedpress-admin/telemetry": "workspace:*",
-		"@typedpress-admin/dataviews": "workspace:*",
+		"@spacepress-admin/admin-toolkit": "workspace:*",
+		"@spacepress-admin/core-data-next": "workspace:*",
+		"@spacepress-admin/design-system": "workspace:*",
+		"@spacepress-admin/fields-next": "workspace:*",
+		"@spacepress-admin/views": "workspace:*",
+		"@spacepress-admin/telemetry": "workspace:*",
+		"@spacepress-admin/dataviews": "workspace:*",
 		"@wordpress/components": "catalog:",
 		"@wordpress/core-data": "catalog:",
 		"@wordpress/data": "catalog:",

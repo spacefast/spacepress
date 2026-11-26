@@ -24,14 +24,14 @@ try {
   // The router region went through core's directive pass: core/router's state.url is the page's
   // own URL from the server, as a block theme's page has it.
   out.serverUrl = await page.$eval("script[id='wp-script-module-data-@wordpress/interactivity']", (s) => JSON.parse(s.textContent).state?.["core/router"]?.url ?? null);
-  await page.evaluate(() => { window.tpSameDocument = true; });
+  await page.evaluate(() => { window.spSameDocument = true; });
   await page.click("text=Read the docs");
   await page.waitForSelector("article.doc h1");
   out.intro = { path: new URL(page.url()).pathname, title: await page.title(), h1: await page.textContent("article.doc h1") };
   // A <Link> click is a region swap, not a document load: the router's state.url follows it, and
   // core's loading bar is on the page with its styles.
   out.navigation = {
-    sameDocument: await page.evaluate(() => window.tpSameDocument === true),
+    sameDocument: await page.evaluate(() => window.spSameDocument === true),
     url: await page.evaluate(async () => (await import("@wordpress/interactivity-router")).state.url),
     loadingBar: await page.$$eval(".wp-interactivity-router-loading-bar", (bars) => bars.map((b) => [b.dataset.wpInteractive, getComputedStyle(b).position])),
   };
@@ -53,13 +53,13 @@ try {
   };
   out.callout = await page.$eval(".callout", (el) => [el.className, el.querySelector(".callout-title")?.textContent, el.querySelector(".callout-body b")?.textContent]);
   // The code group: the first tab shows, a click on the second shows it instead.
-  const visible = () => page.$$eval(".typedpress-code-group .typedpress-code-panel", (ps) => ps.map((p) => getComputedStyle(p).display !== "none"));
-  out.tabs = await page.$$eval(".typedpress-code-group label", (ls) => ls.map((l) => l.textContent));
+  const visible = () => page.$$eval(".spacepress-code-group .spacepress-code-panel", (ps) => ps.map((p) => getComputedStyle(p).display !== "none"));
+  out.tabs = await page.$$eval(".spacepress-code-group label", (ls) => ls.map((l) => l.textContent));
   out.tabsBefore = await visible();
-  await page.click(".typedpress-code-group label:nth-of-type(2)");
+  await page.click(".spacepress-code-group label:nth-of-type(2)");
   out.tabsAfter = await visible();
-  out.title = await page.textContent(".typedpress-code-title");
-  out.marked = await page.$$eval(".typedpress-code-marked", (ls) => ls.map((l) => l.textContent));
+  out.title = await page.textContent(".spacepress-code-title");
+  out.marked = await page.$$eval(".spacepress-code-marked", (ls) => ls.map((l) => l.textContent));
   const keyword = ".language-ts .hljs-keyword";
   out.light = await page.$eval(keyword, (el) => getComputedStyle(el).color);
   await page.emulateMedia({ colorScheme: "dark" });

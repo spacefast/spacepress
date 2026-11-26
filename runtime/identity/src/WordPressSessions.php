@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity;
+namespace SpacePress\Identity;
 
 /**
  * WordPress's sessions by verifier (the SHA-256 of a session token, what WordPress itself stores),

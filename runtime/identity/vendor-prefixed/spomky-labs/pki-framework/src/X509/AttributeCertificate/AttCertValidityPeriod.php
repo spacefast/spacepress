@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\AttributeCertificate;
+namespace SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\AttributeCertificate;
 
 use DateTimeImmutable;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\GeneralizedTime;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Feature\DateTimeHelper;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Constructed\Sequence;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\GeneralizedTime;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\Feature\DateTimeHelper;
 
 /**
  * Implements *AttCertValidityPeriod* ASN.1 type.

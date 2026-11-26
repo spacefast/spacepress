@@ -16,16 +16,16 @@ export default function ZoomDropdown( {
 } ) {
 	return (
 		<Component
-			className="typedpress-admin-media-editor__zoom-dropdown"
+			className="spacepress-admin-media-editor__zoom-dropdown"
 			icon={ search }
-			label={ __( 'Zoom', 'typedpress-admin' ) }
+			label={ __( 'Zoom', 'spacepress-admin' ) }
 			popoverProps={ {
 				placement: 'bottom-start',
-				className: 'typedpress-admin-media-editor__zoom-dropdown-popover',
+				className: 'spacepress-admin-media-editor__zoom-dropdown-popover',
 			} }
 			toggleProps={ {
 				variant: 'tertiary',
-				className: 'typedpress-admin-media-editor__zoom-dropdown-button',
+				className: 'spacepress-admin-media-editor__zoom-dropdown-button',
 			} }
 		>
 			{ () => (

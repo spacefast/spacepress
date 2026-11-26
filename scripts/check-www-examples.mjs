@@ -1,6 +1,6 @@
 // The website's example trees (www/examples/) either compile or are marked as proposals.
 //
-// - Every project with a typedpress.config.ts must pass `typedpress check`, including every one
+// - Every project with a spacepress.config.ts must pass `spacepress check`, including every one
 //   under www/examples/_today/ (code as it runs today, which the guide compares the proposals with).
 // - A project whose _meta.json has a `proposal` string is written in spellings that are decided and
 //   not built yet; the guide shows it as text and says so. It is skipped here, and it must never be
@@ -9,14 +9,14 @@
 //   www/scripts/run-data.ts, www/scripts/seed.mjs) and www/examples/_hero; this script fails when any
 //   of them, or a page or script of the website, names a proposal's own directory.
 //
-//   node scripts/check-www-examples.mjs [path/to/typedpress]
+//   node scripts/check-www-examples.mjs [path/to/spacepress]
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const binary = process.argv[2] ?? join(root, "target/debug/typedpress");
+const binary = process.argv[2] ?? join(root, "target/debug/spacepress");
 const www = join(root, "www/examples");
 const failures = [];
 
@@ -36,7 +36,7 @@ for (const project of readdirSync(www).sort()) {
   proposals.push(project);
 }
 
-for (const config of files(www, (name) => name === "typedpress.config.ts").sort()) {
+for (const config of files(www, (name) => name === "spacepress.config.ts").sort()) {
   const dir = join(config, "..");
   const rel = relative(root, dir);
   if (proposals.includes(relative(www, dir).split("/")[0])) {
@@ -56,7 +56,7 @@ for (const config of files(www, (name) => name === "typedpress.config.ts").sort(
 const runners = [
   "www/lib/site-examples.ts", "www/lib/examples.ts", "www/scripts/build-showcase.ts",
   ...files(join(root, "www/scripts"), (name) => /\.(m?js|ts)$/.test(name)).map((file) => relative(root, file)),
-  ...files(join(root, "www/tp"), (name) => /\.(tsx?|m?js)$/.test(name)).map((file) => relative(root, file)).filter((file) => !file.startsWith("www/tp/data/")),
+  ...files(join(root, "www/sp"), (name) => /\.(tsx?|m?js)$/.test(name)).map((file) => relative(root, file)).filter((file) => !file.startsWith("www/sp/data/")),
   ...files(join(root, "www/browser"), (name) => /\.(m?js|ts)$/.test(name)).map((file) => relative(root, file)),
 ];
 for (const name of proposals) {

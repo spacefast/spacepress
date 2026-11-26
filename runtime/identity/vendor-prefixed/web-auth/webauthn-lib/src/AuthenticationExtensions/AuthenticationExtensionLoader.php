@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Webauthn\AuthenticationExtensions;
+namespace SpacePress\Identity\Vendor\Webauthn\AuthenticationExtensions;
 
-use TypedPress\Identity\Vendor\CBOR\CBORObject;
-use TypedPress\Identity\Vendor\CBOR\MapObject;
-use TypedPress\Identity\Vendor\Webauthn\Exception\AuthenticationExtensionException;
+use SpacePress\Identity\Vendor\CBOR\CBORObject;
+use SpacePress\Identity\Vendor\CBOR\MapObject;
+use SpacePress\Identity\Vendor\Webauthn\Exception\AuthenticationExtensionException;
 
 abstract class AuthenticationExtensionLoader
 {

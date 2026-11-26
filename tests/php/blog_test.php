@@ -9,7 +9,7 @@ declare(strict_types=1);
  * derivation, revisions, hook ctx, globals, media (+ delete nulling), FK actions, extension seams.
  */
 
-use TypedPress\App;
+use SpacePress\App;
 
 require __DIR__ . '/wp.php';
 require __DIR__ . '/harness.php';
@@ -23,16 +23,16 @@ $open['columns'] = array_intersect_key($open['columns'], array_flip(['id', 'titl
 $open['columns']['rating'] = ['type' => 'integer'];
 $open['hooks'] = $open['relations'] = [];
 $open['access'] = array_fill_keys(['read', 'create', 'update', 'delete'], ['role' => 'anyone']);
-$open['wp'] = ['postType' => 'tp_open_notes', 'groupKey' => 'group_tp_open_notes', 'metaPrefix' => 'tp_', 'fieldKeyPrefix' => 'field_tp_open_notes_'];
+$open['wp'] = ['postType' => 'sp_open_notes', 'groupKey' => 'group_sp_open_notes', 'metaPrefix' => 'sp_', 'fieldKeyPrefix' => 'field_sp_open_notes_'];
 $schema['collections']['openNotes'] = $open;
-// Signed-in-only action: on a site without typedpress-identity, only WordPress itself can sign anyone in.
+// Signed-in-only action: on a site without spacepress-identity, only WordPress itself can sign anyone in.
 $schema['actions']['signedInCount'] = ['access' => ['role' => 'authenticated']] + $schema['actions']['publishedCount'];
 $schema['collections']['posts']['access']['read'] = ['fn' => 'test_posts_access'];
 $wp = wpSite('blog', [
     'schema' => $schema,
     'functions' => file_get_contents(dirname(__DIR__) . '/fixtures/blog/functions.php') . <<<'PHP'
 
-        function test_posts_access(\TypedPress\JsObject $ctx) {
+        function test_posts_access(\SpacePress\JsObject $ctx) {
             if (isset($GLOBALS['test_post_rule'])) {
                 ++$GLOBALS['test_post_rule_calls'];
                 return $GLOBALS['test_post_rule'];
@@ -43,10 +43,10 @@ $wp = wpSite('blog', [
     'users' => ['ed' => 'editor', 'alice' => 'author', 'bob' => 'author', 'sub' => 'subscriber'],
 ]);
 $app = $wp->app();
-$db = \TypedPress\db();
-eq('WordPress and the request pipeline share the validated schema', $app->schema === \TypedPress\Wp\Runtime::plugin()->schema, true);
+$db = \SpacePress\db();
+eq('WordPress and the request pipeline share the validated schema', $app->schema === \SpacePress\Wp\Runtime::plugin()->schema, true);
 eq('the database uses the validated schema', $db->schema() === $app->schema, true);
-$anonymous = new \TypedPress\Viewer(null);
+$anonymous = new \SpacePress\Viewer(null);
 eq('an unprotected collection retains unrestricted storage visibility', $db->store()->readGuards('openNotes', $anonymous), []);
 $openNote = $db->insert('openNotes', ['title' => 'Anonymous unique slug'], true, $anonymous)[0];
 eq('anonymous unique creation succeeds when password guards cannot narrow reads', $openNote['slug'], 'anonymous-unique-slug');
@@ -56,11 +56,11 @@ eq('native unrestricted reads do not enumerate every primary key', $db->permitte
 // fields and third-party metadata. Ordinary REST responses keep their per-item reads.
 $db->insert('openNotes', [['title' => 'More notes'], ['title' => 'Final notes']]);
 $projected = static function (?string $fields, string $context = 'view'): array {
-    $request = new \WP_REST_Request('GET', '/wp/v2/tp_open_notes');
+    $request = new \WP_REST_Request('GET', '/wp/v2/sp_open_notes');
     $request->set_query_params(['context' => $context, 'orderby' => 'id', 'order' => 'asc'] + ($fields === null ? [] : ['_fields' => $fields]));
     $queries = 0;
-    \TypedPress\Wp\Connection::$observer = static function (string $sql) use (&$queries): void {
-        if (str_contains($sql, "post_type = 'tp_open_notes'") && str_contains($sql, 'post_title AS')) {
+    \SpacePress\Wp\Connection::$observer = static function (string $sql) use (&$queries): void {
+        if (str_contains($sql, "post_type = 'sp_open_notes'") && str_contains($sql, 'post_title AS')) {
             ++$queries;
         }
     };
@@ -68,7 +68,7 @@ $projected = static function (?string $fields, string $context = 'view'): array 
         $response = rest_do_request($request);
         return [$response->get_status(), $response->get_data(), $queries];
     } finally {
-        \TypedPress\Wp\Connection::$observer = null;
+        \SpacePress\Wp\Connection::$observer = null;
     }
 };
 foreach (['id,title', 'id,title.rendered'] as $fields) {
@@ -85,15 +85,15 @@ $injectMeta = static function ($response) {
     $response->set_data($data);
     return $response;
 };
-add_filter('rest_prepare_tp_open_notes', $injectMeta);
+add_filter('rest_prepare_sp_open_notes', $injectMeta);
 [$status, $items, $queries] = $projected('id,title');
 eq('a response filter can add meta to a projected native response', [$items[0]['meta']['from_filter'] ?? null, $queries], [true, 1]);
-remove_filter('rest_prepare_tp_open_notes', $injectMeta);
+remove_filter('rest_prepare_sp_open_notes', $injectMeta);
 
 // WordPress permits duplicate meta keys. Bound the bulk result, then let each original LIMIT 1
 // query choose its value. Compare the projected data with the ordinary response.
-add_post_meta($openNote['id'], 'tp_rating', '7');
-add_post_meta($openNote['id'], 'tp_rating', '11');
+add_post_meta($openNote['id'], 'sp_rating', '7');
+add_post_meta($openNote['id'], 'sp_rating', '11');
 $normal = $projected(null);
 $duplicate = $projected('id,meta.rating');
 eq('duplicate metadata preserves the individual selection and bounds execution', [$duplicate[1][0]['meta']['rating'], $duplicate[2]],
@@ -132,9 +132,9 @@ $hidden = $db->insert('authors', ['name' => 'Ghost', 'email' => 'ghost@example.c
 
 // A detail page needs one ID. A second distinct ID or a list must reuse the rule and fetch
 // all matching IDs only once, including when the first ID is denied.
-\TypedPress\Wp\CoreAccess::flush();
+\SpacePress\Wp\CoreAccess::flush();
 $keyQueries = [];
-\TypedPress\Wp\Connection::$observer = static function (string $sql) use (&$keyQueries): void {
+\SpacePress\Wp\Connection::$observer = static function (string $sql) use (&$keyQueries): void {
     if (str_starts_with($sql, 'SELECT t0.ID AS `id` FROM')) {
         $keyQueries[] = str_contains($sql, 't0.ID = ?');
     }
@@ -142,39 +142,39 @@ $keyQueries = [];
 try {
     $GLOBALS['test_post_rule_calls'] = 0;
     $GLOBALS['test_post_rule'] = ['status' => 'published'];
-    eq('collection permission checks only the evaluated rule', \TypedPress\Wp\CoreAccess::readDenial('posts', $anonymous), null);
+    eq('collection permission checks only the evaluated rule', \SpacePress\Wp\CoreAccess::readDenial('posts', $anonymous), null);
     $GLOBALS['test_post_rule'] = false;
     eq('repeat permission checks retain the decision without selecting IDs',
-        [\TypedPress\Wp\CoreAccess::readDenial('posts', $anonymous), $GLOBALS['test_post_rule_calls'], $keyQueries], [null, 1, []]);
+        [\SpacePress\Wp\CoreAccess::readDenial('posts', $anonymous), $GLOBALS['test_post_rule_calls'], $keyQueries], [null, 1, []]);
     foreach ([$draft['id'], $draft['id'], $pub['id'], $pub['id']] as $i => $id) {
-        eq("anonymous permission check $i", \TypedPress\Wp\CoreAccess::covers('posts', 'read', $id, $anonymous), $id === $pub['id']);
+        eq("anonymous permission check $i", \SpacePress\Wp\CoreAccess::covers('posts', 'read', $id, $anonymous), $id === $pub['id']);
     }
-    eq('list after both items has every readable ID', \TypedPress\Wp\CoreAccess::keys('posts', 'read', $anonymous), [$pub['id']]);
+    eq('list after both items has every readable ID', \SpacePress\Wp\CoreAccess::keys('posts', 'read', $anonymous), [$pub['id']]);
     eq('permission queries are one exact ID then one complete set', $keyQueries, [true, false]);
     eq('detail and list execute the original filter without invoking the callback again', $GLOBALS['test_post_rule_calls'], 1);
-    \TypedPress\Wp\CoreAccess::flush();
-    eq('a fresh outright refusal retains the guest denial', \TypedPress\Wp\CoreAccess::readDenial('posts', $anonymous)?->get_error_data()['status'] ?? null, 401);
+    \SpacePress\Wp\CoreAccess::flush();
+    eq('a fresh outright refusal retains the guest denial', \SpacePress\Wp\CoreAccess::readDenial('posts', $anonymous)?->get_error_data()['status'] ?? null, 401);
     $GLOBALS['test_post_rule'] = ['unknown_probe_field' => true];
-    \TypedPress\Wp\CoreAccess::flush();
-    eq('a malformed filter still fails the permission check', \TypedPress\Wp\CoreAccess::readDenial('posts', $anonymous)?->get_error_data()['status'] ?? null, 401);
+    \SpacePress\Wp\CoreAccess::flush();
+    eq('a malformed filter still fails the permission check', \SpacePress\Wp\CoreAccess::readDenial('posts', $anonymous)?->get_error_data()['status'] ?? null, 401);
     $GLOBALS['test_post_rule'] = ['slug' => 'missing-permission-probe'];
-    \TypedPress\Wp\CoreAccess::flush();
+    \SpacePress\Wp\CoreAccess::flush();
     eq('a valid empty filter permits the collection without admitting the requested row',
-        [\TypedPress\Wp\CoreAccess::readDenial('posts', $anonymous), \TypedPress\Wp\CoreAccess::keys('posts', 'read', $anonymous)], [null, []]);
+        [\SpacePress\Wp\CoreAccess::readDenial('posts', $anonymous), \SpacePress\Wp\CoreAccess::keys('posts', 'read', $anonymous)], [null, []]);
     eq('only the explicit empty list executes SQL', $keyQueries, [true, false, false]);
     unset($GLOBALS['test_post_rule']);
-    \TypedPress\Wp\CoreAccess::flush();
-    eq('public item after invalidation', \TypedPress\Wp\CoreAccess::covers('posts', 'read', $pub['id'], $anonymous), true);
-    eq('a list immediately after a single item is complete', \TypedPress\Wp\CoreAccess::keys('posts', 'read', $anonymous), [$pub['id']]);
+    \SpacePress\Wp\CoreAccess::flush();
+    eq('public item after invalidation', \SpacePress\Wp\CoreAccess::covers('posts', 'read', $pub['id'], $anonymous), true);
+    eq('a list immediately after a single item is complete', \SpacePress\Wp\CoreAccess::keys('posts', 'read', $anonymous), [$pub['id']]);
     eq('an explicit list promotes the partial key set', $keyQueries, [true, false, false, true, false]);
 } finally {
-    \TypedPress\Wp\Connection::$observer = null;
+    \SpacePress\Wp\Connection::$observer = null;
 }
 foreach (['alice' => true, 'bob' => false] as $user => $owns) {
-    eq("$user update rule on an individual post", \TypedPress\Wp\CoreAccess::covers('posts', 'update', $pub['id'], new \TypedPress\Viewer($users[$user])), $owns);
+    eq("$user update rule on an individual post", \SpacePress\Wp\CoreAccess::covers('posts', 'update', $pub['id'], new \SpacePress\Viewer($users[$user])), $owns);
 }
-eq('editor can read the draft the guest could not read', \TypedPress\Wp\CoreAccess::covers('posts', 'read', $draft['id'], new \TypedPress\Viewer($users['ed'])), true);
-eq('unrestricted rule still covers an unmaterialized ID', \TypedPress\Wp\CoreAccess::covers('openNotes', 'read', PHP_INT_MAX, $anonymous), true);
+eq('editor can read the draft the guest could not read', \SpacePress\Wp\CoreAccess::covers('posts', 'read', $draft['id'], new \SpacePress\Viewer($users['ed'])), true);
+eq('unrestricted rule still covers an unmaterialized ID', \SpacePress\Wp\CoreAccess::covers('openNotes', 'read', PHP_INT_MAX, $anonymous), true);
 
 // ================================================================ drafts transitions (§6.1)
 
@@ -186,11 +186,11 @@ $dated = $db->insert('posts', ['title' => 'Dated', 'status' => 'published', 'pub
 eq('published with a future publishedAt stays published (only scheduled schedules)', [$dated['status'], $dated['publishedAt']], ['published', '2031-01-01T00:00:00.000Z']);
 $db->delete('posts', ['id' => $dated['id']]);
 $published = $db->update('posts', ['status' => 'published'], ['id' => $draft['id']], true)[0];
-eq('publishing a draft invalidates the guest permission cache', \TypedPress\Wp\CoreAccess::covers('posts', 'read', $draft['id'], $anonymous), true);
-eq('a second published item is in the complete permission set', \TypedPress\Wp\CoreAccess::covers('posts', 'read', $pub['id'], $anonymous), true);
+eq('publishing a draft invalidates the guest permission cache', \SpacePress\Wp\CoreAccess::covers('posts', 'read', $draft['id'], $anonymous), true);
+eq('a second published item is in the complete permission set', \SpacePress\Wp\CoreAccess::covers('posts', 'read', $pub['id'], $anonymous), true);
 check('draft → published sets publishedAt', $published['publishedAt'] !== null, $published);
 $again = $db->update('posts', ['status' => 'draft'], ['id' => $draft['id']], true)[0];
-eq('moving back to draft invalidates the complete membership set', \TypedPress\Wp\CoreAccess::covers('posts', 'read', $draft['id'], $anonymous), false);
+eq('moving back to draft invalidates the complete membership set', \SpacePress\Wp\CoreAccess::covers('posts', 'read', $draft['id'], $anonymous), false);
 eq('published → draft keeps publishedAt', $again['publishedAt'], $published['publishedAt']);
 $db->update('posts', ['publishedAt' => null], ['id' => $draft['id']]);
 
@@ -199,14 +199,14 @@ $db->update('posts', ['publishedAt' => null], ['id' => $draft['id']]);
 [$s, $rows] = req('GET', '/posts', query: ['orderBy' => 'id']);
 eq('anonymous: function rule → published only', [$s, $titles($rows)], [200, ['Published one']]);
 $metaJoins = 0;
-\TypedPress\Wp\Connection::$observer = static function (string $sql) use (&$metaJoins): void {
+\SpacePress\Wp\Connection::$observer = static function (string $sql) use (&$metaJoins): void {
     $metaJoins += preg_match_all('/\bJOIN\s+`?wp_postmeta\b/i', $sql);
 };
 try {
     $keys = $db->permittedKeys('posts', 'read', $anonymous);
     eq('checking published IDs skips unrelated post metadata', [array_map('intval', $keys), $metaJoins], [[$pub['id']], 0]);
 } finally {
-    \TypedPress\Wp\Connection::$observer = null;
+    \SpacePress\Wp\Connection::$observer = null;
 }
 eq('subscriber: same filter', $titles(req('GET', '/posts', as: 'sub')[1]), ['Published one']);
 eq('author: function rule returns true → drafts visible', $titles(req('GET', '/posts', as: 'alice', query: ['orderBy' => 'id'])[1]), ['Published one', 'Draft one']);
@@ -217,29 +217,29 @@ eq('… editors see every status', array_column(req('GET', '/authors', as: 'ed',
 eq('… authors are below editor', array_column(req('GET', '/authors', as: 'alice')[1], 'name'), ['Alice']);
 eq('GET /me', [req('GET', '/me')[1], req('GET', '/me', as: 'alice')[1]], [null, $users['alice']]);
 // No identity plugin: there is no issuer, and the only signed-in viewer is a WordPress user.
-eq('without typedpress-identity, TypedPress has no issuer and no guests', [class_exists(\TypedPress\Identity\Plugin::class, false), req('GET', '/auth/config')[1]], [false, ['issuer' => null, 'guests' => false]]);
-isProblem('without typedpress-identity, there are no guest sessions', req('POST', '/auth/guest', []), 404, 'not_found');
-eq('without typedpress-identity, an "anyone" action runs anonymously', req('POST', '/actions/publishedCount')[0], 200);
-isProblem('without typedpress-identity, an "authenticated" action refuses anonymous', req('POST', '/actions/signedInCount'), 401, 'unauthenticated');
-eq('without typedpress-identity, a WordPress user is authenticated', req('POST', '/actions/signedInCount', as: 'sub')[0], 200);
+eq('without spacepress-identity, SpacePress has no issuer and no guests', [class_exists(\SpacePress\Identity\Plugin::class, false), req('GET', '/auth/config')[1]], [false, ['issuer' => null, 'guests' => false]]);
+isProblem('without spacepress-identity, there are no guest sessions', req('POST', '/auth/guest', []), 404, 'not_found');
+eq('without spacepress-identity, an "anyone" action runs anonymously', req('POST', '/actions/publishedCount')[0], 200);
+isProblem('without spacepress-identity, an "authenticated" action refuses anonymous', req('POST', '/actions/signedInCount'), 401, 'unauthenticated');
+eq('without spacepress-identity, a WordPress user is authenticated', req('POST', '/actions/signedInCount', as: 'sub')[0], 200);
 
 // The persistent hint skips the scan when no password is set. A stale hint still applies the
 // password predicate in the row query. Unrestricted scope checks use the database directly.
-$subscriber = new \TypedPress\Viewer($wp->user('sub'));
+$subscriber = new \SpacePress\Viewer($wp->user('sub'));
 $locked = $db->insert('openNotes', ['title' => 'Soon locked'], true)[0];
-$visible = static fn (\TypedPress\Viewer $reader): array => array_column(
+$visible = static fn (\SpacePress\Viewer $reader): array => array_column(
     $db->findMany('openNotes', ['where' => ['id' => $locked['id']]], $reader), 'id',
 );
 $probe = static function () use ($visible, $subscriber): array {
-    \TypedPress\Wp\CoreAccess::flush();
+    \SpacePress\Wp\CoreAccess::flush();
     $scans = 0;
-    \TypedPress\Wp\Connection::$observer = static function (string $sql) use (&$scans): void {
+    \SpacePress\Wp\Connection::$observer = static function (string $sql) use (&$scans): void {
         $scans += (int) str_starts_with($sql, 'SELECT ID, post_password FROM ');
     };
     try {
         return [$visible($subscriber), $scans];
     } finally {
-        \TypedPress\Wp\Connection::$observer = null;
+        \SpacePress\Wp\Connection::$observer = null;
     }
 };
 eq('the first signed-in read checks for protected posts', $probe(), [[$locked['id']], 1]);
@@ -277,16 +277,16 @@ $db->delete('openNotes', ['id' => $locked['id']]);
 $protected = $db->insert('posts', ['title' => 'Protected native post', 'body' => '<p>native-password-secret</p>'], true)[0];
 $public = $db->insert('posts', ['title' => 'Public next page'], true)[0];
 wp_update_post(['ID' => $protected['id'], 'post_password' => 'native-secret']);
-$anon = new \TypedPress\Viewer(null);
+$anon = new \SpacePress\Viewer(null);
 $protectedWhere = ['id' => $protected['id']];
-\TypedPress\Wp\CoreAccess::flush();
+\SpacePress\Wp\CoreAccess::flush();
 $queries = 0;
-\TypedPress\Wp\Connection::$observer = static function () use (&$queries): void { ++$queries; };
+\SpacePress\Wp\Connection::$observer = static function () use (&$queries): void { ++$queries; };
 try {
     $masked = $db->findMany('posts', ['where' => $protectedWhere, 'columns' => ['id' => true]], $anon);
     eq('a projected guest read filters the password in its only SQL statement', [$masked, $queries], [[], 1]);
 } finally {
-    \TypedPress\Wp\Connection::$observer = null;
+    \SpacePress\Wp\Connection::$observer = null;
 }
 isProblem('native password masks First item', req('GET', "/posts/{$protected['id']}"), 404, 'not_found');
 eq('native password constrains body-filtered projections', $db->findMany('posts', [
@@ -302,17 +302,17 @@ eq('native password prevents relation-filter inference', $db->findMany('comments
     'where' => ['id' => $linked['id'], 'postId' => ['body' => ['like' => '%native-password-secret%']]],
 ], $anon), []);
 $wp->actAs('admin');
-$nativeController = new \WP_REST_Posts_Controller('tp_posts');
+$nativeController = new \WP_REST_Posts_Controller('sp_posts');
 add_filter('post_password_required', [$nativeController, 'check_password_required'], 10, 2);
 eq('native edit-context filter trusts the ambient administrator', post_password_required($protected['id']), false);
 eq('anonymous viewer does not borrow ambient admin authority', $db->findMany('posts', ['where' => $protectedWhere], $anon), []);
-eq('subscriber viewer does not borrow ambient admin authority', $db->findMany('posts', ['where' => $protectedWhere], new \TypedPress\Viewer($users['sub'])), []);
+eq('subscriber viewer does not borrow ambient admin authority', $db->findMany('posts', ['where' => $protectedWhere], new \SpacePress\Viewer($users['sub'])), []);
 remove_filter('post_password_required', [$nativeController, 'check_password_required']);
 $wp->actAs(null);
-eq('explicit editor retains native protected-post editing', $db->findFirst('posts', ['where' => $protectedWhere], new \TypedPress\Viewer($users['ed']))['body'] ?? null, $protected['body']);
+eq('explicit editor retains native protected-post editing', $db->findFirst('posts', ['where' => $protectedWhere], new \SpacePress\Viewer($users['ed']))['body'] ?? null, $protected['body']);
 eq('trusted null viewer retains server authority', $db->findFirst('posts', ['where' => $protectedWhere])['body'], $protected['body']);
 $wp->actAs('ed');
-$nativeEdit = new \WP_REST_Request('GET', '/wp/v2/tp_posts/' . $protected['id']);
+$nativeEdit = new \WP_REST_Request('GET', '/wp/v2/sp_posts/' . $protected['id']);
 $nativeEdit->set_param('context', 'edit');
 $nativeEdited = rest_do_request($nativeEdit);
 eq('native editor can still load protected content for editing', [$nativeEdited->get_status(), $nativeEdited->get_data()['content']['raw'] ?? null], [200, $protected['body']]);
@@ -325,18 +325,18 @@ foreach (['0 ', ' ', 'Native-secret', 'native-secret '] as $password) {
 }
 wp_update_post(['ID' => $protected['id'], 'post_password' => 'native-secret']);
 $coreRead = static function () use ($protected) {
-    return rest_do_request(new \WP_REST_Request('GET', '/wp/v2/tp_posts/' . $protected['id']));
+    return rest_do_request(new \WP_REST_Request('GET', '/wp/v2/sp_posts/' . $protected['id']));
 };
 eq('native core access shares the password row boundary', $coreRead()->get_status(), 404);
 wp_update_post(['ID' => $public['id'], 'post_password' => 'another-native-secret']);
 $corePassword = static function (string $password, bool $list = false) use ($protected, $public) {
-    $request = new \WP_REST_Request('GET', '/wp/v2/tp_posts' . ($list ? '' : '/' . $protected['id']));
+    $request = new \WP_REST_Request('GET', '/wp/v2/sp_posts' . ($list ? '' : '/' . $protected['id']));
     $request->set_query_params(['password' => $password] + ($list ? ['include' => [$protected['id'], $public['id']]] : []));
 
     return rest_do_request($request);
 };
 eq('native item rejects a wrong password parameter', $corePassword('wrong-password')->get_status(), 403);
-$concealed = new \WP_REST_Request('GET', '/wp/v2/tp_posts/' . $draft['id']);
+$concealed = new \WP_REST_Request('GET', '/wp/v2/sp_posts/' . $draft['id']);
 $concealed->set_query_params(['password' => 'wrong-password']);
 eq('wrong native password cannot distinguish a schema-hidden row', rest_do_request($concealed)->get_status(), 404);
 $unlocked = $corePassword('native-secret');
@@ -344,7 +344,7 @@ eq('native item accepts its password parameter', [$unlocked->get_status(), str_c
 $unlockedList = $corePassword('native-secret', true);
 eq('native list accepts its password parameter for matching rows', [$unlockedList->get_status(), array_column($unlockedList->get_data(), 'id'), str_contains($unlockedList->get_data()[0]['content']['rendered'] ?? '', 'native-password-secret')], [200, [$protected['id']], true]);
 eq('native list keeps rows locked with the wrong password', $corePassword('wrong-password', true)->get_data(), []);
-eq('native password parameter does not authorize a subsequent TypedPress read', $db->findMany('posts', ['where' => $protectedWhere], $anon), []);
+eq('native password parameter does not authorize a subsequent SpacePress read', $db->findMany('posts', ['where' => $protectedWhere], $anon), []);
 $nestedProof = null;
 $inspectProof = static function ($response, $post) use (&$nestedProof, $coreRead, $corePassword, $db, $protectedWhere, $anon) {
     if ($nestedProof === null) {
@@ -354,9 +354,9 @@ $inspectProof = static function ($response, $post) use (&$nestedProof, $coreRead
 
     return $response;
 };
-add_filter('rest_prepare_tp_posts', $inspectProof, 20, 2);
+add_filter('rest_prepare_sp_posts', $inspectProof, 20, 2);
 $corePassword('native-secret');
-remove_filter('rest_prepare_tp_posts', $inspectProof);
+remove_filter('rest_prepare_sp_posts', $inspectProof);
 eq('nested native requests suspend and then restore the outer password proof', $nestedProof, [404, 403, $protected['body']]);
 $wp->actAs('admin');
 $borrowedProof = null;
@@ -365,9 +365,9 @@ $inspectViewer = static function ($response) use (&$borrowedProof, $db, $protect
 
     return $response;
 };
-add_filter('rest_prepare_tp_posts', $inspectViewer);
+add_filter('rest_prepare_sp_posts', $inspectViewer);
 $corePassword('native-secret');
-remove_filter('rest_prepare_tp_posts', $inspectViewer);
+remove_filter('rest_prepare_sp_posts', $inspectViewer);
 $wp->actAs(null);
 eq('native admin password proof does not authorize an explicit anonymous viewer', $borrowedProof, []);
 wp_update_post(['ID' => $public['id'], 'post_password' => '']);
@@ -382,7 +382,7 @@ eq('valid native cookie unlocks the same viewer-bound body as WordPress', [post_
 unset($_COOKIE['wp-postpass_' . COOKIEHASH]);
 eq('removing password proof invalidates visibility', [$db->findMany('posts', ['where' => $protectedWhere], $anon), $coreRead()->get_status()], [[], 404]);
 $wp->startServer();
-$wire = json_decode(file_get_contents($wp->url() . '/wp-json/typedpress/v1/posts/' . $protected['id'], false, stream_context_create(['http' => ['ignore_errors' => true, 'timeout' => 10]])), true);
+$wire = json_decode(file_get_contents($wp->url() . '/wp-json/spacepress/v1/posts/' . $protected['id'], false, stream_context_create(['http' => ['ignore_errors' => true, 'timeout' => 10]])), true);
 eq('anonymous HTTP cannot read a native password-protected record', [$wire['status'] ?? null, $wire['code'] ?? null], [404, 'not_found']);
 $db->delete('comments', ['id' => $linked['id']]);
 $db->delete('posts', ['id' => ['in' => [$protected['id'], $public['id']]]]);
@@ -391,10 +391,10 @@ $db->delete('posts', ['id' => ['in' => [$protected['id'], $public['id']]]]);
 $wp->actAs(null);
 $protectedIds = [];
 for ($i = 0; $i < 40; $i++) {
-    $protectedIds[] = wp_insert_post(['post_type' => 'tp_posts', 'post_title' => "Batch protected $i", 'post_password' => "batch-secret-$i", 'post_status' => 'publish']);
+    $protectedIds[] = wp_insert_post(['post_type' => 'sp_posts', 'post_title' => "Batch protected $i", 'post_password' => "batch-secret-$i", 'post_status' => 'publish']);
 }
 wp_cache_flush();
-\TypedPress\Wp\CoreAccess::flush();
+\SpacePress\Wp\CoreAccess::flush();
 $queries = $wpdb->num_queries;
 $page = $db->findMany('posts', ['where' => ['id' => ['in' => array_merge($protectedIds, [$pub['id']])]], 'orderBy' => ['id' => 'asc'], 'limit' => 1], $anon);
 $firstQueries = $wpdb->num_queries - $queries;
@@ -404,17 +404,17 @@ eq('anonymous pagination never primes unrelated protected posts', wp_cache_get($
 $proofChecks = 0;
 $countCapabilities = static function ($caps) use (&$proofChecks) { $proofChecks++; return $caps; };
 add_filter('map_meta_cap', $countCapabilities, 1);
-$viewer = new \TypedPress\Viewer($users['ed']);
+$viewer = new \SpacePress\Viewer($users['ed']);
 $db->findMany('posts', ['limit' => 1], $viewer);
 $firstChecks = $proofChecks;
 $db->findMany('posts', ['limit' => 1], $viewer);
 remove_filter('map_meta_cap', $countCapabilities, 1);
 eq('same viewer and proof reuse visibility without rechecking every protected capability', [$firstChecks > 0, $proofChecks], [true, $firstChecks]);
 wp_cache_flush();
-\TypedPress\Wp\CoreAccess::flush();
+\SpacePress\Wp\CoreAccess::flush();
 $failPostLookup = static function (string $sql) use ($wpdb): string {
     return preg_match('/^\s*SELECT\b/i', $sql) && str_contains($sql, $wpdb->posts)
-        ? 'SELECT * FROM tp_missing_post_storage'
+        ? 'SELECT * FROM sp_missing_post_storage'
         : $sql;
 };
 add_filter('query', $failPostLookup);
@@ -493,7 +493,7 @@ eq('… and listed for editors with its date', [in_array('Later', $titles(req('G
 
 $p = req('POST', '/posts', ['title' => 'Rev 1', 'excerpt' => 'first'], 'alice')[1];
 req('PATCH', "/posts/{$p['id']}", ['title' => 'Rev 2', 'excerpt' => 'second'], 'alice');
-\TypedPress\Extensions::onRead(static function (array $rows, string $c, ?\TypedPress\Viewer $viewer): array {
+\SpacePress\Extensions::onRead(static function (array $rows, string $c, ?\SpacePress\Viewer $viewer): array {
     if ($c === 'posts' && $viewer !== null) {
         foreach ($rows as &$row) {
             if (in_array($row['title'], ['Rev 1', 'Rev 2'], true)) {
@@ -533,7 +533,7 @@ eq('patch merges; untouched fields keep their defaults', req('PATCH', '/globals/
 eq('trusted db sees the same values', $db->globalGet('settings')['postsPerPage'], 20);
 isProblem('unknown global', req('GET', '/globals/nope'), 404, 'not_found');
 
-// Native SCF writes cross WordPress's scalar-meta serialization before TypedPress decodes them.
+// Native SCF writes cross WordPress's scalar-meta serialization before SpacePress decodes them.
 // A nullable boolean must retain explicit false separately from null and an omitted default.
 (static function () use ($db): void {
     $fields = ['featured' => ['type' => 'boolean', 'default' => ['value' => false]]];
@@ -543,9 +543,9 @@ isProblem('unknown global', req('GET', '/globals/nope'), 404, 'not_found');
         'repeater' => ['type' => 'repeater', 'fields' => $fields],
         'blocks' => ['type' => 'blocks', 'layouts' => ['toggle' => $fields]],
     ] as $type => $def) {
-        $key = 'field_tp_nullable_' . $type;
-        $field = \TypedPress\Wp\Scf::fieldFor($db->schema(), $key, 'tp_nullable_' . $type, 'probe', $def, []);
-        acf_add_local_field_group(['key' => 'group_tp_nullable_' . $type, 'title' => 'Nullable probe', 'fields' => [$field]]);
+        $key = 'field_sp_nullable_' . $type;
+        $field = \SpacePress\Wp\Scf::fieldFor($db->schema(), $key, 'sp_nullable_' . $type, 'probe', $def, []);
+        acf_add_local_field_group(['key' => 'group_sp_nullable_' . $type, 'title' => 'Nullable probe', 'fields' => [$field]]);
         $id = wp_insert_post(['post_type' => 'post', 'post_title' => 'SCF round trip', 'post_status' => 'draft']);
         $save = static function (array $input) use ($id, $key, $def, $type): mixed {
             $raw = match ($type) {
@@ -554,7 +554,7 @@ isProblem('unknown global', req('GET', '/globals/nope'), 404, 'not_found');
                 'blocks' => [['acf_fc_layout' => 'toggle'] + $input],
             };
             update_field($key, $raw, $id);
-            $row = \TypedPress\Wp\Scf::fromScf($def, get_field($key, $id, false), $key);
+            $row = \SpacePress\Wp\Scf::fromScf($def, get_field($key, $id, false), $key);
 
             return ($type === 'group' ? $row : $row[0])['featured'];
         };
@@ -568,7 +568,7 @@ isProblem('unknown global', req('GET', '/globals/nope'), 404, 'not_found');
     }
 })();
 
-\TypedPress\Features::register(); // Re-registering bootstrap modules must not duplicate the media route.
+\SpacePress\Features::register(); // Re-registering bootstrap modules must not duplicate the media route.
 
 // ================================================================ media (§4.6)
 
@@ -610,17 +610,17 @@ eq('onDelete cascade', $db->findMany('comments', ['where' => ['postId' => $pub['
 
 // ================================================================ extension seams
 
-\TypedPress\SystemTables::register('seam', [
-    'CREATE TABLE IF NOT EXISTS `{prefix}tp__seam` (`id` BIGINT NOT NULL AUTO_INCREMENT, `event` LONGTEXT NOT NULL, `extra` LONGTEXT, PRIMARY KEY (`id`)) ENGINE=InnoDB',
+\SpacePress\SystemTables::register('seam', [
+    'CREATE TABLE IF NOT EXISTS `{prefix}sp__seam` (`id` BIGINT NOT NULL AUTO_INCREMENT, `event` LONGTEXT NOT NULL, `extra` LONGTEXT, PRIMARY KEY (`id`)) ENGINE=InnoDB',
 ]);
-\TypedPress\SystemTables::apply($db->store());
-$wp->exec('INSERT INTO {prefix}tp__seam (`id`, `event`, `extra`) VALUES (1, ?, ?)', ['kept', 'upgraded']);
-\TypedPress\SystemTables::apply($db->store());
-eq('reapplying system table DDL preserves data', $wp->sql('SELECT `event` FROM {prefix}tp__seam')[0], ['event' => 'kept']);
-problem('system DDL rejects request transactions', fn () => $db->transaction(fn () => \TypedPress\SystemTables::apply($db->store())), 500, 'internal');
+\SpacePress\SystemTables::apply($db->store());
+$wp->exec('INSERT INTO {prefix}sp__seam (`id`, `event`, `extra`) VALUES (1, ?, ?)', ['kept', 'upgraded']);
+\SpacePress\SystemTables::apply($db->store());
+eq('reapplying system table DDL preserves data', $wp->sql('SELECT `event` FROM {prefix}sp__seam')[0], ['event' => 'kept']);
+problem('system DDL rejects request transactions', fn () => $db->transaction(fn () => \SpacePress\SystemTables::apply($db->store())), 500, 'internal');
 
 $transformMutationRows = false;
-\TypedPress\Extensions::onRead(static function (array $rows, string $c) use (&$transformMutationRows): array {
+\SpacePress\Extensions::onRead(static function (array $rows, string $c) use (&$transformMutationRows): array {
     if ($transformMutationRows && $c === 'posts') {
         foreach ($rows as &$row) {
             $row['excerpt'] = 'display only';
@@ -630,7 +630,7 @@ $transformMutationRows = false;
 
     return $rows;
 }, constraintSafe: true);
-\TypedPress\Extensions::normalizeWrite(static function (string $op, string $c, array &$data, ?array $existing): void {
+\SpacePress\Extensions::normalizeWrite(static function (string $op, string $c, array &$data, ?array $existing): void {
     if ($c === 'posts') {
         unset($data['translationOf']);
         if (array_key_exists('password', $data)) {
@@ -640,7 +640,7 @@ $transformMutationRows = false;
         }
     }
 });
-\TypedPress\Extensions::onWrite(static function (string $op, string $c, array &$data, ?array $existing, ?\TypedPress\Viewer $viewer, array $provided): void {
+\SpacePress\Extensions::onWrite(static function (string $op, string $c, array &$data, ?array $existing, ?\SpacePress\Viewer $viewer, array $provided): void {
     if ($c === 'posts' && ($data['title'] ?? '') === 'Extension') {
         eq('write extension retains virtual input and distinguishes it from defaults', $provided, ['title' => 'Extension', 'translationOf' => 123]);
         // Defaults precede the extension, and the application hook derives authorId afterwards.
@@ -652,19 +652,19 @@ $transformMutationRows = false;
         $data['excerpt'] = $existing['excerpt'] . ' revised';
     }
     if ($c === 'posts' && $op === 'delete' && $data['excerpt'] === 'extension revised') {
-        throw new \TypedPress\JsError('extension refused delete');
+        throw new \SpacePress\JsError('extension refused delete');
     }
 });
-\TypedPress\Extensions::onWritten(static function (string $op, string $c, array $row, ?array $previous) use ($db): void {
+\SpacePress\Extensions::onWritten(static function (string $op, string $c, array $row, ?array $previous) use ($db): void {
     if ($c !== 'posts' || !str_starts_with($row['excerpt'] ?? '', 'extension')) {
         return;
     }
     $db->insert('comments', ['postId' => $row['id'], 'name' => $op, 'body' => $previous['excerpt'] ?? 'created']);
     if ($row['excerpt'] === 'extension fail') {
-        throw new \TypedPress\JsError('extension rolled back');
+        throw new \SpacePress\JsError('extension rolled back');
     }
-    \TypedPress\Extensions::afterCommit(static function () use ($db, $op, $row): void {
-        $GLOBALS['wp']->exec('INSERT INTO {prefix}tp__seam (`event`) VALUES (?)', [$op . ':' . $row['excerpt']]);
+    \SpacePress\Extensions::afterCommit(static function () use ($db, $op, $row): void {
+        $GLOBALS['wp']->exec('INSERT INTO {prefix}sp__seam (`event`) VALUES (?)', [$op . ':' . $row['excerpt']]);
     });
 });
 $seamAuthor = $db->insert('authors', ['name' => 'Alice again', 'email' => 'again@example.com', 'userId' => $users['alice']['id']], true)[0];
@@ -680,13 +680,13 @@ isProblem('normalization still rejects unconsumed create inputs', req('POST', '/
 isProblem('normalization still rejects unconsumed update inputs', req('PATCH', '/posts/' . $seam['id'], ['unknown' => true], 'ed'), 422, 'invalid_input', '/unknown');
 eq('written extension can nest writes and schedule durable effects', [
     array_column($db->findMany('comments', ['where' => ['postId' => $seam['id']], 'orderBy' => ['id' => 'asc']]), 'body'),
-    array_column($wp->sql('SELECT `event` FROM {prefix}tp__seam ORDER BY `id`'), 'event'),
+    array_column($wp->sql('SELECT `event` FROM {prefix}sp__seam ORDER BY `id`'), 'event'),
 ], [['created', 'extension'], ['kept', 'create:extension', 'update:extension revised']]);
 isProblem('written extension failure rolls back row and nested effects', req('PATCH', '/posts/' . $seam['id'], ['excerpt' => 'extension fail'], 'ed'), 422, 'rejected');
 eq('failed write preserves row and nested data', [
     $db->findFirst('posts', ['where' => ['id' => $seam['id']]])['excerpt'],
     count($db->findMany('comments', ['where' => ['postId' => $seam['id']]])),
-    $wp->scalar('SELECT COUNT(*) FROM {prefix}tp__seam'),
+    $wp->scalar('SELECT COUNT(*) FROM {prefix}sp__seam'),
 ], ['extension revised', 2, 3]);
 $transformMutationRows = true;
 isProblem('delete extension receives stored data before deletion', req('DELETE', '/posts/' . $seam['id'], as: 'ed'), 422, 'rejected');
@@ -694,11 +694,11 @@ $transformMutationRows = false;
 
 // The lookup seam primes a page cache which a read transform consumes, including nested relations.
 $cache = [];
-\TypedPress\Extensions::onLookup(static function (string $c, array $pks) use (&$cache): void {
+\SpacePress\Extensions::onLookup(static function (string $c, array $pks) use (&$cache): void {
     $cache[$c] = array_fill_keys($pks, 'looked up');
 });
 // Receipt display changes no row membership or constraint values.
-\TypedPress\Extensions::onRead(static function (array $rows, string $c, ?\TypedPress\Viewer $viewer) use (&$cache): array {
+\SpacePress\Extensions::onRead(static function (array $rows, string $c, ?\SpacePress\Viewer $viewer) use (&$cache): array {
     if ($viewer !== null && $c === 'posts') {
         foreach ($rows as &$row) {
             if ($row['title'] === 'Replay seam') {
@@ -713,21 +713,21 @@ $cache = [];
 
 // The receipt and download proofs run before the linkage-hiding read transform below is registered:
 // that transform is not constraint-safe, so viewer-bound unique writes are refused once it exists (#72).
-\TypedPress\Extensions::aroundOperation(static function (string $scope, array $spec, string $raw, array $headers, ?\TypedPress\Viewer $viewer, callable $next) use ($wp): \TypedPress\Response {
+\SpacePress\Extensions::aroundOperation(static function (string $scope, array $spec, string $raw, array $headers, ?\SpacePress\Viewer $viewer, callable $next) use ($wp): \SpacePress\Response {
     if (!isset($headers['idempotency-key'])) {
         return $next();
     }
     $key = 'receipt:' . $scope . ':' . ($viewer?->user['id'] ?? 'anonymous') . ':' . $headers['idempotency-key'];
-    $stored = $wp->scalar('SELECT `extra` FROM {prefix}tp__seam WHERE `event` = ?', [$key]);
+    $stored = $wp->scalar('SELECT `extra` FROM {prefix}sp__seam WHERE `event` = ?', [$key]);
     if ($stored !== null) {
         $receipt = json_decode($stored, true);
 
-        return \TypedPress\Response::json($receipt['data'], $receipt['status'], ['Idempotent-Replayed' => 'true']);
+        return \SpacePress\Response::json($receipt['data'], $receipt['status'], ['Idempotent-Replayed' => 'true']);
     }
     $result = $next();
-    $wp->exec('INSERT INTO {prefix}tp__seam (`event`, `extra`) VALUES (?, ?)', [$key, json_encode(\TypedPress\Seam::toWire(['status' => $result->status, 'data' => $result->data]))]);
+    $wp->exec('INSERT INTO {prefix}sp__seam (`event`, `extra`) VALUES (?, ?)', [$key, json_encode(\SpacePress\Seam::toWire(['status' => $result->status, 'data' => $result->data]))]);
     if ($headers['idempotency-key'] === 'fail') {
-        throw new \TypedPress\JsError('Receipt persistence failed');
+        throw new \SpacePress\JsError('Receipt persistence failed');
     }
 
     return $result;
@@ -745,15 +745,15 @@ eq('create authorization still runs before replay middleware', $wp->handle('POST
 $failedReceipt = $wp->handle('POST', '/posts', '{"title":"Rolled back receipt"}', 'ed', ['Idempotency-Key' => 'fail']);
 eq('failed operation wrapper rolls back both its result and receipt', [
     $failedReceipt[0], $db->findMany('posts', ['where' => ['title' => 'Rolled back receipt']]),
-    $wp->scalar('SELECT COUNT(*) FROM {prefix}tp__seam WHERE `event` LIKE ?', ['receipt:%:fail']),
+    $wp->scalar('SELECT COUNT(*) FROM {prefix}sp__seam WHERE `event` LIKE ?', ['receipt:%:fail']),
 ], [422, [], 0]);
 
-\TypedPress\Extensions::route('download-proof', static function () use ($wp): \TypedPress\Response {
-    $wp->exec('INSERT INTO {prefix}tp__seam (`event`) VALUES (?)', ['download prepared']);
-    \TypedPress\Extensions::afterCommit(static fn () => $wp->exec('INSERT INTO {prefix}tp__seam (`event`) VALUES (?)', ['download committed']));
+\SpacePress\Extensions::route('download-proof', static function () use ($wp): \SpacePress\Response {
+    $wp->exec('INSERT INTO {prefix}sp__seam (`event`) VALUES (?)', ['download prepared']);
+    \SpacePress\Extensions::afterCommit(static fn () => $wp->exec('INSERT INTO {prefix}sp__seam (`event`) VALUES (?)', ['download committed']));
 
-    return \TypedPress\Response::raw(static function () use ($wp): void {
-        echo "file\0bytes:" . $wp->scalar('SELECT `event` FROM {prefix}tp__seam ORDER BY `id` DESC LIMIT 1');
+    return \SpacePress\Response::raw(static function () use ($wp): void {
+        echo "file\0bytes:" . $wp->scalar('SELECT `event` FROM {prefix}sp__seam ORDER BY `id` DESC LIMIT 1');
     }, 200, ['content-type' => 'text/plain', 'Content-Disposition' => 'attachment; filename="proof.bin"', 'Cache-Control' => 'public'])
         ->withHeaders(['CACHE-CONTROL' => 'private, no-store',
             'access-control-allow-origin' => 'https://app.example',
@@ -761,7 +761,7 @@ eq('failed operation wrapper rolls back both its result and receipt', [
 });
 [$downloadStatus, $downloadHeaders, $downloadBody] = $wp->handle('GET', '/download-proof');
 ob_start();
-\TypedPress\Response::emit($downloadBody);
+\SpacePress\Response::emit($downloadBody);
 $emitted = ob_get_clean();
 eq('download response streams raw bytes and headers after commit', [
     $downloadStatus, $downloadHeaders['content-type'], $downloadHeaders['Content-Disposition'], $downloadHeaders['CACHE-CONTROL'], $emitted,
@@ -769,7 +769,7 @@ eq('download response streams raw bytes and headers after commit', [
     count($downloadHeaders) === count(array_change_key_case($downloadHeaders)),
 ], [200, 'text/plain', 'attachment; filename="proof.bin"', 'private, no-store', "file\0bytes:download committed", 'https://app.example', 'Content-Disposition', true]);
 
-\TypedPress\Extensions::onRead(static function (array $rows, string $c, ?\TypedPress\Viewer $viewer) use (&$cache): array {
+\SpacePress\Extensions::onRead(static function (array $rows, string $c, ?\SpacePress\Viewer $viewer) use (&$cache): array {
     if ($viewer === null) {
         return $rows;
     }
@@ -796,7 +796,7 @@ eq('read stripping keeps relation linkage private and does not resurrect populat
 $revisionId = $db->revisions('posts', $seam['id'])[0]['id'];
 eq('revisions use the same read transform', array_key_exists('authorId', req('GET', '/posts/' . $seam['id'] . '/revisions/' . $revisionId, as: 'ed')[1]), false);
 eq('write responses use the read transform after trusted hooks', array_key_exists('authorId', req('PATCH', '/posts/' . $seam['id'], ['body' => 'changed'], 'ed')[1]), false);
-\TypedPress\Extensions::beforeRead(static function (string $c, array &$opts, ?\TypedPress\Viewer $viewer): void {
+\SpacePress\Extensions::beforeRead(static function (string $c, array &$opts, ?\SpacePress\Viewer $viewer): void {
     if (isset($opts['idsOnly'])) {
         $opts['columns'] = ['id' => true];
         unset($opts['idsOnly']);
@@ -805,7 +805,7 @@ eq('write responses use the read transform after trusted hooks', array_key_exist
         return;
     }
     if ($viewer !== null && isset($opts['orderBy']['excerpt'])) {
-        throw new \TypedPress\HttpError(403, 'forbidden', 'Cannot order by transformed data', '/orderBy/excerpt');
+        throw new \SpacePress\HttpError(403, 'forbidden', 'Cannot order by transformed data', '/orderBy/excerpt');
     }
     if (isset($opts['seamId'])) {
         $opts['where'] = ['id' => $opts['seamId']];
@@ -813,7 +813,7 @@ eq('write responses use the read transform after trusted hooks', array_key_exist
     }
     if (array_key_exists('locale', $opts)) {
         if ($opts['locale'] !== 'de') {
-            throw \TypedPress\HttpError::invalidQuery('Unsupported test locale', '/locale');
+            throw \SpacePress\HttpError::invalidQuery('Unsupported test locale', '/locale');
         }
         $opts['where'] = ['AND' => [$opts['where'] ?? [], ['title' => 'published alice']]];
         unset($opts['locale']);
@@ -822,7 +822,7 @@ eq('write responses use the read transform after trusted hooks', array_key_exist
 eq('query extensions normalize filters and projections at every relation level', $db->findMany('posts', [
     'seamId' => $seam['id'], 'idsOnly' => true, 'with' => ['authorId' => ['idsOnly' => true]],
 ]), [['id' => $seam['id'], 'authorId' => ['id' => $seamAuthor['id']]]]);
-problem('query extensions reject forbidden selectors before the query', fn () => $db->findMany('posts', ['orderBy' => ['excerpt' => 'asc']], new \TypedPress\Viewer($users['ed'])), 403, 'forbidden', '/orderBy/excerpt');
+problem('query extensions reject forbidden selectors before the query', fn () => $db->findMany('posts', ['orderBy' => ['excerpt' => 'asc']], new \SpacePress\Viewer($users['ed'])), 403, 'forbidden', '/orderBy/excerpt');
 eq('REST list and item queries deliver feature options before SQL', [
     array_column(req('GET', '/posts', as: 'ed', query: ['locale' => 'de'])[1], 'id'),
     req('GET', '/posts/' . $seam['id'], as: 'ed', query: ['locale' => 'de'])[1]['id'],
@@ -831,16 +831,16 @@ isProblem('feature query validation reaches item REST', req('GET', '/posts/' . $
 isProblem('unconsumed feature options remain invalid on other collections', req('GET', '/authors', query: ['locale' => 'de']), 400, 'invalid_query', '/locale');
 
 $db->setActor($users['sub']);
-$invoked = $app->invoke('POST', '/comments', [], ['postId' => $seam['id'], 'name' => 'dispatch', 'body' => 'approved as editor'], new \TypedPress\Viewer($users['ed']));
+$invoked = $app->invoke('POST', '/comments', [], ['postId' => $seam['id'], 'name' => 'dispatch', 'body' => 'approved as editor'], new \SpacePress\Viewer($users['ed']));
 eq('operation invocation uses explicit authority and restores its caller actor', [$db->findFirst('comments', ['where' => ['id' => $invoked['id']]])['approved'], $db->actor()], [true, $users['sub']]);
-problem('operation invocation throws access errors without serializing them', fn () => $app->invoke('POST', '/actions/approveComment', [], ['id' => $invoked['id']], new \TypedPress\Viewer($users['sub'])), 403, 'forbidden');
+problem('operation invocation throws access errors without serializing them', fn () => $app->invoke('POST', '/actions/approveComment', [], ['id' => $invoked['id']], new \SpacePress\Viewer($users['sub'])), 403, 'forbidden');
 eq('throwing operation invocation also restores the caller actor', $db->actor(), $users['sub']);
 $db->setActor(null);
 
-\TypedPress\Extensions::schemaDescribe(static fn (array $d): array => $d + ['seam' => ['version' => 1]]);
+\SpacePress\Extensions::schemaDescribe(static fn (array $d): array => $d + ['seam' => ['version' => 1]]);
 eq('public schema description extensions reach HTTP', req('GET', '/_schema')[1]['seam'], ['version' => 1]);
 
-\TypedPress\Extensions::route('posts', static function (string $method, array $segments, array $query, string $body, \TypedPress\Viewer $viewer, array $files, array $form): array {
+\SpacePress\Extensions::route('posts', static function (string $method, array $segments, array $query, string $body, \SpacePress\Viewer $viewer, array $files, array $form): array {
     App::allow($method, ['POST']);
 
     return [202, [$segments, $query, $body, $viewer->user['name'] ?? null, $files, $form]];
@@ -851,12 +851,12 @@ eq('route extension owns a prefix before collections and receives all request pa
 isProblem('extension errors use the normal problem envelope', req('GET', '/posts'), 405, 'method_not_allowed');
 isProblem('prefix dispatch matches complete segments', req('GET', '/postsExtra'), 404, 'not_found');
 
-\TypedPress\Extensions::beforeAction(static function (array $spec, string $name, string $raw, array $headers, ?\TypedPress\Viewer $viewer): void {
+\SpacePress\Extensions::beforeAction(static function (array $spec, string $name, string $raw, array $headers, ?\SpacePress\Viewer $viewer): void {
     if ($name === 'approveComment' && ($headers['x-proof'] ?? '') !== hash('sha256', $raw)) {
-        throw new \TypedPress\HttpError(403, 'forbidden', 'Bad raw-body proof');
+        throw new \SpacePress\HttpError(403, 'forbidden', 'Bad raw-body proof');
     }
     if ($name === 'publishedCount' && $viewer === null && trim($raw) === '{"reject":true}') {
-        throw new \TypedPress\JsError('CLI action extension');
+        throw new \SpacePress\JsError('CLI action extension');
     }
 });
 $seamComment = $db->findFirst('comments', ['where' => ['postId' => $seam['id']]]);
@@ -873,10 +873,10 @@ $actionHeaders['x-proof'] = 'invalid';
 eq('action signature guard still runs before replay middleware', $wp->handle('POST', '/actions/approveComment', $raw, 'ed', $actionHeaders)[0], 403);
 [$code, $out] = $app->cli(['action', 'publishedCount', '{"reject":true}']);
 eq('trusted CLI actions share the invocation extension', [$code, json_decode($out, true)['error']['code']], [1, 'rejected']);
-\TypedPress\Extensions::cli('seam', static function (array $args, array $flags) use ($wp): array {
-    $wp->exec('INSERT INTO {prefix}tp__seam (`event`) VALUES (?)', [$args[0]]);
+\SpacePress\Extensions::cli('seam', static function (array $args, array $flags) use ($wp): array {
+    $wp->exec('INSERT INTO {prefix}sp__seam (`event`) VALUES (?)', [$args[0]]);
     if (isset($flags['fail'])) {
-        throw new \TypedPress\JsError('CLI extension rollback');
+        throw new \SpacePress\JsError('CLI extension rollback');
     }
 
     return ['args' => $args, 'flags' => $flags];
@@ -884,10 +884,10 @@ eq('trusted CLI actions share the invocation extension', [$code, json_decode($ou
 [$code, $out] = $app->cli(['seam', 'saved', '--mode=local']);
 eq('CLI extension runs through the canonical envelope', [$code, json_decode($out, true)['data']], [0, ['args' => ['saved'], 'flags' => ['mode' => 'local']]]);
 $app->cli(['seam', 'discarded', '--fail']);
-eq('CLI extension effects join the command transaction', $wp->scalar('SELECT `event` FROM {prefix}tp__seam ORDER BY `id` DESC LIMIT 1'), 'saved');
+eq('CLI extension effects join the command transaction', $wp->scalar('SELECT `event` FROM {prefix}sp__seam ORDER BY `id` DESC LIMIT 1'), 'saved');
 
 try {
-    \TypedPress\Extensions::route('sync', static fn (): array => [200, null]);
+    \SpacePress\Extensions::route('sync', static fn (): array => [200, null]);
     check('a second owner for an extension route is refused', false);
 } catch (\LogicException) {
     check('a second owner for an extension route is refused', true);

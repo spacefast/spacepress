@@ -32,4 +32,4 @@ Chain `.min(n)`, `.max(n)`, `.pattern(/.../)`, `.unique()`, `.default(v)`, `.def
 
 Rename a field in TypeScript while keeping its physical column with `.column("old_name")`. Keep an SQL table’s physical name with `storageName: "old_table"`. Add `.alias("oldName")` if callers still send the previous field name.
 
-Commit each generated folder under `tp/_generated/migrations/`. The compiler folds the folders’ `ops.json` files in order and writes a new folder when the SQL schema changes. Removing a field or table from the schema retires it while preserving its data.
+Commit each generated folder under `sp/_generated/migrations/`. The compiler folds the folders’ `ops.json` files in order and writes a new folder when the SQL schema changes. Removing a field or table from the schema retires it while preserving its data.

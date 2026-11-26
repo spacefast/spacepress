@@ -1,4 +1,4 @@
-// Calls stay in source form so both Node and TypedPress execute the same expressions.
+// Calls stay in source form so both Node and SpacePress execute the same expressions.
 export const probes = [
   {
     name: "url-join",

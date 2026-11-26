@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity;
+namespace SpacePress\Identity;
 
-use TypedPress\Identity\Protocol\AuthCode;
-use TypedPress\Identity\Protocol\OAuthError;
+use SpacePress\Identity\Protocol\AuthCode;
+use SpacePress\Identity\Protocol\OAuthError;
 
 /**
  * The OpenID Connect issuer: authorization code + PKCE (S256, public clients only), refresh token
@@ -224,12 +224,12 @@ final class OAuth
 
     /**
      * Mint a session + token pair for a WordPress user without a browser flow (guests, §6.2).
-     * Only the TypedPress runtime may call it, and only after it has loaded.
+     * Only the SpacePress runtime may call it, and only after it has loaded.
      */
     public function issueForUser(int $uid, string $clientId): array
     {
-        if (!did_action("tp_runtime_loaded")) {
-            throw new \LogicException("issueForUser is reserved for the TypedPress runtime");
+        if (!did_action("sp_runtime_loaded")) {
+            throw new \LogicException("issueForUser is reserved for the SpacePress runtime");
         }
         return $this->db->transaction(function () use ($uid, $clientId) {
             if (!$this->client($clientId)) {
@@ -362,7 +362,7 @@ final class OAuth
     public function handoff(string $access): string
     {
         $token = $this->access($access) ?? throw new Failure("invalid_token", "The access token is invalid or revoked.", 401);
-        if (!in_array("tp_guest", (array) get_userdata($token["uid"])?->roles, true)) {
+        if (!in_array("sp_guest", (array) get_userdata($token["uid"])?->roles, true)) {
             throw new Failure("not_guest", "Only guest accounts use a handoff.", 403);
         }
         $secret = Security::token();
@@ -392,7 +392,7 @@ final class OAuth
                 $challenge["session_id"],
                 $uid,
             );
-            if (!$live || !in_array("tp_guest", (array) get_userdata($uid)?->roles, true)) {
+            if (!$live || !in_array("sp_guest", (array) get_userdata($uid)?->roles, true)) {
                 throw new Failure("invalid_challenge", "The code is incorrect, used, or expired.");
             }
             return Plugin::$sessions->create($uid);

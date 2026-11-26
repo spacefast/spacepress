@@ -19,7 +19,7 @@ pub enum Ty {
     Num,
     NumLit(f64),
     FreshNumLit(f64),
-    /// A JavaScript BigInt (`TypedPress\JsBigInt` at runtime).
+    /// A JavaScript BigInt (`SpacePress\JsBigInt` at runtime).
     BigInt,
     Str,
     /// A finite string discriminant, retained for switch exhaustiveness.
@@ -56,19 +56,19 @@ pub enum Ty {
     Obj(IndexMap<String, (Ty, bool)>),
     /// `Record<string, T>`
     Map(Box<Ty>),
-    /// A JavaScript `Map<K, V>` (`TypedPress\JsMap`): SameValueZero keys, insertion order, object keys by identity.
+    /// A JavaScript `Map<K, V>` (`SpacePress\JsMap`): SameValueZero keys, insertion order, object keys by identity.
     MapOf(Box<Ty>, Box<Ty>),
-    /// A JavaScript `Set<T>` (`TypedPress\JsSet`).
+    /// A JavaScript `Set<T>` (`SpacePress\JsSet`).
     SetOf(Box<Ty>),
     /// A built-in iterator (`map.keys()`, `array.entries()`, ...) yielding T, consumed once.
     Iter(Box<Ty>),
-    /// DOM `AbortController` (`TypedPress\JsAbortController`).
+    /// DOM `AbortController` (`SpacePress\JsAbortController`).
     AbortController,
-    /// DOM `AbortSignal` (`TypedPress\JsAbortSignal`).
+    /// DOM `AbortSignal` (`SpacePress\JsAbortSignal`).
     AbortSignal,
-    /// A WHATWG `URL` (`TypedPress\JsUrl`).
+    /// A WHATWG `URL` (`SpacePress\JsUrl`).
     Url,
-    /// A WHATWG `URLSearchParams` (`TypedPress\JsUrlSearchParams`).
+    /// A WHATWG `URLSearchParams` (`SpacePress\JsUrlSearchParams`).
     UrlParams,
     Union(Vec<Ty>),
     Fn(Vec<Ty>, Box<Ty>),
@@ -84,14 +84,14 @@ pub enum Ty {
     Host(HostTy),
     /// A caught exception.
     Error,
-    /// Rendered, already escaped HTML from JSX (`\TypedPress\Html`).
+    /// Rendered, already escaped HTML from JSX (`\SpacePress\Html`).
     Html,
-    // TypedPress runtime values
+    // SpacePress runtime values
     Collection(String),
     Db,
     DbQuery,
     QueryColl(String),
-    /// `posts.system`: a `"typedpress:db"` kind's trusted calls (spec §3).
+    /// `posts.system`: a `"spacepress:db"` kind's trusted calls (spec §3).
     KindSystem(String),
     /// `posts.revisions` / `posts.system.revisions`: a kind's revision history API.
     KindRevisions(String, bool),
@@ -145,16 +145,16 @@ impl Builder {
         let r = if self.returning { ", true" } else { "" };
         match self.kind {
             BuilderKind::Insert => format!(
-                "\\TypedPress\\Seam::insert({t}, {}{r})",
+                "\\SpacePress\\Seam::insert({t}, {}{r})",
                 self.values.as_deref().unwrap_or("[]")
             ),
             BuilderKind::Update => format!(
-                "\\TypedPress\\Seam::update({t}, {}, {}{r})",
+                "\\SpacePress\\Seam::update({t}, {}, {}{r})",
                 self.set.as_deref().unwrap_or("[]"),
                 self.filter.as_deref().unwrap_or("[]")
             ),
             BuilderKind::Delete => format!(
-                "\\TypedPress\\Seam::delete({t}, {}{r})",
+                "\\SpacePress\\Seam::delete({t}, {}{r})",
                 self.filter.as_deref().unwrap_or("[]")
             ),
         }
@@ -809,7 +809,7 @@ pub fn route_request() -> Ty {
 }
 
 /// `req.query`: URLSearchParams' read methods over the raw query string, names byte-exact and every
-/// value kept in order (runtime/TypedPress/QueryString.php).
+/// value kept in order (runtime/SpacePress/QueryString.php).
 pub fn route_query() -> Ty {
     obj(&[
         ("get", Ty::Fn(vec![Ty::Str], Box::new(Ty::Str.nullable()))),

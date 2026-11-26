@@ -7,7 +7,7 @@ declare(strict_types=1);
  * fallback (tests/app_router.rs `public_files_serve_at_the_site_root`): tests/fixtures/public-root
  * as built, served by php -S, read over HTTP. Prints one JSON object.
  *
- *   TP_WP_THEMES=1 php tests/php/public_root.php <wp-content dir>
+ *   SP_WP_THEMES=1 php tests/php/public_root.php <wp-content dir>
  */
 
 require __DIR__ . '/wp.php';
@@ -37,16 +37,16 @@ function fetch(string $url, string $method = 'GET', array $headers = []): array
 
 $out = [];
 $publicRoot = $site->dir . '/public-root';
-$pluginPublic = $site->content . '/plugins/typedpress-app-publicroot/public';
+$pluginPublic = $site->content . '/plugins/spacepress-app-publicroot/public';
 
 // A link planted in the built plugin's public/ that points out of it (the build copies a linked
 // file in as a file, so only a hand edit makes one): never followed and never symlinked.
-symlink(dirname(__DIR__, 2) . '/runtime/TypedPress/Wp/Plugin.php', $pluginPublic . '/linked.txt');
+symlink(dirname(__DIR__, 2) . '/runtime/SpacePress/Wp/Plugin.php', $pluginPublic . '/linked.txt');
 // A real file already present in the document root must never be overwritten by symlink sync.
 file_put_contents($publicRoot . '/existing-real.txt', 'real-root-file');
 
 // Re-sync symlinks after planting the real file and escaping symlink.
-\TypedPress\Wp\PublicFiles::syncSymlinks($site->plugin());
+\SpacePress\Wp\PublicFiles::syncSymlinks($site->plugin());
 
 // Packaged plugin must never contain refused files (.env, run.php) and must ship public/.htaccess.
 $out['packaged'] = [
@@ -68,14 +68,14 @@ foreach (['/compiler.wasm', '/logo.svg', '/files/blog.json', '/files/blobs/0a1b.
 }
 
 // Direct wp-content URL for public/index.html works, while `/` stays WordPress's home page.
-$wpIndex = fetch("$url/wp-content/plugins/typedpress-app-publicroot/public/index.html");
+$wpIndex = fetch("$url/wp-content/plugins/spacepress-app-publicroot/public/index.html");
 $out['wpIndex'] = [$wpIndex['status'], $wpIndex['type'], strlen($wpIndex['body'])];
 $out['home'] = str_contains(fetch("$url/")['body'], 'Public index');
 
 // WordPress's own answers stay WordPress's, whatever public/ holds: robots.txt, llms.txt, feeds,
-// TypedPress Identity's discovery document.
+// SpacePress Identity's discovery document.
 foreach (['/robots.txt', '/llms.txt', '/feed/x.txt', '/.well-known/openid-configuration'] as $path) {
-    $file = (string) file_get_contents($argv[1] . '/plugins/typedpress-app-publicroot/public' . $path);
+    $file = (string) file_get_contents($argv[1] . '/plugins/spacepress-app-publicroot/public' . $path);
     $out['wordpress'][$path] = trim(fetch("$url$path")['body']) !== trim($file);
 }
 
@@ -93,7 +93,7 @@ foreach ($links as $m) {
 
 foreach (['/.env', '/nested/run.php', '/wp-json/index.json', '/wp-login.php.txt', '/files/../.env', '/files/%2e%2e/.env', '/files/..%2f.env', '/nested/', '/missing.png', '/nested/run.php.', '/nested/run.php%20', '/nested/run.php::$DATA', '/files%5c..%5c.env', '/linked.txt', '/NESTED/RUN.PHP'] as $path) {
     $r = fetch("$url$path");
-    $out['refused'][$path] = [$r['status'] === 404, str_contains($r['body'], 'secret') || str_contains($r['body'], 'echo "ran"') || $r['body'] === 'ran' || $r['body'] === '{}' || $r['body'] === 'shadow' || str_contains($r['body'], 'namespace TypedPress')];
+    $out['refused'][$path] = [$r['status'] === 404, str_contains($r['body'], 'secret') || str_contains($r['body'], 'echo "ran"') || $r['body'] === 'ran' || $r['body'] === '{}' || $r['body'] === 'shadow' || str_contains($r['body'], 'namespace SpacePress')];
 }
 
 // HEAD has no body; /.well-known/ai.json (served via PHP) has ETag/304, Cache-Control, and CORS.
@@ -122,7 +122,7 @@ $out['wellKnown'] = [
 $out['post'] = fetch("$url/logo.svg", 'POST')['status'];
 
 // Deactivation cleanup removes created symlinks and empty dirs while preserving pre-existing real files.
-\TypedPress\Wp\PublicFiles::removeSymlinks();
+\SpacePress\Wp\PublicFiles::removeSymlinks();
 $out['cleaned'] = [
     'logoRemoved' => !file_exists($publicRoot . '/logo.svg') && !is_link($publicRoot . '/logo.svg'),
     'filesDirRemoved' => !is_dir($publicRoot . '/files'),

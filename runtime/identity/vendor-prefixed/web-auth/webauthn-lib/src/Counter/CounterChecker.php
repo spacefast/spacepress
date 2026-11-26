@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Webauthn\Counter;
+namespace SpacePress\Identity\Vendor\Webauthn\Counter;
 
-use TypedPress\Identity\Vendor\Webauthn\CredentialRecord;
+use SpacePress\Identity\Vendor\Webauthn\CredentialRecord;
 
 interface CounterChecker
 {

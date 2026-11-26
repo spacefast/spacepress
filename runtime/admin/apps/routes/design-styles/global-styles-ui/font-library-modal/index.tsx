@@ -1,4 +1,4 @@
-import { unlock } from '@typedpress-admin/admin-toolkit';
+import { unlock } from '@spacepress-admin/admin-toolkit';
 import { __, _x } from '@wordpress/i18n';
 import {
 	Modal,
@@ -18,12 +18,12 @@ const { Tabs } = unlock( componentsPrivateApis );
 
 const DEFAULT_TAB = {
 	id: 'installed-fonts',
-	title: _x( 'Library', 'Font library', 'typedpress-admin' ),
+	title: _x( 'Library', 'Font library', 'spacepress-admin' ),
 };
 
 const UPLOAD_TAB = {
 	id: 'upload-fonts',
-	title: _x( 'Upload', 'noun', 'typedpress-admin' ),
+	title: _x( 'Upload', 'noun', 'spacepress-admin' ),
 };
 
 const tabsFromCollections = ( collections: FontCollectionType[] ) =>
@@ -31,7 +31,7 @@ const tabsFromCollections = ( collections: FontCollectionType[] ) =>
 		id: slug,
 		title:
 			collections.length === 1 && slug === 'google-fonts'
-				? __( 'Install Fonts', 'typedpress-admin' )
+				? __( 'Install Fonts', 'spacepress-admin' )
 				: name,
 	} ) );
 
@@ -59,10 +59,10 @@ function FontLibraryModal( {
 
 	return (
 		<Modal
-			title={ __( 'Fonts', 'typedpress-admin' ) }
+			title={ __( 'Fonts', 'spacepress-admin' ) }
 			onRequestClose={ onRequestClose }
 			isFullScreen
-			className="typedpress-admin-font-library-modal"
+			className="spacepress-admin-font-library-modal"
 		>
 			<Tabs defaultTabId={ defaultTabId }>
 				<div className="font-library-modal__tablist-container">

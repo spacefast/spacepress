@@ -1,4 +1,4 @@
-.tp/*
-!.tp/sync-base.json
+.sp/*
+!.sp/sync-base.json
 /node_modules/
 /public/drive-source/

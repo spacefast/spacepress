@@ -1,8 +1,8 @@
-# @typedpress-admin/views
+# @spacepress-admin/views
 
 A lightweight package for managing DataViews view state with persistence using WordPress preferences.
 
-The `@typedpress-admin/views` package provides:
+The `@spacepress-admin/views` package provides:
 
 -   **Persistence**: Automatically saves and restores DataViews state using `@wordpress/preferences`
 -   **View Modification Detection**: Tracks when views differ from their default state
@@ -12,14 +12,14 @@ The `@typedpress-admin/views` package provides:
 ## Installation
 
 > [!NOTE]
-> Currently, this package is intended for use within an NPM workspaces context. You do not need to install it from the public NPM registry. Instead, import it directly as a workspace dependency in typedpress-admin and it will be consumed as a module in WordPress. Usage outside of this repository is not yet supported but should be possible in the future.
+> Currently, this package is intended for use within an NPM workspaces context. You do not need to install it from the public NPM registry. Instead, import it directly as a workspace dependency in spacepress-admin and it will be consumed as a module in WordPress. Usage outside of this repository is not yet supported but should be possible in the future.
 
 To use this package in your workspace, add it to your `package.json` dependencies:
 
 ```json
 {
 	"dependencies": {
-		"@typedpress-admin/views": "workspace:*"
+		"@spacepress-admin/views": "workspace:*"
 	}
 }
 ```
@@ -31,7 +31,7 @@ To use this package in your workspace, add it to your `package.json` dependencie
 Replace manual view state management with the `useView` hook:
 
 ```tsx
-import { useView } from '@typedpress-admin/views';
+import { useView } from '@spacepress-admin/views';
 
 function MyDataViewsComponent() {
 	const { view, isModified, updateView, resetToDefault } = useView( {
@@ -67,7 +67,7 @@ function MyDataViewsComponent() {
 For shareable pagination and search, add URL parameter support:
 
 ```tsx
-import { useView } from '@typedpress-admin/views';
+import { useView } from '@spacepress-admin/views';
 import { useSearch, useNavigate } from '@wordpress/route';
 
 function MyDataViewsComponent() {
@@ -113,7 +113,7 @@ The `useView` hook accepts a configuration object with the following properties:
 interface ViewConfig {
 	kind: string; // Entity kind (e.g., 'taxonomy', 'postType', 'root')
 	name: string; // Specific entity name (e.g., 'category', 'post', 'user')
-	defaultView: View; // Default view configuration from @typedpress-admin/dataviews
+	defaultView: View; // Default view configuration from @spacepress-admin/dataviews
 
 	// Optional: URL-based navigation support
 	queryParams?: {
@@ -233,11 +233,11 @@ const view = loadView( {
 
 ### DataViews Component
 
-The `DataViews` component is a thin wrapper around `@typedpress-admin/dataviews` that supports
+The `DataViews` component is a thin wrapper around `@spacepress-admin/dataviews` that supports
 an `onReset` prop for view persistence reset controls and a `tabs` slot.
 
 ```tsx
-import { DataViews, useView } from '@typedpress-admin/views';
+import { DataViews, useView } from '@spacepress-admin/views';
 
 function MyPage( props ) {
 	const { view, isModified, resetToDefault } = useView( {

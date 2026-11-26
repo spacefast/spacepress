@@ -2,20 +2,20 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive;
+namespace SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive;
 
-use TypedPress\Identity\Vendor\Brick\Math\BigInteger;
+use SpacePress\Identity\Vendor\Brick\Math\BigInteger;
 use function chr;
 use function mb_strlen;
 use function ord;
 use OutOfBoundsException;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Component\Identifier;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Component\Length;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Exception\DecodeException;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Feature\ElementBase;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\BaseString;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\PrimitiveType;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UniversalClass;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Component\Identifier;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Component\Length;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Exception\DecodeException;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Feature\ElementBase;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\BaseString;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\PrimitiveType;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UniversalClass;
 
 /**
  * Implements *BIT STRING* type.

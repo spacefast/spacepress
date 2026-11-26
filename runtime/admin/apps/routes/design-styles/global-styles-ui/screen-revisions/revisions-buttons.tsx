@@ -1,5 +1,5 @@
-import { unlock } from '@typedpress-admin/admin-toolkit';
-import type { GlobalStylesConfig } from '@typedpress-admin/global-styles-engine';
+import { unlock } from '@spacepress-admin/admin-toolkit';
+import type { GlobalStylesConfig } from '@spacepress-admin/global-styles-engine';
 import { __, sprintf } from '@wordpress/i18n';
 import { Button, Composite } from '@wordpress/components';
 import { dateI18n, getDate, humanTimeDiff, getSettings } from '@wordpress/date';
@@ -45,7 +45,7 @@ function ChangesSummary( { revision, previousRevision }: ChangesSummaryProps ) {
 	return (
 		<ul
 			data-testid="global-styles-revision-changes"
-			className="typedpress-admin-global-styles-screen-revisions__changes"
+			className="spacepress-admin-global-styles-screen-revisions__changes"
 		>
 			{ changes.map( ( change ) => (
 				<li key={ change }>{ change }</li>
@@ -68,13 +68,13 @@ function getRevisionLabel(
 	areStylesEqual: boolean
 ): string {
 	if ( 'parent' === id ) {
-		return __( 'Reset the styles to the theme defaults', 'typedpress-admin' );
+		return __( 'Reset the styles to the theme defaults', 'spacepress-admin' );
 	}
 
 	if ( 'unsaved' === id ) {
 		return sprintf(
 			/* translators: %s: author display name */
-			__( 'Unsaved changes by %s', 'typedpress-admin' ),
+			__( 'Unsaved changes by %s', 'spacepress-admin' ),
 			authorDisplayName
 		);
 	}
@@ -84,14 +84,14 @@ function getRevisionLabel(
 				// translators: 1: author display name. 2: revision creation date.
 				__(
 					'Changes saved by %1$s on %2$s. This revision matches current editor styles.',
-					'typedpress-admin'
+					'spacepress-admin'
 				),
 				authorDisplayName,
 				formattedModifiedDate
 		  )
 		: sprintf(
 				// translators: 1: author display name. 2: revision creation date.
-				__( 'Changes saved by %1$s on %2$s', 'typedpress-admin' ),
+				__( 'Changes saved by %1$s on %2$s', 'spacepress-admin' ),
 				authorDisplayName,
 				formattedModifiedDate
 		  );
@@ -136,8 +136,8 @@ function RevisionsButtons( {
 	return (
 		<Composite
 			orientation="vertical"
-			className="typedpress-admin-global-styles-screen-revisions__revisions-list"
-			aria-label={ __( 'Global styles revisions list', 'typedpress-admin' ) }
+			className="spacepress-admin-global-styles-screen-revisions__revisions-list"
+			aria-label={ __( 'Global styles revisions list', 'spacepress-admin' ) }
 			role="listbox"
 		>
 			{ userRevisions.map( ( revision, index ) => {
@@ -146,7 +146,7 @@ function RevisionsButtons( {
 				// Unsaved changes are created by the current user.
 				const revisionAuthor = isUnsaved ? currentUser : author;
 				const authorDisplayName =
-					revisionAuthor?.name || __( 'User', 'typedpress-admin' );
+					revisionAuthor?.name || __( 'User', 'spacepress-admin' );
 				const authorAvatar = revisionAuthor?.avatar_urls?.[ '48' ];
 				const isFirstItem = index === 0;
 				const isSelected = selectedRevisionId
@@ -170,7 +170,7 @@ function RevisionsButtons( {
 				return (
 					<Composite.Item
 						key={ id }
-						className="typedpress-admin-global-styles-screen-revisions__revision-item"
+						className="spacepress-admin-global-styles-screen-revisions__revision-item"
 						aria-current={ isSelected }
 						role="option"
 						onKeyDown={ ( event ) => {
@@ -187,29 +187,29 @@ function RevisionsButtons( {
 						aria-label={ revisionLabel }
 						render={ <div /> }
 					>
-						<span className="typedpress-admin-global-styles-screen-revisions__revision-item-wrapper">
+						<span className="spacepress-admin-global-styles-screen-revisions__revision-item-wrapper">
 							{ isReset ? (
-								<span className="typedpress-admin-global-styles-screen-revisions__description">
-									{ __( 'Default styles', 'typedpress-admin' ) }
-									<span className="typedpress-admin-global-styles-screen-revisions__meta">
+								<span className="spacepress-admin-global-styles-screen-revisions__description">
+									{ __( 'Default styles', 'spacepress-admin' ) }
+									<span className="spacepress-admin-global-styles-screen-revisions__meta">
 										{ currentThemeName }
 									</span>
 								</span>
 							) : (
-								<span className="typedpress-admin-global-styles-screen-revisions__description">
+								<span className="spacepress-admin-global-styles-screen-revisions__description">
 									{ isUnsaved ? (
-										<span className="typedpress-admin-global-styles-screen-revisions__date">
-											{ __( '(Unsaved)', 'typedpress-admin' ) }
+										<span className="spacepress-admin-global-styles-screen-revisions__date">
+											{ __( '(Unsaved)', 'spacepress-admin' ) }
 										</span>
 									) : (
 										<time
-											className="typedpress-admin-global-styles-screen-revisions__date"
+											className="spacepress-admin-global-styles-screen-revisions__date"
 											dateTime={ modified }
 										>
 											{ displayDate }
 										</time>
 									) }
-									<span className="typedpress-admin-global-styles-screen-revisions__meta">
+									<span className="spacepress-admin-global-styles-screen-revisions__meta">
 										<img
 											alt={ authorDisplayName }
 											src={ authorAvatar }
@@ -231,29 +231,29 @@ function RevisionsButtons( {
 						</span>
 						{ isSelected &&
 							( areStylesEqual ? (
-								<p className="typedpress-admin-global-styles-screen-revisions__applied-text">
+								<p className="spacepress-admin-global-styles-screen-revisions__applied-text">
 									{ __(
 										'These styles are already applied to your site.',
-										'typedpress-admin'
+										'spacepress-admin'
 									) }
 								</p>
 							) : (
 								<Button
 									size="compact"
 									variant="primary"
-									className="typedpress-admin-global-styles-screen-revisions__apply-button"
+									className="spacepress-admin-global-styles-screen-revisions__apply-button"
 									onClick={ onApplyRevision }
 									aria-label={ __(
 										'Apply the selected revision to your site.',
-										'typedpress-admin'
+										'spacepress-admin'
 									) }
 								>
 									{ isReset
 										? __(
 												'Reset to defaults',
-												'typedpress-admin'
+												'spacepress-admin'
 										  )
-										: __( 'Apply', 'typedpress-admin' ) }
+										: __( 'Apply', 'spacepress-admin' ) }
 								</Button>
 							) ) }
 					</Composite.Item>

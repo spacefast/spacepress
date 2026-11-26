@@ -10,7 +10,7 @@ one of them at a time, never both in the same version.
 - **Live 0.8 versions** keep running unchanged. Nothing touches a version that's
   already published.
 - **Each new publish of a 0.8 app** from the Spacefast CLI, local MCP or a source
-  build runs the converter (`typedpress-migrate --from zero app`) and the publish
+  build runs the converter (`spacepress-migrate --from zero app`) and the publish
   checks. When neither refuses anything and the Space's runtime runs v2, the
   publish ships as v2: on an existing 0.8 Space it adopts that Space's tables, and
   on a new Space it starts with fresh ones.
@@ -26,8 +26,8 @@ one of them at a time, never both in the same version.
 - **There is no flag** to opt in or out. Hosted MCP doesn't build Zero apps, and
   older CLIs and direct API publishes never run the converter: the API doesn't
   convert.
-- **A new Space can still start on 0.8** until CLI 0.9.0 and TypedPress ship. New
-  apps made with `sf typedpress init` start on v2.
+- **A new Space can still start on 0.8** until CLI 0.9.0 and SpacePress ship. New
+  apps made with `sf spacepress init` start on v2.
 - **The same command** runs on its own to preview the v2 candidate.
 
 So the converter always targets `main`. A PR that changes an authoring API, a
@@ -52,24 +52,24 @@ The platform enforces these, and the spec work keeps them true:
    negotiation live in the v2 app plugin's request path, or behind the engine's
    `zero_generation === 'v2'` check. Static, Functions, content-model and 0.8
    Spaces see no difference, with two accepted exceptions:
-   - The platform plugins TypedPress needs (Action Scheduler, the MCP Adapter) are
+   - The platform plugins SpacePress needs (Action Scheduler, the MCP Adapter) are
      installed on every box, so Action Scheduler's two post statuses
      (`in-progress`, `failed`) show up in every Space's REST index. They are
      labels only, with no routes or permissions.
-   - `GET /__tp/realtime.js` is a reserved engine path on every Space. On a
+   - `GET /__sp/realtime.js` is a reserved engine path on every Space. On a
      Space without live updates, which includes every non-v2 Space, it returns a
      one-line script comment and pages poll instead. No 0.8, Static, Functions
      or content-model page ever loads that path, so their visible behavior
      doesn't change.
 4. **0.8's paths stay 0.8's.** `/__zero/config`, `/__zero/run`, `/__zero/auth/*`
    and `/__zero/realtime/events` keep their 0.8 meaning on 0.8 versions. v2 adds
-   `/wp-json/typedpress/v1/*`, `/__tp/client.js`, `/__tp/client.d.ts` and
-   `/__tp/realtime.js`, and never reuses a 0.8 path with a different meaning.
-   0.8 never used `/__tp/realtime.js`; rule 3 covers why it answers on
+   `/wp-json/spacepress/v1/*`, `/__sp/client.js`, `/__sp/client.d.ts` and
+   `/__sp/realtime.js`, and never reuses a 0.8 path with a different meaning.
+   0.8 never used `/__sp/realtime.js`; rule 3 covers why it answers on
    every version.
 5. **Adopted 0.8 tables are data, not schema to tidy.** The deploy-time schema
    check never alters or drops them without an explicit `--drop`.
-6. **A root `typedpress.config.ts` means v2.** The spec's `tp/` and `app/` folders
+6. **A root `spacepress.config.ts` means v2.** The spec's `sp/` and `app/` folders
    never make a project look like 0.8, or like another framework, to the CLI or
    the build pipeline.
 

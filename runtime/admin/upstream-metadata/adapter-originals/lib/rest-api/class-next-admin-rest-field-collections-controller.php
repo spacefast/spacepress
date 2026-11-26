@@ -1,8 +1,8 @@
 <?php
 /**
- * REST API: TypedPress_Admin_REST_Field_Collections_Controller class
+ * REST API: SpacePress_Admin_REST_Field_Collections_Controller class
  *
- * @package TypedPressAdmin
+ * @package SpacePressAdmin
  * @since 1.0.0
  */
 
@@ -13,7 +13,7 @@
  *
  * @see WP_REST_Controller
  */
-class TypedPress_Admin_REST_Field_Collections_Controller extends WP_REST_Controller {
+class SpacePress_Admin_REST_Field_Collections_Controller extends WP_REST_Controller {
 
 	/**
 	 * Constructor.
@@ -60,7 +60,7 @@ class TypedPress_Admin_REST_Field_Collections_Controller extends WP_REST_Control
 		if ( ! current_user_can( 'edit_posts' ) ) {
 			return new WP_Error(
 				'rest_forbidden_context',
-				__( 'Sorry, you are not allowed to view field collections.', 'typedpress-admin' ),
+				__( 'Sorry, you are not allowed to view field collections.', 'spacepress-admin' ),
 				array( 'status' => rest_authorization_required_code() )
 			);
 		}
@@ -81,7 +81,7 @@ class TypedPress_Admin_REST_Field_Collections_Controller extends WP_REST_Control
 		$name = $request->get_param( 'name' );
 
 		// Get collections for the specified entity.
-		$collections = tp_admin_get_field_collections( $kind, $name );
+		$collections = sp_admin_get_field_collections( $kind, $name );
 
 		$data = array();
 		foreach ( $collections as $collection ) {
@@ -144,31 +144,31 @@ class TypedPress_Admin_REST_Field_Collections_Controller extends WP_REST_Control
 			'type'       => 'object',
 			'properties' => array(
 				'id'            => array(
-					'description' => __( 'Unique identifier for the field collection.', 'typedpress-admin' ),
+					'description' => __( 'Unique identifier for the field collection.', 'spacepress-admin' ),
 					'type'        => 'string',
 					'context'     => array( 'view' ),
 					'readonly'    => true,
 				),
 				'kind'          => array(
-					'description' => __( 'Entity kind (postType, taxonomy, user, etc.).', 'typedpress-admin' ),
+					'description' => __( 'Entity kind (postType, taxonomy, user, etc.).', 'spacepress-admin' ),
 					'type'        => 'string',
 					'context'     => array( 'view' ),
 					'readonly'    => true,
 				),
 				'name'          => array(
-					'description' => __( 'Entity name or null for universal collections.', 'typedpress-admin' ),
+					'description' => __( 'Entity name or null for universal collections.', 'spacepress-admin' ),
 					'type'        => array( 'string', 'null' ),
 					'context'     => array( 'view' ),
 					'readonly'    => true,
 				),
 				'fields'        => array(
-					'description' => __( 'Field definitions keyed by field ID.', 'typedpress-admin' ),
+					'description' => __( 'Field definitions keyed by field ID.', 'spacepress-admin' ),
 					'type'        => 'object',
 					'context'     => array( 'view' ),
 					'readonly'    => true,
 				),
 				'fields_module' => array(
-					'description' => __( 'Script module handle for field extensions.', 'typedpress-admin' ),
+					'description' => __( 'Script module handle for field extensions.', 'spacepress-admin' ),
 					'type'        => array( 'string', 'null' ),
 					'context'     => array( 'view' ),
 					'readonly'    => true,
@@ -192,13 +192,13 @@ class TypedPress_Admin_REST_Field_Collections_Controller extends WP_REST_Control
 		$params = parent::get_collection_params();
 
 		$params['kind'] = array(
-			'description' => __( 'Entity kind (postType, taxonomy, root etc.).', 'typedpress-admin' ),
+			'description' => __( 'Entity kind (postType, taxonomy, root etc.).', 'spacepress-admin' ),
 			'type'        => 'string',
 			'required'    => true,
 		);
 
 		$params['name'] = array(
-			'description' => __( 'Entity name (attachment, product, user, etc.).', 'typedpress-admin' ),
+			'description' => __( 'Entity name (attachment, product, user, etc.).', 'spacepress-admin' ),
 			'type'        => 'string',
 			'required'    => true,
 		);
@@ -210,6 +210,6 @@ class TypedPress_Admin_REST_Field_Collections_Controller extends WP_REST_Control
 add_action(
 	'rest_api_init',
 	function () {
-		( new TypedPress_Admin_REST_Field_Collections_Controller() )->register_routes();
+		( new SpacePress_Admin_REST_Field_Collections_Controller() )->register_routes();
 	}
 );

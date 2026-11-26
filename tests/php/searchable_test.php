@@ -20,7 +20,7 @@ $recipes['key'] = 'recipes';
 $recipes['label'] = 'Recipes';
 $recipes['relations'] = [];
 $recipes['url'] = '/recipes/:id';
-$recipes['wp'] = ['postType' => 'tp_recipes', 'groupKey' => 'group_tp_recipes', 'metaPrefix' => 'tp_', 'fieldKeyPrefix' => 'field_tp_recipes_'];
+$recipes['wp'] = ['postType' => 'sp_recipes', 'groupKey' => 'group_sp_recipes', 'metaPrefix' => 'sp_', 'fieldKeyPrefix' => 'field_sp_recipes_'];
 $recipes['access']['read'] = ['fn' => 'recipes__access__read'];
 $recipes['columns']['bio']['searchable'] = true;
 $recipes['columns']['email']['searchable'] = true;
@@ -34,7 +34,7 @@ $codes['key'] = 'codes';
 $codes['label'] = 'Codes';
 $codes['relations'] = [];
 $codes['url'] = '/codes/:id';
-$codes['wp'] = ['postType' => 'tp_codes', 'groupKey' => 'group_tp_codes', 'metaPrefix' => 'tp_', 'fieldKeyPrefix' => 'field_tp_codes_'];
+$codes['wp'] = ['postType' => 'sp_codes', 'groupKey' => 'group_sp_codes', 'metaPrefix' => 'sp_', 'fieldKeyPrefix' => 'field_sp_codes_'];
 $codes['columns']['name']['searchable'] = false;
 $codes['columns']['bio']['searchable'] = true;
 $codes['columns']['email']['unique'] = false;
@@ -45,7 +45,7 @@ $ledger['key'] = 'ledger';
 $ledger['label'] = 'Ledger';
 $ledger['relations'] = [];
 $ledger['url'] = '/ledger/:id';
-$ledger['wp'] = ['postType' => 'tp_ledger', 'groupKey' => 'group_tp_ledger', 'metaPrefix' => 'tp_', 'fieldKeyPrefix' => 'field_tp_ledger_'];
+$ledger['wp'] = ['postType' => 'sp_ledger', 'groupKey' => 'group_sp_ledger', 'metaPrefix' => 'sp_', 'fieldKeyPrefix' => 'field_sp_ledger_'];
 $ledger['columns']['name']['searchable'] = false;
 $ledger['columns']['bio']['searchable'] = false;
 $ledger['columns']['email']['unique'] = false;
@@ -55,20 +55,20 @@ $wp = wpSite('searchable', [
     'schema' => $schema,
     'functions' => file_get_contents(dirname(__DIR__) . '/fixtures/blog/functions.php') . <<<'PHP'
 
-        function recipes__access__read(\TypedPress\JsObject $ctx)
+        function recipes__access__read(\SpacePress\JsObject $ctx)
         {
-            $user = \TypedPress\Js::prop($ctx, 'user');
+            $user = \SpacePress\Js::prop($ctx, 'user');
 
-            return $user !== null && in_array(\TypedPress\Js::prop($user, 'role'), ['editor', 'admin'], true) ? true : ['notes' => ['ne' => 'staff only']];
+            return $user !== null && in_array(\SpacePress\Js::prop($user, 'role'), ['editor', 'admin'], true) ? true : ['notes' => ['ne' => 'staff only']];
         }
         PHP,
     'users' => ['ed' => 'editor', 'sub' => 'subscriber'],
 ]);
-$db = \TypedPress\db();
+$db = \SpacePress\db();
 $prefix = $wp->connection()->prefix();
 $index = static fn (string $kind): array => array_map(static fn (array $r): string => $r['field'] . ':' . $r['body'],
-    $wp->sql("SELECT `field`, `body` FROM `{$prefix}tp__search` WHERE `kind` = ? ORDER BY `item`, `field`", [new \TypedPress\Wp\Bytes($kind)]));
-$fields = static fn (string $kind): array => \TypedPress\Search\Index::fields($db->schema()->collection($kind));
+    $wp->sql("SELECT `field`, `body` FROM `{$prefix}sp__search` WHERE `kind` = ? ORDER BY `item`, `field`", [new \SpacePress\Wp\Bytes($kind)]));
+$fields = static fn (string $kind): array => \SpacePress\Search\Index::fields($db->schema()->collection($kind));
 
 // ---------------------------------------------------------------- which fields
 
@@ -76,7 +76,7 @@ eq('marked fields and the title are searchable; an unmarked text field is not on
 eq('`.searchable(false)` leaves out the title', $fields('codes'), ['bio']);
 eq('a kind whose every text field is `.searchable(false)` has none', $fields('ledger'), []);
 eq('a kind with no marks keeps every text field', $fields('authors'), ['name', 'bio']);
-check('the site-wide search leaves out a kind with no searchable field', !in_array('ledger', \TypedPress\Search\Index::kinds(), true) && in_array('recipes', \TypedPress\Search\Index::kinds(), true), \TypedPress\Search\Index::kinds());
+check('the site-wide search leaves out a kind with no searchable field', !in_array('ledger', \SpacePress\Search\Index::kinds(), true) && in_array('recipes', \SpacePress\Search\Index::kinds(), true), \SpacePress\Search\Index::kinds());
 
 // ---------------------------------------------------------------- the index
 
@@ -95,9 +95,9 @@ eq('a kind with no searchable field has no entries', $index('ledger'), []);
 // ---------------------------------------------------------------- `search` on a kind, as the reader
 
 $ids = static fn (array $rows): array => array_map(static fn (array $r): int => (int) $r['id'], $rows);
-$as = static fn (?string $who): \TypedPress\Viewer => new \TypedPress\Viewer($who === null ? null : $wp->user($who));
+$as = static fn (?string $who): \SpacePress\Viewer => new \SpacePress\Viewer($who === null ? null : $wp->user($who));
 $list = static function (string $kind, string $q, ?string $who) use ($ids, $as, $db): array {
-    $found = $ids(\TypedPress\Seam::asVisitor($as($who), static fn (): array => $db->findMany($kind, ['where' => [], 'columns' => ['id' => true], 'search' => $q], $as($who))));
+    $found = $ids(\SpacePress\Seam::asVisitor($as($who), static fn (): array => $db->findMany($kind, ['where' => [], 'columns' => ['id' => true], 'search' => $q], $as($who))));
     sort($found);
 
     return $found;
@@ -134,9 +134,9 @@ $core = static function (string $postType, array $params, ?string $who) use ($wp
 
     return [$response->get_status(), $out];
 };
-eq('core\'s list route searches the marked fields', $core('tp_recipes', ['search' => 'slow'], null), [200, [$soup['id']]]);
-eq('and not the unmarked one', $core('tp_recipes', ['search' => 'basil'], 'ed'), [200, []]);
-eq('nor a hidden marked field for a visitor', $core('tp_recipes', ['search' => 'saffron'], null), [200, []]);
+eq('core\'s list route searches the marked fields', $core('sp_recipes', ['search' => 'slow'], null), [200, [$soup['id']]]);
+eq('and not the unmarked one', $core('sp_recipes', ['search' => 'basil'], 'ed'), [200, []]);
+eq('nor a hidden marked field for a visitor', $core('sp_recipes', ['search' => 'saffron'], null), [200, []]);
 
 // ---------------------------------------------------------------- core's /wp/v2/search and the site-wide endpoint
 
@@ -154,11 +154,11 @@ $coreSearch = static function (string $q, ?string $who) use ($wp): array {
 
     return [$response->get_status(), $out];
 };
-eq('/wp/v2/search finds a row by a marked field', $coreSearch('slow', null), [200, ["tp_recipes:{$soup['id']}"]]);
+eq('/wp/v2/search finds a row by a marked field', $coreSearch('slow', null), [200, ["sp_recipes:{$soup['id']}"]]);
 eq('not by an unmarked one', $coreSearch('basil', 'ed'), [200, []]);
 eq('not by a marked field the reader may not read', $coreSearch('saffron', null), [200, []]);
-eq('nor a row the read rule hides', $coreSearch('roasted', null), [200, ["tp_recipes:{$soup['id']}"]]);
-eq('an editor finds both', $coreSearch('roasted', 'ed'), [200, ["tp_recipes:{$soup['id']}", "tp_recipes:{$staff['id']}"]]);
+eq('nor a row the read rule hides', $coreSearch('roasted', null), [200, ["sp_recipes:{$soup['id']}"]]);
+eq('an editor finds both', $coreSearch('roasted', 'ed'), [200, ["sp_recipes:{$soup['id']}", "sp_recipes:{$staff['id']}"]]);
 eq('a `.searchable(false)` title is not matched', $coreSearch('walnut', 'ed'), [200, []]);
 eq('a kind with no searchable field is not searched', $coreSearch('pecan', 'ed'), [200, []]);
 [$status, $found] = $wp->call('GET', '/search', query: ['q' => 'roasted']);

@@ -2,7 +2,7 @@
 /**
  * Core taxonomy term fields collection - applies to all taxonomies
  *
- * @package TypedPress_Admin
+ * @package SpacePress_Admin
  */
 
 return array(

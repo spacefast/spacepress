@@ -1,8 +1,8 @@
 import clsx from 'clsx';
 import type { ReactNode } from 'react';
 import { Icon } from '@wordpress/ui';
-// eslint-disable-next-line @typedpress-admin/design-system/use-new-components
-import { Stack } from '@typedpress-admin/design-system';
+// eslint-disable-next-line @spacepress-admin/design-system/use-new-components
+import { Stack } from '@spacepress-admin/design-system';
 import { FlexBlock, __experimentalItem as Item } from '@wordpress/components';
 import { isRTL } from '@wordpress/i18n';
 import { chevronRightSmall, chevronLeftSmall } from '@wordpress/icons';
@@ -64,7 +64,7 @@ export default function SidebarDrilldownItem( {
 	return (
 		<Item
 			className={ clsx(
-				'typedpress-admin-sidebar-navigation-item',
+				'spacepress-admin-sidebar-navigation-item',
 				className
 			) }
 			onClick={ handleClick }

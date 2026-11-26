@@ -25,17 +25,17 @@ function SiteIcon( { className }: { className?: string } ) {
 	let icon = null;
 
 	if ( isRequestingSite && ! siteIconUrl ) {
-		icon = <div className="typedpress-admin-site-icon__image" />;
+		icon = <div className="spacepress-admin-site-icon__image" />;
 	} else {
 		icon = siteIconUrl ? (
 			<img
-				className="typedpress-admin-site-icon__image"
-				alt={ __( 'Site Icon', 'typedpress-admin' ) }
+				className="spacepress-admin-site-icon__image"
+				alt={ __( 'Site Icon', 'spacepress-admin' ) }
 				src={ siteIconUrl }
 			/>
 		) : (
 			<Icon
-				className="typedpress-admin-site-icon__icon"
+				className="spacepress-admin-site-icon__icon"
 				icon={ wordpress }
 				size={ 48 }
 			/>
@@ -43,7 +43,7 @@ function SiteIcon( { className }: { className?: string } ) {
 	}
 
 	return (
-		<div className={ clsx( className, 'typedpress-admin-site-icon' ) }>
+		<div className={ clsx( className, 'spacepress-admin-site-icon' ) }>
 			{ icon }
 		</div>
 	);

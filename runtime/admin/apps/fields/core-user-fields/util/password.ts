@@ -76,31 +76,31 @@ export const estimatePasswordStrength = (
 		case -1:
 			return {
 				score: -1,
-				label: __( 'Unknown', 'typedpress-admin' ),
+				label: __( 'Unknown', 'spacepress-admin' ),
 				color: '#dc3232',
 			};
 		case 2:
 			return {
 				score: 2,
-				label: __( 'Weak', 'typedpress-admin' ),
+				label: __( 'Weak', 'spacepress-admin' ),
 				color: '#dc3232',
 			};
 		case 3:
 			return {
 				score: 3,
-				label: __( 'Good', 'typedpress-admin' ),
+				label: __( 'Good', 'spacepress-admin' ),
 				color: '#f56e28',
 			};
 		case 4:
 			return {
 				score: 4,
-				label: __( 'Strong', 'typedpress-admin' ),
+				label: __( 'Strong', 'spacepress-admin' ),
 				color: '#46b450',
 			};
 		default:
 			return {
 				score: 0,
-				label: __( 'Short', 'typedpress-admin' ),
+				label: __( 'Short', 'spacepress-admin' ),
 				color: '#dc3232',
 			};
 	}

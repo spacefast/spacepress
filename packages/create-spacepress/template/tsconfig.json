@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "jsx": "react-jsx",
+    "jsxImportSource": "spacepress",
+    "types": ["node"],
+    "paths": {
+      "spacepress": ["./node_modules/spacepress/types/index.d.ts"],
+      "spacepress/*": ["./node_modules/spacepress/types/*.d.ts"],
+      "spacepress:db": ["./node_modules/spacepress/types/db.d.cts"],
+      "php/wordpress": ["./node_modules/spacepress/types/wordpress.d.ts"]
+    }
+  },
+  "include": ["spacepress.config.ts", "*.client.ts", "sp"],
+  "exclude": ["sp/dist"]
+}

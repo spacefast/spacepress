@@ -228,7 +228,7 @@ describe( 'Tabs', () => {
 						<Tabs.Tab value="two">Two</Tabs.Tab>
 						<Tabs.Tab value="three">Three</Tabs.Tab>
 					</Tabs.List>
-					<Tabs.Panel value="one">TypedPress panel</Tabs.Panel>
+					<Tabs.Panel value="one">SpacePress panel</Tabs.Panel>
 					<Tabs.Panel value="two">Second panel</Tabs.Panel>
 					<Tabs.Panel value="three">Third panel</Tabs.Panel>
 				</Tabs.Root>
@@ -1820,7 +1820,7 @@ describe( 'Tabs', () => {
 						);
 
 						if ( mode === 'Uncontrolled' ) {
-							// TypedPress tab stays selected.
+							// SpacePress tab stays selected.
 							expect(
 								screen.getByRole( 'tab', {
 									selected: true,

@@ -4,7 +4,7 @@
 // the organization lock it must see the committed demotion and refuse, leaving one owner.
 declare(strict_types=1);
 require __DIR__ . '/bootstrap.php';
-use TypedPress\Identity\{Plugin, Security, Organizations};
+use SpacePress\Identity\{Plugin, Security, Organizations};
 
 ob_start();
 $db = Plugin::$db;

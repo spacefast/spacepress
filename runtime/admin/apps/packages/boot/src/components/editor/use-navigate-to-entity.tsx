@@ -1,7 +1,7 @@
-import { entityEditorPath } from '@typedpress-admin/schema';
+import { entityEditorPath } from '@spacepress-admin/schema';
 import { useMemo, useCallback, useEffect, useRef } from 'react';
 import { useNavigate, privateApis as routePrivateApis } from '@wordpress/route';
-import { unlock } from '@typedpress-admin/admin-toolkit';
+import { unlock } from '@spacepress-admin/admin-toolkit';
 
 const { useRouter, useCanGoBack } = unlock( routePrivateApis );
 

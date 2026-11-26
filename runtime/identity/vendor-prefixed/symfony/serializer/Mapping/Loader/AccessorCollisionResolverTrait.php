@@ -9,9 +9,9 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\Serializer\Mapping\Loader;
+namespace SpacePress\Identity\Vendor\Symfony\Component\Serializer\Mapping\Loader;
 
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Attribute\Ignore;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Attribute\Ignore;
 
 /**
  * Provides methods to detect accessor name collisions during serialization.

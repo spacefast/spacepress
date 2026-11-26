@@ -1,4 +1,4 @@
-# `@typedpress/blocks`
+# `@spacepress/blocks`
 
 Author valid Gutenberg block content and complete WordPress block themes in **TSX** for **SpacePress** (`spacepress.dev`).
 
@@ -11,16 +11,16 @@ Components, imports, loops, and conditionals execute once at build time and seri
 ## Installation
 
 ```bash
-npm install @typedpress/blocks
+npm install @spacepress/blocks
 ```
 
-Configure TSX to use `@typedpress/blocks` in `tsconfig.json`:
+Configure TSX to use `@spacepress/blocks` in `tsconfig.json`:
 
 ```json
 {
   "compilerOptions": {
     "jsx": "react-jsx",
-    "jsxImportSource": "@typedpress/blocks"
+    "jsxImportSource": "@spacepress/blocks"
   }
 }
 ```
@@ -30,7 +30,7 @@ Configure TSX to use `@typedpress/blocks` in `tsconfig.json`:
 Standard HTML elements map directly to WordPress core blocks (for example `<p>` → `core/paragraph`, `<h2>` → `core/heading`, `<ul>` → `core/list`). Use `blockComponent()` for typed block wrappers or `<Block />` as an escape hatch for any registered or third-party block:
 
 ```tsx
-import { Block, blockComponent } from "@typedpress/blocks";
+import { Block, blockComponent } from "@spacepress/blocks";
 
 const Group = blockComponent<{ layout?: { type: string } }>("core/group");
 
@@ -47,10 +47,10 @@ export default function HeroSection() {
 
 ## CLI & Exports
 
-- CLI binary: `typedpress-blocks` (`./bin/typedpress-blocks.mjs`)
-- Main entry: `@typedpress/blocks` (`Block`, `blockComponent`, `Fragment`, `createElement`, AST & diagnostic types)
-- Compiler entry: `@typedpress/blocks/compiler`
-- JSX runtimes: `@typedpress/blocks/jsx-runtime`, `@typedpress/blocks/jsx-dev-runtime`
+- CLI binary: `spacepress-blocks` (`./bin/spacepress-blocks.mjs`)
+- Main entry: `@spacepress/blocks` (`Block`, `blockComponent`, `Fragment`, `createElement`, AST & diagnostic types)
+- Compiler entry: `@spacepress/blocks/compiler`
+- JSX runtimes: `@spacepress/blocks/jsx-runtime`, `@spacepress/blocks/jsx-dev-runtime`
 
 ## Licensing
 

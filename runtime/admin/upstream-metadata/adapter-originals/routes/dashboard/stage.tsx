@@ -1,13 +1,13 @@
 /**
  * External dependencies
  */
-import { Dashboard, useWidgetTypes } from '@typedpress-admin/dashboard';
-import { Page } from '@typedpress-admin/admin-toolkit';
+import { Dashboard, useWidgetTypes } from '@spacepress-admin/dashboard';
+import { Page } from '@spacepress-admin/admin-toolkit';
 import {
-	store as tpAdminStore,
+	store as spAdminStore,
 	type StoreSelectors,
 	type EntityDependency,
-} from '@typedpress-admin/boot';
+} from '@spacepress-admin/boot';
 import { store as coreDataStore } from '@wordpress/core-data';
 import { useSelect } from '@wordpress/data';
 import { useState, useCallback, useMemo } from '@wordpress/element';
@@ -17,8 +17,8 @@ import {
 	recordTracksEvent,
 	usePageView,
 	useDashboardTracking,
-} from '@typedpress-admin/telemetry';
-import type { DashboardWidget } from '@typedpress-admin/dashboard';
+} from '@spacepress-admin/telemetry';
+import type { DashboardWidget } from '@spacepress-admin/dashboard';
 import { MoreActionsDropdown, RestoreDefaultsModal } from './components';
 import { useDashboardLayout } from './hooks';
 
@@ -100,7 +100,7 @@ export default function DashboardRoute() {
 	const [ layout, onChange, resetLayout ] = useDashboardLayout();
 
 	const registeredWidgetTypes = useSelect(
-		( select ) => select( tpAdminStore ).getDashboardWidgetTypes(),
+		( select ) => select( spAdminStore ).getDashboardWidgetTypes(),
 		[]
 	);
 
@@ -134,7 +134,7 @@ export default function DashboardRoute() {
 	const noticeConfigs = useSelect(
 		( select ) =>
 			(
-				select( tpAdminStore ) as StoreSelectors
+				select( spAdminStore ) as StoreSelectors
 			 ).getDashboardNotices(),
 		[]
 	);
@@ -210,7 +210,7 @@ export default function DashboardRoute() {
 			key={ resetKey }
 			layout={ layout }
 			onChange={ ( newLayout, context ) => {
-				// eslint-disable-next-line @typescript-eslint/no-unsafe-call -- @typedpress-admin/telemetry is untyped cross-plugin
+				// eslint-disable-next-line @typescript-eslint/no-unsafe-call -- @spacepress-admin/telemetry is untyped cross-plugin
 				trackLayoutChange( newLayout, context );
 				trackWidgetAttributeChanges( layout, newLayout );
 				onChange( newLayout );
@@ -220,7 +220,7 @@ export default function DashboardRoute() {
 			onNoticeAction={ handleNoticeAction }
 		>
 			<Page
-				title={ __( 'Dashboard', 'typedpress-admin' ) }
+				title={ __( 'Dashboard', 'spacepress-admin' ) }
 				actions={
 					<>
 						<Dashboard.Actions />
@@ -229,7 +229,7 @@ export default function DashboardRoute() {
 								{
 									label: __(
 										'Restore default widgets',
-										'typedpress-admin'
+										'spacepress-admin'
 									),
 									onClick: () =>
 										setIsRestoreModalOpen( true ),

@@ -9,16 +9,16 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\PropertyInfo;
+namespace SpacePress\Identity\Vendor\Symfony\Component\PropertyInfo;
 
-typedpress_identity_vendor_trigger_deprecation('symfony/property-info', '7.3', 'The "%s" class is deprecated. Use "%s" class from "symfony/type-info" instead.', Type::class, \TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Type::class);
+spacepress_identity_vendor_trigger_deprecation('symfony/property-info', '7.3', 'The "%s" class is deprecated. Use "%s" class from "symfony/type-info" instead.', Type::class, \SpacePress\Identity\Vendor\Symfony\Component\TypeInfo\Type::class);
 
 /**
  * Type value object (immutable).
  *
  * @author Kévin Dunglas <dunglas@gmail.com>
  *
- * @deprecated since Symfony 7.3, use "TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Type" class from "symfony/type-info" instead
+ * @deprecated since Symfony 7.3, use "SpacePress\Identity\Vendor\Symfony\Component\TypeInfo\Type" class from "symfony/type-info" instead
  *
  * @final
  */

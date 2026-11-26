@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-use TypedPress\Identity\Vendor\Symfony\Polyfill\Intl\Grapheme as p;
+use SpacePress\Identity\Vendor\Symfony\Polyfill\Intl\Grapheme as p;
 
 if (!function_exists('grapheme_str_split')) {
     function grapheme_str_split(string $string, int $length = 1): array|false { return p\Grapheme::grapheme_str_split($string, $length); }
@@ -25,18 +25,18 @@ if (extension_loaded('intl')) {
     return;
 }
 
-if (!defined('TP_IDENTITY_VENDOR_GRAPHEME_EXTR_COUNT')) {
-    define('TP_IDENTITY_VENDOR_GRAPHEME_EXTR_COUNT', 0);
+if (!defined('SP_IDENTITY_VENDOR_GRAPHEME_EXTR_COUNT')) {
+    define('SP_IDENTITY_VENDOR_GRAPHEME_EXTR_COUNT', 0);
 }
-if (!defined('TP_IDENTITY_VENDOR_GRAPHEME_EXTR_MAXBYTES')) {
-    define('TP_IDENTITY_VENDOR_GRAPHEME_EXTR_MAXBYTES', 1);
+if (!defined('SP_IDENTITY_VENDOR_GRAPHEME_EXTR_MAXBYTES')) {
+    define('SP_IDENTITY_VENDOR_GRAPHEME_EXTR_MAXBYTES', 1);
 }
-if (!defined('TP_IDENTITY_VENDOR_GRAPHEME_EXTR_MAXCHARS')) {
-    define('TP_IDENTITY_VENDOR_GRAPHEME_EXTR_MAXCHARS', 2);
+if (!defined('SP_IDENTITY_VENDOR_GRAPHEME_EXTR_MAXCHARS')) {
+    define('SP_IDENTITY_VENDOR_GRAPHEME_EXTR_MAXCHARS', 2);
 }
 
 if (!function_exists('grapheme_extract')) {
-    function grapheme_extract(?string $haystack, ?int $size, ?int $type = TP_IDENTITY_VENDOR_GRAPHEME_EXTR_COUNT, ?int $offset = 0, &$next = null): string|false { return p\Grapheme::grapheme_extract((string) $haystack, (int) $size, (int) $type, (int) $offset, $next); }
+    function grapheme_extract(?string $haystack, ?int $size, ?int $type = SP_IDENTITY_VENDOR_GRAPHEME_EXTR_COUNT, ?int $offset = 0, &$next = null): string|false { return p\Grapheme::grapheme_extract((string) $haystack, (int) $size, (int) $type, (int) $offset, $next); }
 }
 if (\PHP_VERSION_ID >= 80500) {
     return require __DIR__.'/bootstrap85.php';

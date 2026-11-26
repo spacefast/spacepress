@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Brick\Math;
+namespace SpacePress\Identity\Vendor\Brick\Math;
 
-use TypedPress\Identity\Vendor\Brick\Math\Exception\DivisionByZeroException;
-use TypedPress\Identity\Vendor\Brick\Math\Exception\InvalidArgumentException;
-use TypedPress\Identity\Vendor\Brick\Math\Exception\MathException;
-use TypedPress\Identity\Vendor\Brick\Math\Exception\RoundingNecessaryException;
-use TypedPress\Identity\Vendor\Brick\Math\Internal\DecimalHelper;
-use TypedPress\Identity\Vendor\Brick\Math\Internal\Safe;
+use SpacePress\Identity\Vendor\Brick\Math\Exception\DivisionByZeroException;
+use SpacePress\Identity\Vendor\Brick\Math\Exception\InvalidArgumentException;
+use SpacePress\Identity\Vendor\Brick\Math\Exception\MathException;
+use SpacePress\Identity\Vendor\Brick\Math\Exception\RoundingNecessaryException;
+use SpacePress\Identity\Vendor\Brick\Math\Internal\DecimalHelper;
+use SpacePress\Identity\Vendor\Brick\Math\Internal\Safe;
 use LogicException;
 use Override;
 

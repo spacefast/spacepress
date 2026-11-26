@@ -4,14 +4,14 @@ import { store as noticesStore } from '@wordpress/notices';
 import type { useRegistry } from '@wordpress/data';
 import type { RestAttachment } from '@wordpress/media-utils';
 
-/** Upload under TypedPress's rules, then read the native representation Gutenberg expects. */
+/** Upload under SpacePress's rules, then read the native representation Gutenberg expects. */
 export async function uploadAttachment(file: File): Promise<RestAttachment> {
 	const body = new FormData();
 	body.append('file', file);
-	// TypedPress's API (window.tpAdmin.api, /wp-json/typedpress/v1): the upload under TypedPress's media rules.
-	const base = (window as { tpAdmin?: { api?: unknown } }).tpAdmin?.api;
+	// SpacePress's API (window.spAdmin.api, /wp-json/spacepress/v1): the upload under SpacePress's media rules.
+	const base = (window as { spAdmin?: { api?: unknown } }).spAdmin?.api;
 	const result: unknown = await apiFetch({
-		url: `${typeof base === 'string' ? base.replace(/\/+$/, '') : '/wp-json/typedpress/v1'}/media`,
+		url: `${typeof base === 'string' ? base.replace(/\/+$/, '') : '/wp-json/spacepress/v1'}/media`,
 		method: 'POST',
 		body,
 	});

@@ -15,32 +15,32 @@ export const targets = Object.freeze({
   'linux-arm64': 'aarch64-unknown-linux-gnu',
   'linux-x64': 'x86_64-unknown-linux-gnu',
 });
-/** Every archive the release workflow builds: the downloadable targets plus musl and Windows, for TP_BIN. */
+/** Every archive the release workflow builds: the downloadable targets plus musl and Windows, for SP_BIN. */
 export const releaseTargets = Object.freeze([...Object.values(targets), 'aarch64-unknown-linux-musl', 'x86_64-unknown-linux-musl', 'x86_64-pc-windows-msvc']);
-export const releasePage = (version) => `https://github.com/spacefast/zero/releases/tag/v${version}`;
+export const releasePage = (version) => `https://github.com/spacefast/spacepress/releases/tag/v${version}`;
 
 export function releaseTarget({ platform = process.platform, arch = process.arch } = {}) {
   const target = targets[`${platform}-${arch}`];
-  if (!target) throw new Error(`No prebuilt TypedPress compiler for ${platform}/${arch}. Supported: macOS and glibc Linux, arm64 or x64. Set TP_BIN to an absolute path to your own compatible compiler.`);
+  if (!target) throw new Error(`No prebuilt SpacePress compiler for ${platform}/${arch}. Supported: macOS and glibc Linux, arm64 or x64. Set SP_BIN to an absolute path to your own compatible compiler.`);
   if (platform === 'linux' && platform === process.platform && arch === process.arch) {
     const glibc = process.report.getReport().header.glibcVersionRuntime;
     const [major, minor] = (glibc || '').split('.').map(Number);
-    if (!glibc || major < 2 || (major === 2 && minor < 39)) throw new Error('The Linux download requires glibc 2.39+ (Ubuntu 24.04 or newer). On older glibc or musl/Alpine, provide a compatible compiler with TP_BIN.');
+    if (!glibc || major < 2 || (major === 2 && minor < 39)) throw new Error('The Linux download requires glibc 2.39+ (Ubuntu 24.04 or newer). On older glibc or musl/Alpine, provide a compatible compiler with SP_BIN.');
   }
   return target;
 }
 
 export function assetName({ version = metadata.version, target }) {
-  if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version)) throw new Error(`Invalid TypedPress release version: ${version}`);
-  if (!releaseTargets.includes(target)) throw new Error(`Unsupported TypedPress release target: ${target}`);
-  return `typedpress-v${version}-${target}.tar.gz`;
+  if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version)) throw new Error(`Invalid SpacePress release version: ${version}`);
+  if (!releaseTargets.includes(target)) throw new Error(`Unsupported SpacePress release target: ${target}`);
+  return `spacepress-v${version}-${target}.tar.gz`;
 }
 
 function baseURL(env, version) {
-  const url = new URL(env.TP_RELEASE_BASE_URL || `https://github.com/spacefast/zero/releases/download/v${version}/`);
+  const url = new URL(env.SP_RELEASE_BASE_URL || `https://github.com/spacefast/spacepress/releases/download/v${version}/`);
   if (!url.pathname.endsWith('/')) url.pathname += '/';
   if (!['https:', 'file:'].includes(url.protocol) && !(url.protocol === 'http:' && ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname))) {
-    throw new Error('TP_RELEASE_BASE_URL must use HTTPS, file://, or loopback HTTP for a local release test.');
+    throw new Error('SP_RELEASE_BASE_URL must use HTTPS, file://, or loopback HTTP for a local release test.');
   }
   if (url.username || url.password || url.search || url.hash) throw new Error('Release base URLs cannot contain credentials, queries or fragments.');
   return url;
@@ -100,35 +100,35 @@ async function cached(directory, { version, target }) {
   } catch (error) { if (error.code === 'ENOENT') return undefined; throw error; }
   try {
     const receipt = JSON.parse(await readFile(join(directory, 'receipt.json'), 'utf8'));
-    const binary = join(directory, 'typedpress');
+    const binary = join(directory, 'spacepress');
     if (receipt.version !== version || receipt.target !== target || receipt.binarySha256 !== await digest(binary)) {
-      throw new Error(`Cached TypedPress compiler failed integrity verification. Inspect and remove ${directory}, then retry.`);
+      throw new Error(`Cached SpacePress compiler failed integrity verification. Inspect and remove ${directory}, then retry.`);
     }
     return await executable(binary);
   } catch (error) {
-    throw new Error(`Cannot use cached TypedPress at ${directory}: ${error.message}. Inspect and remove this cache entry before retrying.`);
+    throw new Error(`Cannot use cached SpacePress at ${directory}: ${error.message}. Inspect and remove this cache entry before retrying.`);
   }
 }
 
 export async function compiler({ env = process.env } = {}) {
-  if (env.TP_BIN) {
-    if (!isAbsolute(env.TP_BIN)) throw new Error('TP_BIN must be an absolute path to a provided TypedPress compiler, not a command or relative path.');
-    try { return await executable(env.TP_BIN); }
-    catch (error) { throw new Error(`Cannot use TP_BIN=${env.TP_BIN}: ${error.message}`); }
+  if (env.SP_BIN) {
+    if (!isAbsolute(env.SP_BIN)) throw new Error('SP_BIN must be an absolute path to a provided SpacePress compiler, not a command or relative path.');
+    try { return await executable(env.SP_BIN); }
+    catch (error) { throw new Error(`Cannot use SP_BIN=${env.SP_BIN}: ${error.message}`); }
   }
   const version = metadata.version;
   const target = releaseTarget();
-  const cache = env.TP_CACHE_DIR || join(env.XDG_CACHE_HOME || join(homedir(), '.cache'), 'tp/npm');
-  if (!isAbsolute(cache)) throw new Error('TP_CACHE_DIR and XDG_CACHE_HOME must be absolute paths.');
+  const cache = env.SP_CACHE_DIR || join(env.XDG_CACHE_HOME || join(homedir(), '.cache'), 'sp/npm');
+  if (!isAbsolute(cache)) throw new Error('SP_CACHE_DIR and XDG_CACHE_HOME must be absolute paths.');
   const directory = join(cache, version, target);
   const installed = await cached(directory, { version, target });
   if (installed) return installed;
-  if (env.TP_OFFLINE === '1' || env.npm_config_offline === 'true') {
-    throw new Error(`TypedPress ${version} (${target}) is not cached and downloads are disabled. Supply TP_BIN or install once while online.`);
+  if (env.SP_OFFLINE === '1' || env.npm_config_offline === 'true') {
+    throw new Error(`SpacePress ${version} (${target}) is not cached and downloads are disabled. Supply SP_BIN or install once while online.`);
   }
   const name = assetName({ version, target });
   const base = baseURL(env, version);
-  const temporary = await mkdtemp(join(tmpdir(), 'typedpress-download-'));
+  const temporary = await mkdtemp(join(tmpdir(), 'spacepress-download-'));
   let stage;
   try {
     const archive = join(temporary, name);
@@ -142,9 +142,9 @@ export async function compiler({ env = process.env } = {}) {
     stage = `${directory}.${randomUUID()}.tmp`;
     await mkdir(stage, { mode: 0o700 });
     // Stream only the named regular payload; never extract archive paths or symlinks.
-    const { stdout } = await exec('tar', ['-xOzf', archive, 'typedpress'], { encoding: 'buffer', maxBuffer: 256 * 1024 * 1024 });
+    const { stdout } = await exec('tar', ['-xOzf', archive, 'spacepress'], { encoding: 'buffer', maxBuffer: 256 * 1024 * 1024 });
     if (!stdout.length) throw new Error('Release archive contains an empty compiler.');
-    const binary = join(stage, 'typedpress');
+    const binary = join(stage, 'spacepress');
     await writeFile(binary, stdout, { flag: 'wx', mode: 0o755 });
     await chmod(binary, 0o755);
     await writeFile(join(stage, 'receipt.json'), JSON.stringify({ version, target, archiveSha256: entry[0], binarySha256: await digest(binary) }) + '\n', { flag: 'wx' });
@@ -156,9 +156,9 @@ export async function compiler({ env = process.env } = {}) {
   } catch (error) {
     const unpublished = /HTTP (?:401|403|404)\b|ENOENT/.test(error.message);
     const next = unpublished
-      ? `The compiler for TypedPress ${version} is not downloadable from ${env.TP_RELEASE_BASE_URL ? 'TP_RELEASE_BASE_URL' : releasePage(version)}. Either the release is not published yet or its assets are not public. Retry once it is, or set TP_BIN=/absolute/path/to/typedpress (build one with \`cargo build --release\` in a checkout of https://github.com/spacefast/zero).`
-      : 'No Rust build or alternate executable was attempted. Retry, or set TP_BIN=/absolute/path/to/typedpress to use a compiler you provide.';
-    throw new Error(`Cannot install TypedPress ${version} for ${target}: ${error.message}\n${next}`);
+      ? `The compiler for SpacePress ${version} is not downloadable from ${env.SP_RELEASE_BASE_URL ? 'SP_RELEASE_BASE_URL' : releasePage(version)}. Either the release is not published yet or its assets are not public. Retry once it is, or set SP_BIN=/absolute/path/to/spacepress (build one with \`cargo build --release\` in a checkout of https://github.com/spacefast/spacepress).`
+      : 'No Rust build or alternate executable was attempted. Retry, or set SP_BIN=/absolute/path/to/spacepress to use a compiler you provide.';
+    throw new Error(`Cannot install SpacePress ${version} for ${target}: ${error.message}\n${next}`);
   } finally {
     await rm(temporary, { recursive: true, force: true });
     if (stage) await rm(stage, { recursive: true, force: true });

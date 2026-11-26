@@ -5,12 +5,12 @@ declare(strict_types=1);
 /*
  * Private file buckets on WordPress (phase 2 §7.2), in-process through App::handle (tests/php/wp.php):
  * accept/maxBytes, the owner rule, signed download URLs, `file` columns, rollback. The site's php -S
- * answers the private-files probe (the router denies /wp-content/uploads/typedpress-private/, as the
+ * answers the private-files probe (the router denies /wp-content/uploads/spacepress-private/, as the
  * .htaccess does under Apache), so uploads are open.
  */
 
-use TypedPress\App;
-use TypedPress\Wp\WpFiles;
+use SpacePress\App;
+use SpacePress\Wp\WpFiles;
 
 require __DIR__ . '/wp.php';
 require __DIR__ . '/harness.php';
@@ -42,18 +42,18 @@ $schema = [
 // A before-hook that swaps in a file id: the column check must see the final value.
 $functions = <<<'PHP'
     <?php
-    namespace TypedPressApp;
-    function talks__beforeCreate(\TypedPress\JsObject $data): \TypedPress\JsObject
+    namespace SpacePressApp;
+    function talks__beforeCreate(\SpacePress\JsObject $data): \SpacePress\JsObject
     {
-        return ($data->p['title'] ?? '') === 'hooked' ? new \TypedPress\JsObject(['deck' => 999999] + $data->p) : $data;
+        return ($data->p['title'] ?? '') === 'hooked' ? new \SpacePress\JsObject(['deck' => 999999] + $data->p) : $data;
     }
     /** A hook that pins the deck: deleting the file must not leave it dangling. */
-    function talks__beforeUpdate(\TypedPress\JsObject $patch, \TypedPress\JsObject $existing): \TypedPress\JsObject
+    function talks__beforeUpdate(\SpacePress\JsObject $patch, \SpacePress\JsObject $existing): \SpacePress\JsObject
     {
         // 'pinned' keeps deck on every update; 'restore' puts deck back while backup is being nulled.
         return match (true) {
-            $existing->p['title'] === 'pinned' => new \TypedPress\JsObject(['deck' => $existing->p['deck']] + $patch->p),
-            $existing->p['title'] === 'restore' && array_key_exists('backup', $patch->p) => new \TypedPress\JsObject(['deck' => $existing->p['backup']] + $patch->p),
+            $existing->p['title'] === 'pinned' => new \SpacePress\JsObject(['deck' => $existing->p['deck']] + $patch->p),
+            $existing->p['title'] === 'restore' && array_key_exists('backup', $patch->p) => new \SpacePress\JsObject(['deck' => $existing->p['backup']] + $patch->p),
             default => $patch,
         };
     }
@@ -88,9 +88,9 @@ $upload = static function (string $bucket, string $bytes, string $name, ?string 
 $download = static function (string $url) use ($wp): array {
     $parts = parse_url($url);
     parse_str($parts['query'] ?? '', $query);
-    [$status, $headers, $payload] = $wp->handle('GET', (string) preg_replace('#^.*?/wp-json/typedpress/v1#', '', $parts['path']), '', null, [], $query);
+    [$status, $headers, $payload] = $wp->handle('GET', (string) preg_replace('#^.*?/wp-json/spacepress/v1#', '', $parts['path']), '', null, [], $query);
     ob_start();
-    \TypedPress\Response::emit($payload);
+    \SpacePress\Response::emit($payload);
 
     return [$status, $headers, (string) ob_get_clean()];
 };
@@ -105,8 +105,8 @@ isProblem('unknown bucket', $upload('nope', 'x', 'a.txt', 'alice'), 404, 'not_fo
 [$s, $deck] = $upload('decks', "Slide one\n", "Q3 \"plan\"/é.txt", 'alice');
 eq('201 row: sniffed mime, owner = uploader, no storage path', [$s, $deck['bucket'], $deck['filename'], $deck['mime'], $deck['size'], $deck['ownerId'], array_key_exists('path', $deck)],
     [201, 'decks', 'é.txt', 'text/plain', 10, $wp->userId('alice'), false]);
-check('bytes live under uploads/typedpress-private/<app>/<bucket>, behind the deny rules, never in the media library',
-    count(glob("$private/*")) === 1 && is_file(WpFiles::root() . '/.htaccess') && array_diff(scandir($wp->uploads()), ['.', '..', 'typedpress-private']) === [], glob("$private/*"));
+check('bytes live under uploads/spacepress-private/<app>/<bucket>, behind the deny rules, never in the media library',
+    count(glob("$private/*")) === 1 && is_file(WpFiles::root() . '/.htaccess') && array_diff(scandir($wp->uploads()), ['.', '..', 'spacepress-private']) === [], glob("$private/*"));
 $deckFile = glob("$private/*")[0];
 
 // ================================================================ signed downloads
@@ -120,11 +120,11 @@ $path = "/files/decks/{$deck['id']}/download";
 isProblem('forged signature', call('GET', $path, query: ['exp' => $q['exp'], 'sig' => str_repeat('0', 64)]), 403, 'forbidden');
 isProblem('signature of another file', call('GET', "/files/decks/999/download", query: $q), 403, 'forbidden');
 isProblem('an extended exp invalidates the signature', call('GET', $path, query: ['exp' => (string) ((int) $q['exp'] + 1), 'sig' => $q['sig']]), 403, 'forbidden');
-putenv('TP_NOW=' . (((int) $q['exp'] + 1) * 1000));
+putenv('SP_NOW=' . (((int) $q['exp'] + 1) * 1000));
 isProblem('expired url', call('GET', $path, query: $q), 403, 'forbidden');
-putenv('TP_NOW=' . (((int) $q['exp'] - 600) * 1000));
+putenv('SP_NOW=' . (((int) $q['exp'] - 600) * 1000));
 isProblem('exp more than 300 s ahead is refused even when signed', call('GET', $path, query: $q), 403, 'forbidden');
-putenv('TP_NOW');
+putenv('SP_NOW');
 
 // ================================================================ owner rule
 
@@ -146,10 +146,10 @@ $own = call('GET', "/talks/{$talk['id']}", 'alice', query: ['with' => 'deck'])[1
 check('with: { deck: true } populates for a reader the bucket admits, with a working url', is_array($own) && $own['id'] === $deck['id'] && $download($own['url'])[0] === 200, $own);
 // A page's read (`db.query.talks.findFirst({ columns, with })`): `with` asked for the column, so a
 // `columns` selection that leaves it out, or excludes it, still returns the file.
-$viewer = new \TypedPress\Viewer($wp->user('alice'));
+$viewer = new \SpacePress\Viewer($wp->user('alice'));
 eq('with: { deck: true } loads the file through a `columns` selection that leaves the column out, or excludes it',
     array_map(static function (array $columns) use ($talk, $viewer): array {
-        $row = \TypedPress\db()->findFirst('talks', ['where' => ['id' => $talk['id']], 'columns' => $columns, 'with' => ['deck' => true]], $viewer);
+        $row = \SpacePress\db()->findFirst('talks', ['where' => ['id' => $talk['id']], 'columns' => $columns, 'with' => ['deck' => true]], $viewer);
 
         return [array_key_exists('title', $row), $row['deck']['filename'] ?? null];
     }, [['id' => true], ['deck' => false, 'title' => false]]),
@@ -164,16 +164,16 @@ $before = glob("$private/*");
 $tmp = tempnam(sys_get_temp_dir(), 'zf');
 file_put_contents($tmp, 'rolled back');
 try {
-    \TypedPress\db()->transaction(static function () use ($tmp): void {
-        \TypedPress\Media\Files::upload('decks', $tmp, 'r.txt', null);
+    \SpacePress\db()->transaction(static function () use ($tmp): void {
+        \SpacePress\Media\Files::upload('decks', $tmp, 'r.txt', null);
         throw new \RuntimeException('roll back');
     });
 } catch (\RuntimeException) {
 }
 eq('a rolled-back upload leaves no bytes behind', glob("$private/*"), $before);
 try {
-    \TypedPress\db()->transaction(static function () use ($deck): void {
-        \TypedPress\Media\Files::delete('decks', $deck['id'], null);
+    \SpacePress\db()->transaction(static function () use ($deck): void {
+        \SpacePress\Media\Files::delete('decks', $deck['id'], null);
         throw new \RuntimeException('roll back');
     });
 } catch (\RuntimeException) {

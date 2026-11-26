@@ -84,8 +84,8 @@ export const getEntityViewConfig =
 				queryArgs.variant = variant;
 			}
 
-			// TypedPress: TypedPress Admin's own route; `/wp/v2/view-config` is WordPress core's (7.1).
-			const path = addQueryArgs( '/typedpress-admin/v1/view-config', queryArgs );
+			// SpacePress: SpacePress Admin's own route; `/wp/v2/view-config` is WordPress core's (7.1).
+			const path = addQueryArgs( '/spacepress-admin/v1/view-config', queryArgs );
 
 			const response = await apiFetch( {
 				path,

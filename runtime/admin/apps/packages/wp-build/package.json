@@ -1,5 +1,5 @@
 {
-	"name": "@typedpress-admin/wp-build",
+	"name": "@spacepress-admin/wp-build",
 	"version": "0.1.0",
 	"description": "Opinionated build tooling for WordPress plugins with routes and packages support",
 	"type": "module",

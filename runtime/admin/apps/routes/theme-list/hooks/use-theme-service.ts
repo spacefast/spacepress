@@ -57,7 +57,7 @@ export const useThemeService = () => {
 				case ThemeAction.AutoUpdatesEnabled:
 					successMessage = sprintf(
 						// translators: %(name)s is the theme name.
-						__( 'Auto-updates enabled on %(name)s.', 'typedpress-admin' ),
+						__( 'Auto-updates enabled on %(name)s.', 'spacepress-admin' ),
 						{ name }
 					);
 					break;
@@ -67,7 +67,7 @@ export const useThemeService = () => {
 						// translators: %(name)s is the theme name.
 						__(
 							'Auto-updates disabled on %(name)s.',
-							'typedpress-admin'
+							'spacepress-admin'
 						),
 						{ name }
 					);
@@ -76,7 +76,7 @@ export const useThemeService = () => {
 				default:
 					successMessage = sprintf(
 						// translators: %(name)s is the theme name.
-						__( '%(name)s updated.', 'typedpress-admin' ),
+						__( '%(name)s updated.', 'spacepress-admin' ),
 						{ name }
 					);
 					break;
@@ -89,7 +89,7 @@ export const useThemeService = () => {
 		} catch ( error: unknown ) {
 			const wpError = error as WordPressError;
 			const errorText =
-				wpError.message || __( 'Unknown error occurred', 'typedpress-admin' );
+				wpError.message || __( 'Unknown error occurred', 'spacepress-admin' );
 
 			let errorMessage: string;
 			switch ( action ) {
@@ -98,7 +98,7 @@ export const useThemeService = () => {
 						// translators: %(name)s is the theme name. errorText: The error message.
 						__(
 							'Failed to enable auto-updates on %(name)s: %(errorText)s',
-							'typedpress-admin'
+							'spacepress-admin'
 						),
 						{ name, errorText }
 					);
@@ -109,7 +109,7 @@ export const useThemeService = () => {
 						// translators: %(name)s is the theme name. errorText: The error message.
 						__(
 							'Failed to disable auto-updates on %(name)s: %(errorText)s',
-							'typedpress-admin'
+							'spacepress-admin'
 						),
 						{ name, errorText }
 					);
@@ -120,7 +120,7 @@ export const useThemeService = () => {
 						// translators: %(name)s is the theme name. errorText: The error message.
 						__(
 							'Failed to edit %(name)s: %(errorText)s',
-							'typedpress-admin'
+							'spacepress-admin'
 						),
 						{ name, errorText }
 					);

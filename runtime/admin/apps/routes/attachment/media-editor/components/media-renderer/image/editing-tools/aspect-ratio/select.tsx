@@ -1,4 +1,4 @@
-import { SelectControl } from '@typedpress-admin/design-system';
+import { SelectControl } from '@spacepress-admin/design-system';
 import { useCallback, useMemo } from '@wordpress/element';
 import { __, _x } from '@wordpress/i18n';
 import type { AspectRatioComponentProps, AspectRatio } from './types';
@@ -40,7 +40,7 @@ export default function AspectRatioSelect( {
 
 	return (
 		<SelectControl
-			label={ __( 'Aspect ratio', 'typedpress-admin' ) }
+			label={ __( 'Aspect ratio', 'spacepress-admin' ) }
 			value={ aspectRatio?.slug }
 			items={ aspectRatioOptions }
 			// @ts-expect-error TODO: Value can be null.

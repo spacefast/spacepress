@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Cose\Algorithm\Signature;
+namespace SpacePress\Identity\Vendor\Cose\Algorithm\Signature;
 
-use TypedPress\Identity\Vendor\Cose\Algorithm\Algorithm;
-use TypedPress\Identity\Vendor\Cose\Key\Key;
+use SpacePress\Identity\Vendor\Cose\Algorithm\Algorithm;
+use SpacePress\Identity\Vendor\Cose\Key\Key;
 use InvalidArgumentException;
 
 interface Signature extends Algorithm

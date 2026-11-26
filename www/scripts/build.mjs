@@ -1,13 +1,13 @@
-// Builds what the TypedPress site (www/) needs beside its hand-written source:
+// Builds what the SpacePress site (www/) needs beside its hand-written source:
 //
-//   tp/data/sources.ts      the text of every file in examples/, for the guide (scripts/sources.mjs)
-//   public/site.js             browser/site.js bundled: the code and tree drawing, and <tp-play>
+//   sp/data/sources.ts      the text of every file in examples/, for the guide (scripts/sources.mjs)
+//   public/site.js             browser/site.js bundled: the code and tree drawing, and <sp-play>
 //   public/compiler.wasm       the compiler built for the browser
 //   public/play-data.json      the apps the playground can load (scripts/run-data.ts)
-//   public/playground-plugins/ TypedPress's shared plugins as zips, for "Run in WordPress"
+//   public/playground-plugins/ SpacePress's shared plugins as zips, for "Run in WordPress"
 //
 // All of it is git-ignored. Run `bun scripts/build.mjs` after changing browser/ or examples/;
-// `typedpress dev` rebuilds the pages itself. Build the compiler wasm and showcase zips first
+// `spacepress dev` rebuilds the pages itself. Build the compiler wasm and showcase zips first
 // with `npm run wasm && npm run showcase` in www/.
 import { readFileSync, writeFileSync, statSync, mkdirSync, copyFileSync, existsSync, rmSync } from "node:fs";
 import { join, relative, dirname } from "node:path";
@@ -31,10 +31,10 @@ const runData = Bun.spawnSync(["node", join(here, "run-data.ts")], { cwd: site }
 if (runData.exitCode !== 0) throw new Error(`run-data.ts failed:\n${runData.stderr.toString()}`);
 writeFileSync(join(out, "play-data.json"), runData.stdout);
 copyFileSync(wasm, join(out, "compiler.wasm"));
-for (const slug of ["typedpress-runtime", "typedpress-identity", "typedpress-admin"]) copyFileSync(join(zips, `${slug}.zip`), join(out, "playground-plugins", `${slug}.zip`));
+for (const slug of ["spacepress-runtime", "spacepress-identity", "spacepress-admin"]) copyFileSync(join(zips, `${slug}.zip`), join(out, "playground-plugins", `${slug}.zip`));
 
 // One script file. The highlighter ships 240 grammars and 70 themes, each behind its own
-// `import()`; under `typedpress dev` every file costs a WordPress request, and 28 of them delayed the
+// `import()`; under `spacepress dev` every file costs a WordPress request, and 28 of them delayed the
 // code panes. So only the grammars these apps and their build output use, and the two themes, are
 // kept, and without `splitting` Bun puts them in the same file. Any other language is shown as
 // plain text by the library.
@@ -87,4 +87,4 @@ writeFileSync(join(out, "gh-stars.json"), JSON.stringify(ghStars));
 console.log(`   generated llms.txt, llms-full.txt, search-index.json (${aiStats.searchItems} items), and ${aiStats.docs + aiStats.posts + 3} markdown twins`);
 
 const kb = (f) => `${String(Math.round(statSync(f).size / 1024)).padStart(7)} KB  ${relative(site, f)}`;
-for (const f of [join(site, "tp", "data", "sources.ts"), join(out, "site.js"), join(out, "play-data.json"), join(out, "compiler.wasm"), join(out, "llms.txt"), join(out, "search-index.json")]) console.log(kb(f));
+for (const f of [join(site, "sp", "data", "sources.ts"), join(out, "site.js"), join(out, "play-data.json"), join(out, "compiler.wasm"), join(out, "llms.txt"), join(out, "search-index.json")]) console.log(kb(f));

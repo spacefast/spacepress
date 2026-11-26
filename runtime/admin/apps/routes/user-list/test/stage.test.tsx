@@ -14,7 +14,7 @@ jest.mock( '@wordpress/route', () => ( {
 	Link: ( { children }: { children: React.ReactNode } ) => children,
 } ) );
 
-jest.mock( '@typedpress-admin/views', () => ( {
+jest.mock( '@spacepress-admin/views', () => ( {
 	DataViews: ( { tabs }: { tabs?: React.ReactNode } ) => (
 		<div>
 			{ tabs }
@@ -44,11 +44,11 @@ jest.mock( '@typedpress-admin/views', () => ( {
 	} ),
 } ) );
 
-jest.mock( '@typedpress-admin/core-data-next', () => ( {
+jest.mock( '@spacepress-admin/core-data-next', () => ( {
 	useFieldCollections: () => [],
 } ) );
 
-jest.mock( '@typedpress-admin/admin-toolkit', () => ( {
+jest.mock( '@spacepress-admin/admin-toolkit', () => ( {
 	Page: ( { children }: { children: React.ReactNode } ) => (
 		<div>{ children }</div>
 	),
@@ -82,7 +82,7 @@ jest.mock( '@wordpress/components', () => ( {
 	),
 } ) );
 
-jest.mock( '@typedpress-admin/telemetry', () => ( {
+jest.mock( '@spacepress-admin/telemetry', () => ( {
 	normalizeLabel: ( value: string ) => value,
 	serializeFilters: () => '',
 	usePageView: jest.fn(),

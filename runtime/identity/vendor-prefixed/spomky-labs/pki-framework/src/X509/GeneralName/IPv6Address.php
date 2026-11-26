@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\GeneralName;
+namespace SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\GeneralName;
 
 use function array_map;
 use function array_slice;

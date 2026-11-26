@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Polyfill\Php83;
+namespace SpacePress\Identity\Vendor\Symfony\Polyfill\Php83;
 
 /**
  * @author Ion Bazan <ion.bazan@gmail.com>

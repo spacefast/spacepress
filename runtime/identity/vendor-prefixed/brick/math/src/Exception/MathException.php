@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Brick\Math\Exception;
+namespace SpacePress\Identity\Vendor\Brick\Math\Exception;
 
 use Throwable;
 

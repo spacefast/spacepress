@@ -1,39 +1,39 @@
 @use "@wordpress/base-styles/variables";
 @use "@wordpress/base-styles/mixins";
 
-.typedpress-admin-sidebar-navigation-screen {
+.spacepress-admin-sidebar-navigation-screen {
 	// Avoid cutting off focus ring of the last menu item
 	padding-block-end: variables.$grid-unit-05;
 }
 
-.typedpress-admin-sidebar-navigation-screen .components-text {
+.spacepress-admin-sidebar-navigation-screen .components-text {
 	color: var( --wpds-color-foreground-content-neutral );
 }
 
-.typedpress-admin-sidebar-navigation-screen__title-icon {
+.spacepress-admin-sidebar-navigation-screen__title-icon {
 	position: sticky;
 	top: 0;
 	padding: variables.$grid-unit-15 variables.$grid-unit-20
 		variables.$grid-unit-10 variables.$grid-unit-20;
 }
 
-.typedpress-admin-sidebar-navigation-screen__title {
+.spacepress-admin-sidebar-navigation-screen__title {
 	flex-grow: 1;
 	overflow-wrap: break-word;
 
 	&#{&},
-	&#{&} .typedpress-admin-sidebar-navigation-screen__title {
+	&#{&} .spacepress-admin-sidebar-navigation-screen__title {
 		line-height: variables.$font-line-height-x-large;
 		color: var( --wpds-color-foreground-content-neutral );
 	}
 }
 
-.typedpress-admin-sidebar-navigation-screen__actions {
+.spacepress-admin-sidebar-navigation-screen__actions {
 	display: flex;
 	flex-shrink: 0;
 }
 
-.typedpress-admin-sidebar-navigation-screen__content
+.spacepress-admin-sidebar-navigation-screen__content
 	.block-editor-list-view-block-select-button {
 	cursor: grab;
 	padding: variables.$grid-unit-10 variables.$grid-unit-10

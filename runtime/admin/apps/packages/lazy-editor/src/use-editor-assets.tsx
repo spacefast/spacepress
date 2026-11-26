@@ -1,5 +1,5 @@
-import { store as coreDataNextStore } from '@typedpress-admin/core-data-next';
-import loadAssets from '@typedpress-admin/load-assets';
+import { store as coreDataNextStore } from '@spacepress-admin/core-data-next';
+import loadAssets from '@spacepress-admin/load-assets';
 import { useState, useEffect } from '@wordpress/element';
 import { resolveSelect, useSelect } from '@wordpress/data';
 

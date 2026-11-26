@@ -16,7 +16,7 @@ export function IconWithCurrentColor( {
 		<Icon
 			className={ clsx(
 				className,
-				'typedpress-admin-global-styles-icon-with-current-color'
+				'spacepress-admin-global-styles-icon-with-current-color'
 			) }
 			{ ...props }
 		/>

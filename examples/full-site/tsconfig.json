@@ -8,17 +8,17 @@
     "noEmit": true,
     "types": [],
     "jsx": "react-jsx",
-    "jsxImportSource": "typedpress",
+    "jsxImportSource": "spacepress",
     "paths": {
-      "typedpress": ["../../types/typedpress/index.d.ts"],
-      "typedpress/app": ["../../types/typedpress/app.d.ts"],
-      "typedpress/client": ["../../types/typedpress/client.d.ts"],
-      "typedpress/jsx-runtime": ["../../types/typedpress/jsx-runtime.d.ts"],
-      "typedpress/jsx-dev-runtime": ["../../types/typedpress/jsx-dev-runtime.d.ts"]
+      "spacepress": ["../../types/spacepress/index.d.ts"],
+      "spacepress/app": ["../../types/spacepress/app.d.ts"],
+      "spacepress/client": ["../../types/spacepress/client.d.ts"],
+      "spacepress/jsx-runtime": ["../../types/spacepress/jsx-runtime.d.ts"],
+      "spacepress/jsx-dev-runtime": ["../../types/spacepress/jsx-dev-runtime.d.ts"]
     },
     "allowImportingTsExtensions": true,
     "skipLibCheck": true
   },
-  "include": ["typedpress.config.ts", "tp/**/*.ts", "tp/**/*.tsx"],
-  "exclude": ["tp/dist"]
+  "include": ["spacepress.config.ts", "sp/**/*.ts", "sp/**/*.tsx"],
+  "exclude": ["sp/dist"]
 }

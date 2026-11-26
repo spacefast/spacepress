@@ -1,19 +1,19 @@
 <?php
 /**
- * TypedPress Admin SPA
+ * SpacePress Admin SPA
  *
- * This file provides the API for registering admin menu items in the TypedPress Admin SPA.
+ * This file provides the API for registering admin menu items in the SpacePress Admin SPA.
  *
- * @package TypedPress_Admin
+ * @package SpacePress_Admin
  */
 
 // Global storage for menu items.
-global $tp_admin_menu_items, $tp_admin_meta_menu_items;
-$tp_admin_menu_items      = array();
-$tp_admin_meta_menu_items = array();
+global $sp_admin_menu_items, $sp_admin_meta_menu_items;
+$sp_admin_menu_items      = array();
+$sp_admin_meta_menu_items = array();
 
 /**
- * Register a menu item for the TypedPress Admin SPA.
+ * Register a menu item for the SpacePress Admin SPA.
  *
  * @since 1.0.0
  *
@@ -31,8 +31,8 @@ $tp_admin_meta_menu_items = array();
  * }
  * @param bool   $is_meta Optional. Whether this is a meta menu item (default: false). Meta items are displayed in the footer or header of the sidebar.
  */
-function tp_admin_register_menu_item( $id, $args, $is_meta = false ) {
-	global $tp_admin_menu_items, $tp_admin_meta_menu_items;
+function sp_admin_register_menu_item( $id, $args, $is_meta = false ) {
+	global $sp_admin_menu_items, $sp_admin_meta_menu_items;
 
 	$defaults = array(
 		'to'            => '',
@@ -82,14 +82,14 @@ function tp_admin_register_menu_item( $id, $args, $is_meta = false ) {
 	}
 
 	if ( $is_meta ) {
-		$tp_admin_meta_menu_items[] = $menu_item;
+		$sp_admin_meta_menu_items[] = $menu_item;
 	} else {
-		$tp_admin_menu_items[] = $menu_item;
+		$sp_admin_menu_items[] = $menu_item;
 	}
 }
 
 /**
- * Deregister a menu item from the TypedPress Admin SPA.
+ * Deregister a menu item from the SpacePress Admin SPA.
  *
  * @since 1.0.0
  *
@@ -97,13 +97,13 @@ function tp_admin_register_menu_item( $id, $args, $is_meta = false ) {
  * @param bool   $is_meta Optional. Whether this is a meta menu item (default: false).
  * @return bool True if the menu item was found and removed, false otherwise.
  */
-function tp_admin_deregister_menu_item( $id, $is_meta = false ) {
-	global $tp_admin_menu_items, $tp_admin_meta_menu_items;
+function sp_admin_deregister_menu_item( $id, $is_meta = false ) {
+	global $sp_admin_menu_items, $sp_admin_meta_menu_items;
 
 	if ( $is_meta ) {
-		$menu_items = &$tp_admin_meta_menu_items;
+		$menu_items = &$sp_admin_meta_menu_items;
 	} else {
-		$menu_items = &$tp_admin_menu_items;
+		$menu_items = &$sp_admin_menu_items;
 	}
 
 	foreach ( $menu_items as $index => $menu_item ) {
@@ -119,7 +119,7 @@ function tp_admin_deregister_menu_item( $id, $is_meta = false ) {
 }
 
 /**
- * Switch/replace a menu item with another one in the TypedPress Admin SPA.
+ * Switch/replace a menu item with another one in the SpacePress Admin SPA.
  *
  * This function removes an existing menu item and replaces it with a new one.
  * Useful for customizing existing menu items while maintaining their position.
@@ -142,13 +142,13 @@ function tp_admin_deregister_menu_item( $id, $is_meta = false ) {
  * @param bool   $is_meta Optional. Whether this is a meta menu item (default: false).
  * @return bool True if the menu item was found and replaced, false otherwise.
  */
-function tp_admin_switch_menu_item( $old_id, $new_id, $new_args, $is_meta = false ) {
-	global $tp_admin_menu_items, $tp_admin_meta_menu_items;
+function sp_admin_switch_menu_item( $old_id, $new_id, $new_args, $is_meta = false ) {
+	global $sp_admin_menu_items, $sp_admin_meta_menu_items;
 
 	if ( $is_meta ) {
-		$menu_items = &$tp_admin_meta_menu_items;
+		$menu_items = &$sp_admin_meta_menu_items;
 	} else {
-		$menu_items = &$tp_admin_menu_items;
+		$menu_items = &$sp_admin_menu_items;
 	}
 
 	// Find the position of the old menu item.
@@ -209,11 +209,11 @@ function tp_admin_switch_menu_item( $old_id, $new_id, $new_args, $is_meta = fals
  *
  * @return array Array of registered admin menu items, sorted by position.
  */
-function tp_admin_get_admin_menu_items() {
-	global $tp_admin_menu_items;
+function sp_admin_get_admin_menu_items() {
+	global $sp_admin_menu_items;
 
 	// Sort menu items by position (null positions go to the end).
-	$sorted_items = $tp_admin_menu_items;
+	$sorted_items = $sp_admin_menu_items;
 	usort(
 		$sorted_items,
 		function ( $a, $b ) {
@@ -237,7 +237,7 @@ function tp_admin_get_admin_menu_items() {
 	 *
 	 * @param array $sorted_items The sorted menu items array.
 	 */
-	return apply_filters( 'tp_admin_get_admin_menu_items', $sorted_items );
+	return apply_filters( 'sp_admin_get_admin_menu_items', $sorted_items );
 }
 
 /**
@@ -245,11 +245,11 @@ function tp_admin_get_admin_menu_items() {
  *
  * @return array Array of registered admin meta menu items, sorted by position.
  */
-function tp_admin_get_admin_meta_menu_items() {
-	global $tp_admin_meta_menu_items;
+function sp_admin_get_admin_meta_menu_items() {
+	global $sp_admin_meta_menu_items;
 
 	// Sort meta menu items by position (null positions go to the end).
-	$sorted_items = $tp_admin_meta_menu_items;
+	$sorted_items = $sp_admin_meta_menu_items;
 	usort(
 		$sorted_items,
 		function ( $a, $b ) {

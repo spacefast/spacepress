@@ -4,7 +4,7 @@ use std::path::Path;
 
 /// Writes `content` to `path` unless the file already holds exactly those bytes, so an unchanged
 /// file keeps its modification time; returns whether it wrote. A changed file is removed and
-/// written again rather than overwritten in place: `typedpress build` stages its output with hard links
+/// written again rather than overwritten in place: `spacepress build` stages its output with hard links
 /// to the published files, and writing through a link would change the published copy before the
 /// stage is published.
 pub(crate) fn write(path: &Path, content: impl AsRef<[u8]>) -> std::io::Result<bool> {
@@ -97,7 +97,7 @@ pub(crate) fn embedded(prefix: &'static str) -> impl Iterator<Item = (&'static s
         .filter_map(move |(rel, bytes)| rel.strip_prefix(prefix).map(|rest| (rest, *bytes)))
 }
 
-/// The schema-independent plugins: `typedpress-runtime`, `typedpress-identity` and `typedpress-admin`, as
+/// The schema-independent plugins: `spacepress-runtime`, `spacepress-identity` and `spacepress-admin`, as
 /// (path below the plugins directory, bytes). Identical for every app built by this compiler, so a
 /// build store writes the tree once per revision.
 pub(crate) fn runtime_tree() -> Vec<(String, std::borrow::Cow<'static, [u8]>)> {
@@ -113,9 +113,9 @@ fn embedded_runtime() -> impl Iterator<Item = (&'static str, std::borrow::Cow<'s
 
     runtime_files::FILES
         .iter()
-        .filter(|(rel, _)| rel.starts_with("TypedPress/"))
+        .filter(|(rel, _)| rel.starts_with("SpacePress/"))
         .map(|(rel, bytes)| {
-            let bytes = if rel.starts_with("TypedPress/Render/client/") && rel.ends_with(".js") {
+            let bytes = if rel.starts_with("SpacePress/Render/client/") && rel.ends_with(".js") {
                 let source = std::str::from_utf8(bytes).expect("runtime browser module is UTF-8");
                 Cow::Owned(crate::minify::module(source).into_bytes())
             } else {
@@ -142,7 +142,7 @@ fn build_runtime_tree() -> Vec<(String, std::borrow::Cow<'static, [u8]>)> {
         ("runtimeHash", runtime_hash),
         ("wpVersion", platform::WORDPRESS.to_string()),
         ("phpVersion", platform::PHP.to_string()),
-        ("tpVersion", env!("CARGO_PKG_VERSION").to_string()),
+        ("spVersion", env!("CARGO_PKG_VERSION").to_string()),
         // Every platform plugin Runtime::activate() requires; Polylang only with an app's `locales`.
         (
             "runtimeRequires",
@@ -153,45 +153,45 @@ fn build_runtime_tree() -> Vec<(String, std::borrow::Cow<'static, [u8]>)> {
                 .join(", "),
         ),
     ];
-    let template = runtime_file("wp-plugin/typedpress-runtime.php").expect("embedded plugin template");
-    let uninstall = runtime_file("wp-plugin/typedpress-runtime-uninstall.php").expect("embedded uninstall template");
+    let template = runtime_file("wp-plugin/spacepress-runtime.php").expect("embedded plugin template");
+    let uninstall = runtime_file("wp-plugin/spacepress-runtime-uninstall.php").expect("embedded uninstall template");
     let mut files: Vec<(String, Cow<'static, [u8]>)> = vec![
         (
-            "typedpress-runtime/typedpress-runtime.php".into(),
+            "spacepress-runtime/spacepress-runtime.php".into(),
             Cow::Owned(substitute(&String::from_utf8_lossy(template), &vars).into_bytes()),
         ),
         // Deleting the plugin in wp-admin runs uninstall.php: options and capabilities go, content stays.
-        ("typedpress-runtime/uninstall.php".into(), Cow::Borrowed(uninstall)),
+        ("spacepress-runtime/uninstall.php".into(), Cow::Borrowed(uninstall)),
         (
-            "typedpress-runtime/readme.txt".into(),
-            Cow::Owned(readme("typedpress-runtime").into_bytes()),
+            "spacepress-runtime/readme.txt".into(),
+            Cow::Owned(readme("spacepress-runtime").into_bytes()),
         ),
         // The build store's loader, which the host requires to mount one build.
         (
-            "typedpress-loader.php".into(),
-            Cow::Borrowed(runtime_file("wp-plugin/typedpress-loader.php").expect("embedded loader")),
+            "spacepress-loader.php".into(),
+            Cow::Borrowed(runtime_file("wp-plugin/spacepress-loader.php").expect("embedded loader")),
         ),
         (
-            "typedpress-commerce.php".into(),
-            Cow::Borrowed(runtime_file("wp-plugin/typedpress-commerce.php").expect("embedded commerce bootstrap")),
+            "spacepress-commerce.php".into(),
+            Cow::Borrowed(runtime_file("wp-plugin/spacepress-commerce.php").expect("embedded commerce bootstrap")),
         ),
     ];
     files.extend(runtime.into_iter().map(|(rel, bytes)| {
-        let rest = rel.strip_prefix("TypedPress/").expect("TypedPress runtime tree");
-        (format!("typedpress-runtime/tp/{rest}"), bytes)
+        let rest = rel.strip_prefix("SpacePress/").expect("SpacePress runtime tree");
+        (format!("spacepress-runtime/sp/{rest}"), bytes)
     }));
     for (rel, bytes) in runtime_files::FILES {
         if let Some(rest) = rel.strip_prefix("identity/") {
-            files.push((format!("typedpress-identity/{rest}"), Cow::Borrowed(*bytes)));
+            files.push((format!("spacepress-identity/{rest}"), Cow::Borrowed(*bytes)));
         } else if let Some(rest) = rel.strip_prefix("admin/") {
             // The committed admin plugin (PHP, routes.js, notices, the built modules); its header
             // carries the same version placeholders as the generated plugins.
-            let bytes = if rest == "typedpress-admin.php" {
+            let bytes = if rest == "spacepress-admin.php" {
                 Cow::Owned(substitute(&String::from_utf8_lossy(bytes), &vars).into_bytes())
             } else {
                 Cow::Borrowed(*bytes)
             };
-            files.push((format!("typedpress-admin/{rest}"), bytes));
+            files.push((format!("spacepress-admin/{rest}"), bytes));
         }
     }
     files
@@ -207,19 +207,19 @@ pub(crate) fn emit_generated(
     runtime: bool,
 ) -> std::io::Result<()> {
     if runtime {
-        let slugs = ["typedpress-runtime", "typedpress-identity", "typedpress-admin"];
+        let slugs = ["spacepress-runtime", "spacepress-identity", "spacepress-admin"];
         emit_runtime(plugins, &slugs[..if built.schema.admin { 3 } else { 2 }])?;
     }
     let (_, files) = app_files(project, migrations, built)?;
     // The migrations directory exists even when the ledger has no SQL yet, as it always has.
-    std::fs::create_dir_all(plugins.join(format!("typedpress-app-{}/tp/app/migrations", built.schema.name)))?;
+    std::fs::create_dir_all(plugins.join(format!("spacepress-app-{}/sp/app/migrations", built.schema.name)))?;
     for (rel, bytes) in files {
         write(&plugins.join(rel), bytes)?;
     }
     Ok(())
 }
 
-/// Writes the runtime plugins named in `slugs` (`typedpress-runtime`, `typedpress-identity`, `typedpress-admin`).
+/// Writes the runtime plugins named in `slugs` (`spacepress-runtime`, `spacepress-identity`, `spacepress-admin`).
 pub(crate) fn emit_runtime(plugins: &Path, slugs: &[&str]) -> std::io::Result<()> {
     for (rel, bytes) in runtime_tree() {
         if rel.split_once('/').is_some_and(|(slug, _)| slugs.contains(&slug)) {
@@ -248,13 +248,13 @@ pub(crate) fn app_files(project: &Path, migrations: &Path, built: &Built) -> std
             let php = format!("<?php\nreturn {};\n", crate::compile::php_json(&records));
             hashes.insert(format!("{name}.php"), crate::hex(Sha256::digest(php.as_bytes())).into());
             files.push((
-                format!("typedpress-app-{}/tp/app/seed/{name}.php", built.schema.name),
+                format!("spacepress-app-{}/sp/app/seed/{name}.php", built.schema.name),
                 php.into_bytes(),
             ));
         }
         let manifest = crate::compile::php_json(&serde_json::Value::Object(hashes));
         files.push((
-            format!("typedpress-app-{}/tp/app/seed-version.php", built.schema.name),
+            format!("spacepress-app-{}/sp/app/seed-version.php", built.schema.name),
             format!("<?php return {manifest};\n").into_bytes(),
         ));
     }
@@ -276,7 +276,7 @@ mod tests {
     #[test]
     fn bundled_rowbot_excludes_upstream_development_files() {
         let files: Vec<_> = super::embedded_runtime()
-            .filter_map(|(path, _)| path.strip_prefix("TypedPress/vendor-prefixed/rowbot/"))
+            .filter_map(|(path, _)| path.strip_prefix("SpacePress/vendor-prefixed/rowbot/"))
             .collect();
         assert!(files.contains(&"url/src/URL.php"));
         assert!(

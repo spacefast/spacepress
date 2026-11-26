@@ -31,10 +31,10 @@ const actionStyleToVariant: Record<
 };
 
 const severityLabels: Record< NonNullable< Nudge[ 'severity' ] >, string > = {
-	info: __( 'Information', 'typedpress-admin' ),
-	warning: __( 'Warning', 'typedpress-admin' ),
-	urgent: __( 'Urgent', 'typedpress-admin' ),
-	error: __( 'Error', 'typedpress-admin' ),
+	info: __( 'Information', 'spacepress-admin' ),
+	warning: __( 'Warning', 'spacepress-admin' ),
+	urgent: __( 'Urgent', 'spacepress-admin' ),
+	error: __( 'Error', 'spacepress-admin' ),
 };
 
 const severityToStatus: Record<
@@ -70,7 +70,7 @@ export function NudgeDisplay( { nudge }: NudgeDisplayProps ) {
 		<Notice
 			status={ severityToStatus[ nudge.severity ] }
 			isDismissible={ false }
-			className={ `typedpress-admin-nudge typedpress-admin-nudge--${ nudge.severity }` }
+			className={ `spacepress-admin-nudge spacepress-admin-nudge--${ nudge.severity }` }
 		>
 			<Stack direction="row" gap="sm" align="flex-start">
 				{ iconElement && (
@@ -79,7 +79,7 @@ export function NudgeDisplay( { nudge }: NudgeDisplayProps ) {
 						size={ 24 }
 						aria-label={ sprintf(
 							/* translators: %s: severity level (Information, Warning, Urgent, Error) */
-							__( '%s notification', 'typedpress-admin' ),
+							__( '%s notification', 'spacepress-admin' ),
 							severityLabels[ nudge.severity ] || nudge.severity
 						) }
 					/>
@@ -88,15 +88,15 @@ export function NudgeDisplay( { nudge }: NudgeDisplayProps ) {
 				<Stack
 					direction="column"
 					gap="sm"
-					className="typedpress-admin-nudge__content"
+					className="spacepress-admin-nudge__content"
 				>
 					<Stack direction="column">
-						<h2 className="typedpress-admin-nudge__title">
+						<h2 className="spacepress-admin-nudge__title">
 							{ nudge.title }
 						</h2>
 
 						{ nudge.content && (
-							<div className="typedpress-admin-nudge__context">
+							<div className="spacepress-admin-nudge__context">
 								{ nudge.content }
 							</div>
 						) }
@@ -107,7 +107,7 @@ export function NudgeDisplay( { nudge }: NudgeDisplayProps ) {
 							variant={ buttonVariant }
 							tone="neutral"
 							size="compact"
-							className="typedpress-admin-nudge__button"
+							className="spacepress-admin-nudge__button"
 							render={ <Link to={ nudge.action.url } /> }
 						>
 							{ nudge.action.text }

@@ -1,11 +1,11 @@
 {
-  "name": "@typedpress/blocks",
+  "name": "@spacepress/blocks",
   "version": "0.1.0",
   "description": "Write Gutenberg content and whole WordPress block themes in TSX.",
   "license": "MIT AND GPL-2.0-or-later",
-  "homepage": "https://github.com/spacefast/zero/tree/main/packages/blocks#readme",
+  "homepage": "https://github.com/spacefast/spacepress/tree/main/packages/blocks#readme",
   "keywords": [
-    "typedpress",
+    "spacepress",
     "wordpress",
     "gutenberg",
     "blocks",
@@ -18,7 +18,7 @@
     "node": ">=22"
   },
   "bin": {
-    "typedpress-blocks": "./bin/typedpress-blocks.mjs"
+    "spacepress-blocks": "./bin/spacepress-blocks.mjs"
   },
   "files": [
     "bin",
@@ -74,10 +74,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/spacefast/zero.git",
+    "url": "https://github.com/spacefast/spacepress.git",
     "directory": "packages/blocks"
   },
-  "bugs": "https://github.com/spacefast/zero/issues",
+  "bugs": "https://github.com/spacefast/spacepress/issues",
   "publishConfig": {
     "access": "public"
   }

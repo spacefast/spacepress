@@ -1,6 +1,6 @@
 # Existing storage fixture
 
-`tp/_generated/migrations/` is the unmodified output of main at
+`sp/_generated/migrations/` is the unmodified output of main at
 `a2ec286d43ad3f93aec7935bc9c7f015dcb6d33d`, built with these same fields,
 relations, access and revisions using the old authoring:
 `collection("stockItems", fields, { editor: false, revisions: true, access })`,

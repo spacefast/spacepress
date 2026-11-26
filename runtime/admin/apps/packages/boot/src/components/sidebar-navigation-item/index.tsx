@@ -1,8 +1,8 @@
 import clsx from 'clsx';
 import type { ReactNode } from 'react';
 import { Icon } from '@wordpress/ui';
-// eslint-disable-next-line @typedpress-admin/design-system/use-new-components
-import { Stack } from '@typedpress-admin/design-system';
+// eslint-disable-next-line @spacepress-admin/design-system/use-new-components
+import { Stack } from '@spacepress-admin/design-system';
 import { FlexBlock, __experimentalItem as Item } from '@wordpress/components';
 import { arrowUpRight } from '@wordpress/icons';
 import RouterLinkItem from '../router-link-item';
@@ -74,7 +74,7 @@ export default function SidebarNavigationItem( {
 				target={ isExternal ? '_blank' : undefined }
 				rel={ isExternal ? 'noopener noreferrer' : undefined }
 				className={ clsx(
-					'typedpress-admin-sidebar-navigation-item',
+					'spacepress-admin-sidebar-navigation-item',
 					className
 				) }
 			>
@@ -88,7 +88,7 @@ export default function SidebarNavigationItem( {
 		<RouterLinkItem
 			to={ to }
 			className={ clsx(
-				'typedpress-admin-sidebar-navigation-item',
+				'spacepress-admin-sidebar-navigation-item',
 				className
 			) }
 		>

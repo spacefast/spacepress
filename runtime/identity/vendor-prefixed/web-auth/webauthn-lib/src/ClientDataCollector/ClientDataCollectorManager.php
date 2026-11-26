@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Webauthn\ClientDataCollector;
+namespace SpacePress\Identity\Vendor\Webauthn\ClientDataCollector;
 
 use function in_array;
-use TypedPress\Identity\Vendor\Webauthn\AuthenticatorResponse;
-use TypedPress\Identity\Vendor\Webauthn\CollectedClientData;
-use TypedPress\Identity\Vendor\Webauthn\Exception\AuthenticatorResponseVerificationException;
-use TypedPress\Identity\Vendor\Webauthn\PublicKeyCredentialOptions;
+use SpacePress\Identity\Vendor\Webauthn\AuthenticatorResponse;
+use SpacePress\Identity\Vendor\Webauthn\CollectedClientData;
+use SpacePress\Identity\Vendor\Webauthn\Exception\AuthenticatorResponseVerificationException;
+use SpacePress\Identity\Vendor\Webauthn\PublicKeyCredentialOptions;
 
 final readonly class ClientDataCollectorManager
 {

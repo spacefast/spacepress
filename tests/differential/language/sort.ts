@@ -3,11 +3,11 @@
 // `a.key < b.key ? -1 : 1` (never 0) and with numeric key differences. Default sorting compares
 // UTF-16 code units of each element's string form, so numbers sort lexicographically and astral
 // characters sort before U+E000..U+FFFF. Undefined goes last and never reaches the comparator.
-// Comparators may be inconsistent or effectful: TypedPress runs V8's TimSort step for step, so the
+// Comparators may be inconsistent or effectful: SpacePress runs V8's TimSort step for step, so the
 // comparator sees Node's pairs in Node's order. The checksum cases record every call.
 // Every action runs under Node and as compiled PHP; module-level constants run in the build-time
 // evaluator. `sort-helpers.mjs` runs the same checks untyped.
-import { defineConfig, mutation as server } from "typedpress";
+import { defineConfig, mutation as server } from "spacepress";
 import { sortObjects as sortObjectsImpl, sortUntyped as sortUntypedImpl, sortUntypedSequences as sortUntypedSequencesImpl } from "./sort-helpers.mjs";
 
 const run = (handler: () => unknown) => server({}, handler);

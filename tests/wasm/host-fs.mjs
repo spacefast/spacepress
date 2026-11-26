@@ -12,13 +12,13 @@ export function hostFs(getExports) {
     try { response = { data: operation(name) }; }
     catch (error) { response = { error: { kind: error.code, message: error.message } }; }
     const bytes = encoder.encode(JSON.stringify(response));
-    const out = exports.tp_alloc(bytes.length + 4);
+    const out = exports.sp_alloc(bytes.length + 4);
     new DataView(exports.memory.buffer).setUint32(out, bytes.length, true);
     new Uint8Array(exports.memory.buffer, out + 4, bytes.length).set(bytes);
     return out;
   };
   return {
-    read_file: bind((name) => fs.readFileSync(name, 'utf8')),
+    read_file_bytes: bind((name) => fs.readFileSync(name).toString('base64')),
     canonicalize: bind((name) => fs.realpathSync(name)),
     read_dir: bind((name) => fs.readdirSync(name).map((entry) => path.join(name, entry))),
     stat: bind((name) => {
@@ -31,11 +31,11 @@ export function hostFs(getExports) {
 
 export function call(exports, operation, request) {
   const bytes = new TextEncoder().encode(JSON.stringify(request));
-  const input = exports.tp_alloc(bytes.length);
+  const input = exports.sp_alloc(bytes.length);
   new Uint8Array(exports.memory.buffer, input, bytes.length).set(bytes);
   const output = exports[operation](input, bytes.length);
   const length = new DataView(exports.memory.buffer).getUint32(output, true);
   const response = new TextDecoder().decode(new Uint8Array(exports.memory.buffer, output + 4, length));
-  exports.tp_free(output, length + 4);
+  exports.sp_free(output, length + 4);
   return JSON.parse(response);
 }

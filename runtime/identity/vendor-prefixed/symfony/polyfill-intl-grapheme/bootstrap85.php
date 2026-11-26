@@ -13,7 +13,7 @@
 // for native-signature compatibility but ignored by the polyfill, which only
 // performs UTF-8 case folding.
 
-use TypedPress\Identity\Vendor\Symfony\Polyfill\Intl\Grapheme as p;
+use SpacePress\Identity\Vendor\Symfony\Polyfill\Intl\Grapheme as p;
 
 if (!function_exists('grapheme_stripos')) {
     function grapheme_stripos(?string $haystack, ?string $needle, ?int $offset = 0, ?string $locale = ''): int|false { return p\Grapheme::grapheme_stripos((string) $haystack, (string) $needle, (int) $offset); }

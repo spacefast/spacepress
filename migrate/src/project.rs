@@ -1,9 +1,9 @@
 use crate::config::{Failure, fail};
+use spacepress::{diag, loader, pipeline, wasm};
 use std::collections::BTreeMap;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use typedpress::{diag, loader, pipeline, wasm};
 
 pub fn check(files: &BTreeMap<PathBuf, String>) -> Result<pipeline::Built, Failure> {
     let root = Path::new("/candidate");
@@ -14,7 +14,7 @@ pub fn check(files: &BTreeMap<PathBuf, String>) -> Result<pipeline::Built, Failu
             .collect(),
     );
     let diagnostic = |d: diag::Diag| fail("", diag::render(&d, root)).spanned(d.span, root);
-    let program = loader::load_from(Rc::new(memory), &root.join("typedpress.config.ts"))
+    let program = loader::load_from(Rc::new(memory), &root.join("spacepress.config.ts"))
         .map_err(|mut errors| diagnostic(errors.remove(0)))?;
     pipeline::build(root, &program, || Ok(pipeline::Previous::none()), |_| None).map_err(diagnostic)
 }

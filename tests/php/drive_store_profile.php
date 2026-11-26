@@ -7,13 +7,13 @@ final class DriveStoreProfile
 {
     public const PLUGIN = <<<'PLUGIN'
         <?php
-        if (isset($_SERVER['HTTP_X_TP_DRIVE_PROFILE'])) {
+        if (isset($_SERVER['HTTP_X_SP_DRIVE_PROFILE'])) {
             $statements = 0;
             $postmetaJoins = 0;
             add_action('plugins_loaded', static function () use (&$statements, &$postmetaJoins) {
                 global $wpdb;
                 $join = '/\bJOIN\s+`?' . preg_quote($wpdb->postmeta, '/') . '`?\b/i';
-                \TypedPress\Wp\Connection::$observer = static function (string $sql) use (&$statements, &$postmetaJoins, $join) {
+                \SpacePress\Wp\Connection::$observer = static function (string $sql) use (&$statements, &$postmetaJoins, $join) {
                     ++$statements;
                     $postmetaJoins += preg_match_all($join, $sql);
                 };
@@ -21,10 +21,10 @@ final class DriveStoreProfile
             register_shutdown_function(static function () use (&$statements, &$postmetaJoins) {
                 global $wpdb;
                 file_put_contents(WP_CONTENT_DIR . '/drive-profile.json', json_encode([
-                    'sample' => $_SERVER['HTTP_X_TP_DRIVE_PROFILE'],
+                    'sample' => $_SERVER['HTTP_X_SP_DRIVE_PROFILE'],
                     'sql' => $wpdb->num_queries + $statements,
-                    'typedpress_sql' => $statements,
-                    'typedpress_postmeta_joins' => $postmetaJoins,
+                    'spacepress_sql' => $statements,
+                    'spacepress_postmeta_joins' => $postmetaJoins,
                     'php_files' => count(get_included_files()),
                 ], JSON_THROW_ON_ERROR));
             });
@@ -46,7 +46,7 @@ final class DriveStoreProfile
         for ($run = 0; $run <= 5; ++$run) {
             $sample = "$state/$run";
             $start = hrtime(true);
-            $page = fetch($site->url() . $path, headers: [...$headers, "X-TP-Drive-Profile: $sample"]);
+            $page = fetch($site->url() . $path, headers: [...$headers, "X-SP-Drive-Profile: $sample"]);
             $elapsed = (hrtime(true) - $start) / 1e6;
             if ($page['status'] !== $status) {
                 throw new RuntimeException("$state returned {$page['status']}, expected $status");

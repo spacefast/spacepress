@@ -43,7 +43,7 @@ test("a bulk update over several rows of one translation group runs each row's h
   assert.deepEqual(rows.map((r: any) => r.price), [7, 7, 7]);
 });
 
-// Guest pruning (§6.2): `typedpress.prune-guests`, an Action Scheduler recurring action.
+// Guest pruning (§6.2): `spacepress.prune-guests`, an Action Scheduler recurring action.
 const guest = async () => {
   const res = await http("POST", `${api}/auth/guest`, {});
   assert.equal(res.status, 201, JSON.stringify(res.json));
@@ -52,11 +52,11 @@ const guest = async () => {
 /** Make a guest look inactive since $days ago: registration and every refresh token it was minted. */
 const age = (id: number, days: number) => {
   sql(`UPDATE wp_users SET user_registered = UTC_TIMESTAMP() - INTERVAL ${days} DAY WHERE ID = ${id}`);
-  sql(`UPDATE wp_tp_identity_tokens SET expires_at = expires_at - ${days * 86400} WHERE wp_user_id = ${id}`);
+  sql(`UPDATE wp_sp_identity_tokens SET expires_at = expires_at - ${days * 86400} WHERE wp_user_id = ${id}`);
 };
 const user = (id: number) => sql(`SELECT ID FROM wp_users WHERE ID = ${id}`).length === 1;
 const runPrune = () => {
-  const [action] = sql("SELECT a.action_id FROM wp_actionscheduler_actions a JOIN wp_actionscheduler_groups g ON g.group_id = a.group_id WHERE a.hook = 'typedpress.prune-guests' AND a.status = 'pending' AND g.slug = 'typedpress'");
+  const [action] = sql("SELECT a.action_id FROM wp_actionscheduler_actions a JOIN wp_actionscheduler_groups g ON g.group_id = a.group_id WHERE a.hook = 'spacepress.prune-guests' AND a.status = 'pending' AND g.slug = 'spacepress'");
   assert.ok(action, "the recurring action is scheduled in group first");
   wp("action-scheduler", "action", "run", action.action_id);
 };
@@ -70,17 +70,17 @@ test("first.prune-guests deletes stale guests with what they own, per onDelete, 
   // guestbook.memberId has no onDelete: the row still requires its guest.
   const entry = first("insert", "guestbook", JSON.stringify({ message: `pinned ${run}`, memberId: id(pinned) }))[0];
   // A post the guest authored stays, without an author.
-  const post = Number(wp("post", "create", "--post_type=tp_posts", "--post_status=publish", `--post_title=Guest ${run}`, `--post_author=${id(author)}`, "--porcelain"));
+  const post = Number(wp("post", "create", "--post_type=sp_posts", "--post_status=publish", `--post_title=Guest ${run}`, `--post_author=${id(author)}`, "--porcelain"));
   for (const g of [stale, pinned, author]) age(id(g), 40);
   age(id(fresh), 5);
   runPrune();
   assert.deepEqual([stale, pinned, fresh, author].map((g) => user(id(g))), [false, true, true, false]);
-  assert.deepEqual(sql(`SELECT id FROM wp_tp_guest_carts WHERE id = ${cart.id} AND deletedAt IS NOT NULL AND _live IS NULL`),
+  assert.deepEqual(sql(`SELECT id FROM wp_sp_guest_carts WHERE id = ${cart.id} AND deletedAt IS NOT NULL AND _live IS NULL`),
     [{ id: String(cart.id) }], "cascade soft-deleted the guest's cart");
-  assert.deepEqual(sql(`SELECT memberId FROM wp_tp_guest_notes WHERE id = ${note.id}`), [{ memberId: "NULL" }], "set null kept the note, unowned");
-  assert.deepEqual(sql(`SELECT memberId FROM wp_tp_guestbook WHERE id = ${entry.id}`), [{ memberId: String(id(pinned)) }], "the required reference kept its guest");
+  assert.deepEqual(sql(`SELECT memberId FROM wp_sp_guest_notes WHERE id = ${note.id}`), [{ memberId: "NULL" }], "set null kept the note, unowned");
+  assert.deepEqual(sql(`SELECT memberId FROM wp_sp_guestbook WHERE id = ${entry.id}`), [{ memberId: String(id(pinned)) }], "the required reference kept its guest");
   assert.deepEqual(sql(`SELECT post_author FROM wp_posts WHERE ID = ${post}`), [{ post_author: "0" }]);
-  assert.deepEqual(sql(`SELECT COUNT(*) AS n FROM wp_tp_identity_tokens WHERE wp_user_id = ${id(stale)}`), [{ n: "0" }], "identity forgot the pruned guest");
+  assert.deepEqual(sql(`SELECT COUNT(*) AS n FROM wp_sp_identity_tokens WHERE wp_user_id = ${id(stale)}`), [{ n: "0" }], "identity forgot the pruned guest");
   const me = await fetch(`${api}/me`, { headers: { authorization: `Bearer ${stale.accessToken}` } });
   assert.equal(me.status, 401, "the pruned guest's token no longer signs in");
   // Without an auth collection, a core deletion hook can fail after priming empty metadata.
@@ -91,26 +91,26 @@ test("first.prune-guests deletes stale guests with what they own, per onDelete, 
   age(id(rollbackGuest), 40);
   age(id(laterGuest), 40);
   const restored = JSON.parse(wp("eval", `
-    $original = \\TypedPress\\Wp\\Runtime::plugin()->app()->db;
-    \\TypedPress\\Db::setInstance(new \\TypedPress\\Db($original->store(), new \\TypedPress\\Schema([]), $original->media(), 'wp'));
+    $original = \\SpacePress\\Wp\\Runtime::plugin()->app()->db;
+    \\SpacePress\\Db::setInstance(new \\SpacePress\\Db($original->store(), new \\SpacePress\\Schema([]), $original->media(), 'wp'));
     add_action('deleted_user', static function ($userId): void {
       if ($userId === ${id(rollbackGuest)}) {
         get_user_meta($userId);
         throw new RuntimeException('keep guest');
       }
     });
-    $result = \\TypedPress\\Wp\\Guests::prune();
+    $result = \\SpacePress\\Wp\\Guests::prune();
     $user = new WP_User(${id(rollbackGuest)});
     echo wp_json_encode([$result, $user->exists(), $user->roles, get_userdata(${id(laterGuest)}) === false]);
   `));
-  assert.deepEqual(restored, [{ pruned: [id(laterGuest)], kept: [{ id: id(rollbackGuest), reason: "keep guest" }] }, true, ["tp_guest"], true]);
+  assert.deepEqual(restored, [{ pruned: [id(laterGuest)], kept: [{ id: id(rollbackGuest), reason: "keep guest" }] }, true, ["sp_guest"], true]);
 });
 
 test("compiled arithmetic on stored and input integers past 2^53 matches JS; lookups stay exact", async () => {
   // MariaDB keeps 9007199254740993 exactly; JS can't even write it, so Node computes from the double.
   const exact = "9007199254740993";
-  sql(`INSERT INTO wp_tp_big_counts (n) VALUES (${exact})`);
-  const [row] = sql(`SELECT id FROM wp_tp_big_counts WHERE n = ${exact}`);
+  sql(`INSERT INTO wp_sp_big_counts (n) VALUES (${exact})`);
+  const [row] = sql(`SELECT id FROM wp_sp_big_counts WHERE n = ${exact}`);
   const n = Number(exact), m = 2 ** 53 + 3; // what JS sees: both rounded to doubles
   const body = `{"id":${row.id},"m":9007199254740995}`;
   const res = await fetch(`${api}/actions/bigMath`, { method: "POST", headers: { ...auth("editor"), "content-type": "application/json" }, body });

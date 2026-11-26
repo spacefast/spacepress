@@ -1,18 +1,18 @@
 <?php
 
 declare(strict_types=1);
-namespace TypedPress\Wp\Legacy;
+namespace SpacePress\Wp\Legacy;
 
-use TypedPress\HttpError;
-use TypedPress\Schema;
-use TypedPress\Wp\Connection;
+use SpacePress\HttpError;
+use SpacePress\Schema;
+use SpacePress\Wp\Connection;
 
 /** Cross-prefix copies under the host's publication fence; source rows are never changed. */
 final class Spacefast
 {
-    /** The member column migrated apps read `ctx.auth.userId` from (`typedpress migrate app --users`). */
+    /** The member column migrated apps read `ctx.auth.userId` from (`spacepress migrate app --users`). */
     public const SUBJECT_COLUMN = 'spacefastSubject';
-    private const SUBJECT_META = \TypedPress\Wp\WpUserStore::META . self::SUBJECT_COLUMN;
+    private const SUBJECT_META = \SpacePress\Wp\WpUserStore::META . self::SUBJECT_COLUMN;
     /** Source usermeta the copier leaves behind. */
     private const UNCOPIED_META = ['_spacefast_app_user', Users::MIGRATED_META, self::SUBJECT_META];
 
@@ -28,7 +28,7 @@ final class Spacefast
         if ($this->db->inTransaction()) {
             throw new \LogicException('Spacefast migration requires its own per-group transactions');
         }
-        $lock = 'typedpress-spacefast-' . substr(hash('sha256', $target), 0, 40);
+        $lock = 'spacepress-spacefast-' . substr(hash('sha256', $target), 0, 40);
         if ((int) ($this->db->run('SELECT GET_LOCK(?, 10) AS acquired', [$lock])[0]['acquired'] ?? 0) !== 1) {
             throw new HttpError(409, 'migration_busy', 'Another Space data migration is running.');
         }
@@ -41,10 +41,10 @@ final class Spacefast
 
     private function copy(string $space, string $source, string $target, bool $dry, bool $verify): array
     {
-        $receipts = $target . 'tp_spacefast_migrations';
+        $receipts = $target . 'sp_spacefast_migrations';
         [$posts, $ids, $users] = $this->scope($space, $source);
         if ($ids !== [] && $this->db->run("SELECT comment_ID FROM `{$source}comments` WHERE comment_post_ID IN ({$this->marks($ids)}) LIMIT 1", $ids) !== []) {
-            throw new HttpError(409, 'tp_spacefast_unsupported_comments', 'This Space has comments; migrate-spacefast does not copy comments.', '/comments');
+            throw new HttpError(409, 'sp_spacefast_unsupported_comments', 'This Space has comments; migrate-spacefast does not copy comments.', '/comments');
         }
         if (!$dry && !$verify) {
             $this->db->run("CREATE TABLE IF NOT EXISTS `$receipts` (space_id varchar(191) NOT NULL, table_group varchar(20) NOT NULL, completed_at bigint NOT NULL, fingerprint varchar(128) NOT NULL, PRIMARY KEY(space_id,table_group)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
@@ -60,7 +60,7 @@ final class Spacefast
         foreach (['accounts', 'emails', 'providers'] as $table) {
             if ($users !== [] && $this->exists($source . 'sfi_' . $table)) {
                 $this->transactional($source . 'sfi_' . $table);
-                $this->transactional($target . 'tp_identity_' . $table);
+                $this->transactional($target . 'sp_identity_' . $table);
             }
         }
         $report = ['space' => $space, 'sourcePrefix' => $source, 'targetPrefix' => $target, 'dryRun' => $dry, 'groups' => []];
@@ -85,7 +85,7 @@ final class Spacefast
                     return ['status' => $status, 'stored' => $fingerprint, 'current' => $current];
                 }
                 if ($missing !== []) {
-                    throw new HttpError(409, 'tp_spacefast_subjects_missing', "Users were copied before this candidate carried Space Users subjects. Restore the target's users and usermeta from the backup taken before the copy, delete the `$receipts` row for space_id '$space' and table_group 'users', and rerun.", '/users/' . $missing[0]);
+                    throw new HttpError(409, 'sp_spacefast_subjects_missing', "Users were copied before this candidate carried Space Users subjects. Restore the target's users and usermeta from the backup taken before the copy, delete the `$receipts` row for space_id '$space' and table_group 'users', and rerun.", '/users/' . $missing[0]);
                 }
                 if ($stored !== []) {
                     return ['copied' => 0, 'status' => 'already-migrated'];
@@ -238,7 +238,7 @@ final class Spacefast
                 if ($value !== null && isset($def['references']) && !in_array((string) $value, array_map('strval', $ids), true)) {
                     throw Model::refuse('/records/' . $post['ID'] . '/' . $column, 'reference leaves the migrated Space');
                 }
-                $field['meta_key'] = 'tp_' . $column;
+                $field['meta_key'] = 'sp_' . $column;
                 $field['meta_value'] = Schema::store($def, $value);
             }
             unset($field);
@@ -266,9 +266,9 @@ final class Spacefast
             $count += $this->insert($target . 'users', $row);
             // Identity versions with fixed-cost verification must know imported hash profiles
             // before the first sign-in, including a sign-in for a missing account.
-            if (is_callable([\TypedPress\Identity\Accounts::class, 'rememberPasswordHash'])) {
-                $this->db->touchOption('tp_identity_password_profiles');
-                \TypedPress\Identity\Accounts::rememberPasswordHash($row['user_pass']);
+            if (is_callable([\SpacePress\Identity\Accounts::class, 'rememberPasswordHash'])) {
+                $this->db->touchOption('sp_identity_password_profiles');
+                \SpacePress\Identity\Accounts::rememberPasswordHash($row['user_pass']);
             }
         }
         foreach ($this->rows($source . 'usermeta', 'user_id', $ids) as $row) {
@@ -282,7 +282,7 @@ final class Spacefast
             foreach ($this->subjects($source, $space, $ids) as $id => $subject) {
                 $existing = $this->db->run("SELECT meta_value FROM `{$target}usermeta` WHERE user_id=? AND meta_key=? FOR UPDATE", [$id, self::SUBJECT_META]);
                 $stored = $existing === [] ? null : (string) $existing[0]['meta_value'];
-                if ($stored !== null && $stored !== $subject) { throw new HttpError(409, 'tp_spacefast_conflict', "Target user $id already has a different Space subject; nothing in this group was committed.", '/users/' . $id); }
+                if ($stored !== null && $stored !== $subject) { throw new HttpError(409, 'sp_spacefast_conflict', "Target user $id already has a different Space subject; nothing in this group was committed.", '/users/' . $id); }
                 if ($stored === null) {
                     $this->db->run("INSERT INTO `{$target}usermeta` (user_id, meta_key, meta_value) VALUES (?, ?, ?)", [$id, self::SUBJECT_META, $subject]);
                     $count++;
@@ -290,7 +290,7 @@ final class Spacefast
             }
         }
         foreach (['accounts','emails','providers'] as $table) {
-            foreach ($this->identityRows($source, $table, $ids) as $row) { $count += $this->insert($target . 'tp_identity_' . $table, $row); }
+            foreach ($this->identityRows($source, $table, $ids) as $row) { $count += $this->insert($target . 'sp_identity_' . $table, $row); }
         }
         return $count;
     }
@@ -305,7 +305,7 @@ final class Spacefast
         $existing = $this->db->run("SELECT * FROM `$table` WHERE $where FOR UPDATE", array_map(static fn ($key) => $row[$key], $keys));
         if ($existing !== []) {
             foreach ($row as $key => $value) {
-                if (($existing[0][$key] === null) !== ($value === null) || (string) $existing[0][$key] !== (string) $value) { throw new HttpError(409, 'tp_spacefast_conflict', "Target row conflicts in $table; nothing in this group was committed.", '/tables/' . $table); }
+                if (($existing[0][$key] === null) !== ($value === null) || (string) $existing[0][$key] !== (string) $value) { throw new HttpError(409, 'sp_spacefast_conflict', "Target row conflicts in $table; nothing in this group was committed.", '/tables/' . $table); }
             }
             return 0;
         }
@@ -366,6 +366,6 @@ final class SpacefastDrift extends HttpError
 {
     public function __construct(public readonly array $groups)
     {
-        parent::__construct(409, 'tp_spacefast_drift', 'Source data differs from the migration receipts.', '/groups');
+        parent::__construct(409, 'sp_spacefast_drift', 'Source data differs from the migration receipts.', '/groups');
     }
 }

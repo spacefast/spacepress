@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity;
+namespace SpacePress\Identity;
 
 final class Accounts
 {
@@ -191,13 +191,13 @@ final class Accounts
             $this->security->event($uid, "email.removed", ["email_id" => $id]);
         });
     }
-    private const DUMMY_PASSWORD_HASH = "tp_identity_dummy_password_hash";
-    private const PASSWORD_PROFILES = "tp_identity_password_profiles";
+    private const DUMMY_PASSWORD_HASH = "sp_identity_dummy_password_hash";
+    private const PASSWORD_PROFILES = "sp_identity_password_profiles";
     /** The options provisionPasswordHash() reads on every request of a plugin-installed site. */
     public const INSTALL_OPTIONS = [self::DUMMY_PASSWORD_HASH, self::PASSWORD_PROFILES, self::PASSWORD_INVENTORY];
 
     private const UNSUPPORTED_PASSWORD_PROFILE = 'unsupported';
-    private const PASSWORD_INVENTORY = "tp_identity_password_inventory";
+    private const PASSWORD_INVENTORY = "sp_identity_password_inventory";
     // Operational ceilings, including imported hashes; see docs/identity-security.md.
     private const MAX_BCRYPT_COST = 15;
     private const MAX_PHPASS_LOG2 = 16;
@@ -209,6 +209,11 @@ final class Accounts
     /** Ordinary requests only provision fixed material and enqueue the background inventory. */
     public static function provisionPasswordHash(): void
     {
+        // Written under the current names while identity's storage is still under the earlier one,
+        // these would be set aside by the next boot's move, and again on every boot it fails.
+        if (!Legacy::settled() && !Plugin::storageCurrent()) {
+            return;
+        }
         $hash = get_option(self::DUMMY_PASSWORD_HASH);
         if (!is_string($hash) || wp_password_needs_rehash($hash)) {
             $hash = wp_hash_password(Security::token(48));
@@ -222,7 +227,7 @@ final class Accounts
             self::initializePasswordOption(self::PASSWORD_INVENTORY, ['after' => 0, 'complete' => false]);
         }
         if (!get_option(self::PASSWORD_INVENTORY)['complete'] && !wp_next_scheduled(self::PASSWORD_INVENTORY)) {
-            wp_schedule_event(time() + 60, 'tp_identity_minute', self::PASSWORD_INVENTORY);
+            wp_schedule_event(time() + 60, 'sp_identity_minute', self::PASSWORD_INVENTORY);
         }
     }
 
@@ -296,6 +301,10 @@ final class Accounts
     /** Keep profiles after upgrades: removing the last old hash must not change just its user's work. */
     public static function rememberPasswordHash(string $hash): void
     {
+        // As in provisionPasswordHash(): the move would set the profiles written now aside.
+        if (!Legacy::settled() && !Plugin::storageCurrent()) {
+            return;
+        }
         $profile = self::passwordProfile($hash);
         if ($profile === self::UNSUPPORTED_PASSWORD_PROFILE) {
             return;
@@ -566,7 +575,7 @@ final class Accounts
             }
             // A host that already keeps a WordPress user for this identity (its own verified
             // platform accounts) names it here; the identity then signs in to that account.
-            $uid = $linkUid ?: ((int) apply_filters("tp_identity_provider_account", 0, $issuer, $subject, $name) ?: null);
+            $uid = $linkUid ?: ((int) apply_filters("sp_identity_provider_account", 0, $issuer, $subject, $name) ?: null);
             if (!$uid) {
                 if (!$email) {
                     throw new Failure(
@@ -616,7 +625,7 @@ final class Accounts
             }
         });
     }
-    /** The account state the TypedPress runtime enforces on every channel (§3.5). */
+    /** The account state the SpacePress runtime enforces on every channel (§3.5). */
     public function status(int $uid): string
     {
         $row = $this->db->row(
@@ -625,17 +634,17 @@ final class Accounts
         );
         return $row ? (string) $row["status"] : "none";
     }
-    /** Mint a session + token pair without a browser flow; reserved for the TypedPress runtime (§3.5). */
+    /** Mint a session + token pair without a browser flow; reserved for the SpacePress runtime (§3.5). */
     public function issueForUser(int $wpUserId, string $clientId): array
     {
         return (new OAuth($this->db, $this))->issueForUser($wpUserId, $clientId);
     }
     public static function isGuest(int $uid): bool
     {
-        return in_array("tp_guest", (array) get_userdata($uid)?->roles, true);
+        return in_array("sp_guest", (array) get_userdata($uid)?->roles, true);
     }
     /**
-     * Sign in with a verified email address. A guest (role `tp_guest`) holding the current
+     * Sign in with a verified email address. A guest (role `sp_guest`) holding the current
      * session keeps its user id: the address is attached to it and it becomes a subscriber. An
      * address that already belongs to someone signs into that account; the guest is left as is.
      *
@@ -690,7 +699,7 @@ final class Accounts
             $user->set_role("subscriber");
             clean_user_cache($guest);
             $this->security->event($guest, "guest.upgraded");
-            do_action("tp_identity_guest_upgraded", $guest);
+            do_action("sp_identity_guest_upgraded", $guest);
             return $guest;
         });
     }

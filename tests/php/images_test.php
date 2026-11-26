@@ -5,9 +5,9 @@ declare(strict_types=1);
 /* Image sizes (phase 2 §7.2) without WordPress: focal validation and which files resize. The resize
  * rectangles come from core and are proven in media_test.php. */
 
-use TypedPress\Media\Images;
+use SpacePress\Media\Images;
 
-require dirname(__DIR__, 2) . '/runtime/TypedPress/bootstrap.php';
+require dirname(__DIR__, 2) . '/runtime/SpacePress/bootstrap.php';
 require __DIR__ . '/harness.php';
 
 $problem = static function (string $label, mixed $v, string $pointer): void {
@@ -19,7 +19,7 @@ $problem('focal missing axis', ['x' => 0.5], '/focal/y');
 $problem('focal unknown key', ['x' => 0.5, 'y' => 0.5, 'z' => 1], '/focal/z');
 $problem('focal not an object', [0.5, 0.5], '/focal');
 
-$dir = sys_get_temp_dir() . '/typedpress-images-' . bin2hex(random_bytes(4));
+$dir = sys_get_temp_dir() . '/spacepress-images-' . bin2hex(random_bytes(4));
 mkdir($dir);
 register_shutdown_function(static fn () => exec('rm -rf ' . escapeshellarg($dir)));
 // Left half red, right half blue: a crop's colour shows where its origin landed.

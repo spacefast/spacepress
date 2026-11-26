@@ -2,16 +2,16 @@
 /**
  * Date field definition for core comments fields collection
  *
- * @package TypedPress_Admin
+ * @package SpacePress_Admin
  */
 
 return array(
 	'type'          => 'date',
-	'header'        => __( 'Posted on', 'typedpress-admin' ),
-	'label'         => __( 'Date', 'typedpress-admin' ),
+	'header'        => __( 'Posted on', 'spacepress-admin' ),
+	'label'         => __( 'Date', 'spacepress-admin' ),
 	'enableSorting' => true,
 	'filterBy'      => array(
 		'operators' => array( 'on', 'beforeInc', 'afterInc', 'between' ),
 	),
-	'placeholder'   => __( 'No date', 'typedpress-admin' ),
+	'placeholder'   => __( 'No date', 'spacepress-admin' ),
 );

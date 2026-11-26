@@ -1,4 +1,4 @@
-// The platform floors every TypedPress build targets, from tests/fixtures/platform.json, which the Rust
+// The platform floors every SpacePress build targets, from tests/fixtures/platform.json, which the Rust
 // and PHP suites compare with src/platform.rs.
 import { readFileSync } from "node:fs";
 import path from "node:path";

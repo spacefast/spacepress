@@ -2,21 +2,21 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\AttributeCertificate\Validation;
+namespace SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\AttributeCertificate\Validation;
 
 use function count;
 use function in_array;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\CryptoBridge\Crypto;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\AttributeCertificate\AttributeCertificate;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\AttributeCertificate\Validation\Exception\ACValidationException;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Certificate;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\Extension;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\Target\Targets;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\TargetInformationExtension;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\CertificationPath;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\Exception\PathValidationException;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\PathValidation\PathValidationConfig;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\PathValidation\SignaturePolicy;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\CryptoBridge\Crypto;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\AttributeCertificate\AttributeCertificate;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\AttributeCertificate\Validation\Exception\ACValidationException;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Certificate;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\Extension;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\Target\Targets;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\TargetInformationExtension;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\CertificationPath;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\Exception\PathValidationException;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\PathValidation\PathValidationConfig;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\CertificationPath\PathValidation\SignaturePolicy;
 use function sprintf;
 
 /**

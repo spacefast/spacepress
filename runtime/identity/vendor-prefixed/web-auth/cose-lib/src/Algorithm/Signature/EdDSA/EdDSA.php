@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Cose\Algorithm\Signature\EdDSA;
+namespace SpacePress\Identity\Vendor\Cose\Algorithm\Signature\EdDSA;
 
-use TypedPress\Identity\Vendor\Cose\Algorithm\KeyRestrictionAware;
-use TypedPress\Identity\Vendor\Cose\Algorithm\KeyRestrictionEnforcement;
-use TypedPress\Identity\Vendor\Cose\Algorithm\Signature\Signature;
-use TypedPress\Identity\Vendor\Cose\Algorithms;
-use TypedPress\Identity\Vendor\Cose\Key\Key;
-use TypedPress\Identity\Vendor\Cose\Key\OkpKey;
+use SpacePress\Identity\Vendor\Cose\Algorithm\KeyRestrictionAware;
+use SpacePress\Identity\Vendor\Cose\Algorithm\KeyRestrictionEnforcement;
+use SpacePress\Identity\Vendor\Cose\Algorithm\Signature\Signature;
+use SpacePress\Identity\Vendor\Cose\Algorithms;
+use SpacePress\Identity\Vendor\Cose\Key\Key;
+use SpacePress\Identity\Vendor\Cose\Key\OkpKey;
 use function extension_loaded;
 use function hash_equals;
 use InvalidArgumentException;

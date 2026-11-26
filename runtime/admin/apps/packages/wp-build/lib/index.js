@@ -1,5 +1,5 @@
 /**
- * Main entry point for @typedpress-admin/wp-build package
+ * Main entry point for @spacepress-admin/wp-build package
  */
 
 export { buildAll } from './build.js';

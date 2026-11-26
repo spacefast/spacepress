@@ -2,19 +2,19 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Webauthn\CeremonyStep;
+namespace SpacePress\Identity\Vendor\Webauthn\CeremonyStep;
 
 use function is_string;
-use function typedpress_identity_vendor_trigger_deprecation as trigger_deprecation;
-use TypedPress\Identity\Vendor\Webauthn\AuthenticationExtensions\AuthenticationExtensions;
-use TypedPress\Identity\Vendor\Webauthn\AuthenticatorAssertionResponse;
-use TypedPress\Identity\Vendor\Webauthn\AuthenticatorAttestationResponse;
-use TypedPress\Identity\Vendor\Webauthn\CredentialRecord;
-use TypedPress\Identity\Vendor\Webauthn\Exception\AuthenticatorResponseVerificationException;
-use TypedPress\Identity\Vendor\Webauthn\PublicKeyCredentialCreationOptions;
-use TypedPress\Identity\Vendor\Webauthn\PublicKeyCredentialRequestOptions;
-use TypedPress\Identity\Vendor\Webauthn\PublicKeyCredentialSource;
-use TypedPress\Identity\Vendor\Webauthn\U2FPublicKey;
+use function spacepress_identity_vendor_trigger_deprecation as trigger_deprecation;
+use SpacePress\Identity\Vendor\Webauthn\AuthenticationExtensions\AuthenticationExtensions;
+use SpacePress\Identity\Vendor\Webauthn\AuthenticatorAssertionResponse;
+use SpacePress\Identity\Vendor\Webauthn\AuthenticatorAttestationResponse;
+use SpacePress\Identity\Vendor\Webauthn\CredentialRecord;
+use SpacePress\Identity\Vendor\Webauthn\Exception\AuthenticatorResponseVerificationException;
+use SpacePress\Identity\Vendor\Webauthn\PublicKeyCredentialCreationOptions;
+use SpacePress\Identity\Vendor\Webauthn\PublicKeyCredentialRequestOptions;
+use SpacePress\Identity\Vendor\Webauthn\PublicKeyCredentialSource;
+use SpacePress\Identity\Vendor\Webauthn\U2FPublicKey;
 
 final class CheckRelyingPartyIdIdHash implements CeremonyStep
 {
@@ -26,7 +26,7 @@ final class CheckRelyingPartyIdIdHash implements CeremonyStep
         string $host
     ): void {
         if ($credentialRecord instanceof PublicKeyCredentialSource) {
-            typedpress_identity_vendor_trigger_deprecation(
+            spacepress_identity_vendor_trigger_deprecation(
                 'web-auth/webauthn-lib',
                 '5.3',
                 'Passing a PublicKeyCredentialSource to "%s::process()" is deprecated, pass a CredentialRecord instead.',

@@ -1,5 +1,5 @@
 // Untyped JavaScript for tests/differential/language/null-proto.ts: `__proto__: null` object
-// literals as picomatch 4.0.7 writes them (lib/constants.js), read through TypedPress's checked
+// literals as picomatch 4.0.7 writes them (lib/constants.js), read through SpacePress's checked
 // JavaScript dispatch.
 
 // picomatch lib/constants.js, verbatim.

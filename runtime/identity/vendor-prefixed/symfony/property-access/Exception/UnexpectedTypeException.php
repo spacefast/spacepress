@@ -9,9 +9,9 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\PropertyAccess\Exception;
+namespace SpacePress\Identity\Vendor\Symfony\Component\PropertyAccess\Exception;
 
-use TypedPress\Identity\Vendor\Symfony\Component\PropertyAccess\PropertyPathInterface;
+use SpacePress\Identity\Vendor\Symfony\Component\PropertyAccess\PropertyPathInterface;
 
 /**
  * Thrown when a value does not match an expected type.

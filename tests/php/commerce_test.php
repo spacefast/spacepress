@@ -18,8 +18,8 @@ PHP,
 ]]);
 $plugin = $site->plugin();
 $db = $site->app()->db;
-$admin = new \TypedPress\Viewer(['id' => $site->userId('admin'), 'name' => 'Admin', 'role' => 'admin']);
-$guest = new \TypedPress\Viewer(null);
+$admin = new \SpacePress\Viewer(['id' => $site->userId('admin'), 'name' => 'Admin', 'role' => 'admin']);
+$guest = new \SpacePress\Viewer(null);
 $products = $db->findMany('products', ['orderBy' => ['id' => 'asc']], $guest);
 eq('a fresh installation seeds both native products', count($products), 2);
 $mug = array_values(array_filter($products, static fn ($p) => $p['sku'] === 'MUG-BLUE'))[0];
@@ -43,15 +43,15 @@ $categorySort = get_taxonomy('product_cat')->sort;
 $orderedProduct = $db->update('products', ['categories' => $categoryOrder], ['id' => $mug['id']], true, $admin)[0];
 eq('category replacement returns submitted order', $orderedProduct['categories'], $categoryOrder);
 eq('category order survives a fresh read', $db->findFirst('products', ['where' => ['id' => $mug['id']]])['categories'], $categoryOrder);
-eq('sync exports categories in the submitted order', \TypedPress\Sync\Wire::encode('products', [$orderedProduct])[0]['record']['fields']['categories'], [$child['uid'], get_term_meta($mug['categories'][0], '_tp_uid', true)]);
+eq('sync exports categories in the submitted order', \SpacePress\Sync\Wire::encode('products', [$orderedProduct])[0]['record']['fields']['categories'], [$child['uid'], get_term_meta($mug['categories'][0], '_sp_uid', true)]);
 eq('product writes preserve Woo taxonomy sorting configuration', get_taxonomy('product_cat')->sort, $categorySort);
 $cleared = $db->update('products', ['categories' => [], 'tags' => []], ['id' => $mug['id']], true, $admin)[0];
 eq('clearing product categories returns Woo default category normalization', $cleared['categories'], [(int) get_option('default_product_cat')]);
 eq('normalized categories are the persisted native product categories', wc_get_product($mug['id'])->get_category_ids(), $cleared['categories']);
 eq('product tags can be cleared completely', $cleared['tags'], []);
 $db->update('products', ['categories' => $mug['categories'], 'tags' => $mug['tags']], ['id' => $mug['id']], false, $admin);
-$termWire = \TypedPress\Sync\Wire::encode('categories', [$child])[0]['record'];
-eq('term parents sync through portable UIDs', $termWire['fields']['parent'], get_term_meta($mug['categories'][0], '_tp_uid', true));
+$termWire = \SpacePress\Sync\Wire::encode('categories', [$child])[0]['record'];
+eq('term parents sync through portable UIDs', $termWire['fields']['parent'], get_term_meta($mug['categories'][0], '_sp_uid', true));
 check('native taxonomy registration is retained', get_taxonomy('product_cat')->cap->manage_terms === 'manage_product_terms');
 check('source enables COD', isset(WC()->payment_gateways()->get_available_payment_gateways()['cod']));
 $zones = WC_Shipping_Zones::get_zones();
@@ -59,26 +59,26 @@ eq('source shipping zones are present', array_column($zones, 'zone_name'), ['Pol
 foreach (['woocommerce_custom_orders_table_enabled', 'woocommerce_custom_orders_table_data_sync_enabled'] as $option) {
     update_option($option, 'yes');
     $refused = false;
-    try { \TypedPress\Commerce\Module::checkOrderStorage(); } catch (RuntimeException $e) { $refused = str_contains($e->getMessage(), 'legacy order storage'); }
+    try { \SpacePress\Commerce\Module::checkOrderStorage(); } catch (RuntimeException $e) { $refused = str_contains($e->getMessage(), 'legacy order storage'); }
     check('existing HPOS or synchronization is refused without overriding ' . $option, $refused && get_option($option) === 'yes');
     // As a must-use plugin the early policy leaves this to the runtime: throwing there would take wp-admin down.
-    require dirname($plugin->dir, 2) . '/mu-plugins/typedpress-commerce.php';
+    require dirname($plugin->dir, 2) . '/mu-plugins/spacepress-commerce.php';
     update_option($option, 'no');
 }
 check('Woo is told the app does not support HPOS', in_array(basename($plugin->dir) . '/' . basename($plugin->dir) . '.php', \Automattic\WooCommerce\Utilities\FeaturesUtil::get_compatible_plugins_for_feature('custom_order_tables')['incompatible'], true));
 foreach (['/%63art', '/%63heckout', '/%63heckout/order-received/123', '//checkout/'] as $path) {
-    check('encoded or normalized private route stays private: ' . $path, \TypedPress\Commerce\Module::privatePath($plugin, $path));
+    check('encoded or normalized private route stays private: ' . $path, \SpacePress\Commerce\Module::privatePath($plugin, $path));
 }
 update_option('woocommerce_checkout_pay_endpoint', 'pay');
-eq('custom Woo endpoint resolves to checkout', \TypedPress\Commerce\Module::routePath($plugin, '/checkout/pay/123'), '/checkout');
+eq('custom Woo endpoint resolves to checkout', \SpacePress\Commerce\Module::routePath($plugin, '/checkout/pay/123'), '/checkout');
 eq('custom Woo endpoint populates the canonical query variable', get_query_var('order-pay'), '123');
 delete_option('woocommerce_checkout_pay_endpoint');
-check('Woo checkout is a real Page containing its native block', ($checkout = \TypedPress\Commerce\Module::checkoutPage($plugin)) > 0 && has_block('woocommerce/checkout', get_post($checkout)));
+check('Woo checkout is a real Page containing its native block', ($checkout = \SpacePress\Commerce\Module::checkoutPage($plugin)) > 0 && has_block('woocommerce/checkout', get_post($checkout)));
 $checkoutLookups = 0;
 wp_cache_delete($checkout, 'posts');
 $countLookup = static function (string $sql) use (&$checkoutLookups, $checkout, $wpdb): string {
     if (str_contains($sql, "FROM $wpdb->posts WHERE ID = $checkout")
-        || (str_contains($sql, $wpdb->postmeta) && str_contains($sql, \TypedPress\Wp\ContentPages::META))) {
+        || (str_contains($sql, $wpdb->postmeta) && str_contains($sql, \SpacePress\Wp\ContentPages::META))) {
         $checkoutLookups++;
     }
     return $sql;
@@ -93,7 +93,7 @@ eq('repeated checkout Page reads make one cold post lookup', $checkoutLookups, 1
 $account = wp_insert_post(['post_type' => 'page', 'post_status' => 'publish', 'post_title' => 'Customer account',
     'post_name' => 'customer-account', 'post_content' => '[woocommerce_my_account]']);
 update_option('woocommerce_myaccount_page_id', $account);
-check('the native account permalink and its endpoints are private', \TypedPress\Commerce\Module::privatePath($plugin, '/customer-account/orders/'));
+check('the native account permalink and its endpoints are private', \SpacePress\Commerce\Module::privatePath($plugin, '/customer-account/orders/'));
 $guestRequest = static function ($client, string $path, array $headers = [], ?array $data = null) use ($site): array {
     $responseHeaders = [];
     curl_setopt_array($client, [
@@ -175,7 +175,7 @@ foreach (['/cart/', '/checkout/', '/checkout/order-received/9999/', '/customer-a
         && ($headers['a8c-edge-cache'] ?? '') === 'no-cache' && isset($headers['x-test-batcache-cancel']));
 }
 eq('the native account page has no Markdown twin', $guestRequest($cartHttp, '/customer-account.md')[0], 404);
-$prebuilt = \TypedPress\Render\Prebuilt::dir();
+$prebuilt = \SpacePress\Render\Prebuilt::dir();
 if (!is_dir($prebuilt . '/products')) { mkdir($prebuilt . '/products', 0777, true); }
 file_put_contents($prebuilt . '/products/ceramic-mug.html', 'prebuilt product');
 file_put_contents($prebuilt . '/cart.html', 'prebuilt cart should never be served');
@@ -183,11 +183,11 @@ file_put_contents($prebuilt . '/customer-account.html', 'prebuilt account should
 [, $guestHeaders, $guestHtml] = $guestRequest($anonymousHttp, '/products/ceramic-mug/');
 [, $cartHeaders, $cartHtml] = $guestRequest($cartHttp, '/products/ceramic-mug/');
 check('prebuilt serves the same public file with and without a Woo session',
-    $guestHtml === 'prebuilt product' && $cartHtml === $guestHtml && ($guestHeaders['x-typedpress-prebuilt'] ?? '') === '1'
-    && ($cartHeaders['x-typedpress-prebuilt'] ?? '') === '1' && ($cartHeaders['a8c-edge-cache'] ?? '') === 'cache');
+    $guestHtml === 'prebuilt product' && $cartHtml === $guestHtml && ($guestHeaders['x-spacepress-prebuilt'] ?? '') === '1'
+    && ($cartHeaders['x-spacepress-prebuilt'] ?? '') === '1' && ($cartHeaders['a8c-edge-cache'] ?? '') === 'cache');
 foreach (['/cart/', '/customer-account/'] as $path) {
     [, $headers] = $guestRequest($cartHttp, $path);
-    check("prebuilt falls through to the private response at $path", !isset($headers['x-typedpress-prebuilt'])
+    check("prebuilt falls through to the private response at $path", !isset($headers['x-spacepress-prebuilt'])
         && str_contains($headers['cache-control'] ?? '', 'no-store'));
 }
 // Every Store API answer is the visitor's: an order carries addresses, and extensions add per-visitor routes.
@@ -376,29 +376,29 @@ foreach ([
 }
 wp_set_current_user($previousUser);
 wp_update_post(['ID' => $checkout, 'post_content' => wp_slash($originalCheckout)]);
-$checkoutRoute = get_post_meta($checkout, \TypedPress\Wp\ContentPages::META, true);
-delete_post_meta($checkout, \TypedPress\Wp\ContentPages::META);
+$checkoutRoute = get_post_meta($checkout, \SpacePress\Wp\ContentPages::META, true);
+delete_post_meta($checkout, \SpacePress\Wp\ContentPages::META);
 $newPage = wp_insert_post(['post_type' => 'page', 'post_status' => 'draft', 'post_title' => 'Before checkout', 'post_content' => 'Keep this new content.']);
 eq('new content survives when no checkout Page exists', get_post_field('post_content', $newPage), 'Keep this new content.');
-update_post_meta($checkout, \TypedPress\Wp\ContentPages::META, $checkoutRoute); wp_delete_post($newPage, true);
+update_post_meta($checkout, \SpacePress\Wp\ContentPages::META, $checkoutRoute); wp_delete_post($newPage, true);
 $unidentifiedTerm = wp_insert_term('Empty UID term', 'product_cat')['term_id'];
-add_term_meta($unidentifiedTerm, '_tp_uid', '');
-eq('an empty term UID is treated as missing', $db->transaction(static fn () => \TypedPress\Sync\Lock::uid('categories', $unidentifiedTerm)), null);
+add_term_meta($unidentifiedTerm, '_sp_uid', '');
+eq('an empty term UID is treated as missing', $db->transaction(static fn () => \SpacePress\Sync\Lock::uid('categories', $unidentifiedTerm)), null);
 wp_delete_term($unidentifiedTerm, 'product_cat');
 $zoneIds = array_keys($zones);
 $methodIds = array_map(static fn ($z) => array_keys($z['shipping_methods']), $zones);
-\TypedPress\Commerce\Module::initialize($plugin);
+\SpacePress\Commerce\Module::initialize($plugin);
 eq('unchanged source does not recreate shipping methods', array_map(static fn ($z) => array_keys($z['shipping_methods']), WC_Shipping_Zones::get_zones()), $methodIds);
-wp_cache_set('notoptions', ['tp_' . $plugin->schema->name() . '_shipping' => true], 'options');
-eq('shipping inspection ignores a stale negative marker cache', \TypedPress\Commerce\Module::plan($plugin), []);
+wp_cache_set('notoptions', ['sp_' . $plugin->schema->name() . '_shipping' => true], 'options');
+eq('shipping inspection ignores a stale negative marker cache', \SpacePress\Commerce\Module::plan($plugin), []);
 $translateRest = static fn ($translated, $text) => $text === 'Locations not covered by your other zones' ? 'Autres destinations' : $translated;
 add_filter('gettext_woocommerce', $translateRest, 10, 2);
-eq('localizing the fallback zone preserves the shipping receipt', \TypedPress\Commerce\Module::plan($plugin), []);
+eq('localizing the fallback zone preserves the shipping receipt', \SpacePress\Commerce\Module::plan($plugin), []);
 remove_filter('gettext_woocommerce', $translateRest, 10);
 $zoneStore = WC_Data_Store::load('shipping-zone');
 $unknownMethod = $zoneStore->add_method(reset($zoneIds), 'inactive_test_plugin', 9);
-eq('an inactive plugin rate invalidates the shipping receipt', array_column(\TypedPress\Commerce\Module::plan($plugin), 'id'), ['commerce-shipping']);
-\TypedPress\Commerce\Module::initialize($plugin);
+eq('an inactive plugin rate invalidates the shipping receipt', array_column(\SpacePress\Commerce\Module::plan($plugin), 'id'), ['commerce-shipping']);
+\SpacePress\Commerce\Module::initialize($plugin);
 check('reconciliation removes the inactive plugin rate', !$zoneStore->get_method($unknownMethod));
 $reordered = new WC_Shipping_Zone(reset($zoneIds));
 $reordered->set_zone_order(7); $reordered->save();
@@ -406,14 +406,14 @@ $skipZoneUpdate = static fn (string $sql): string => preg_match('/^UPDATE `?[^\s
 add_filter('query', $skipZoneUpdate);
 try {
     $refusedOrder = false;
-    try { \TypedPress\Commerce\Module::initialize($plugin); } catch (RuntimeException $e) {
+    try { \SpacePress\Commerce\Module::initialize($plugin); } catch (RuntimeException $e) {
         $refusedOrder = str_contains($e->getMessage(), 'shipping zone order');
     }
     check('a lost zone-order update prevents installation', $refusedOrder);
 } finally {
     remove_filter('query', $skipZoneUpdate);
 }
-\TypedPress\Commerce\Module::initialize($plugin);
+\SpacePress\Commerce\Module::initialize($plugin);
 eq('retry restores the declared order', (new WC_Shipping_Zone(reset($zoneIds)))->get_zone_order('edit'), 0);
 $extra = new WC_Shipping_Zone();
 $extra->set_zone_name('Admin addition');
@@ -433,14 +433,14 @@ $shippingSnapshot = static function (): array {
     return $state;
 };
 $beforeFailedShipping = $shippingSnapshot();
-eq('shipping drift is included in the install plan', array_column(\TypedPress\Commerce\Module::plan($plugin), 'id'), ['commerce-shipping']);
-check('the runtime inspection includes pending commerce installation', in_array('commerce-shipping', array_column(\TypedPress\Wp\Runtime::installPlan(), 'id'), true));
+eq('shipping drift is included in the install plan', array_column(\SpacePress\Commerce\Module::plan($plugin), 'id'), ['commerce-shipping']);
+check('the runtime inspection includes pending commerce installation', in_array('commerce-shipping', array_column(\SpacePress\Wp\Runtime::installPlan(), 'id'), true));
 // Simulate a data store that returns after a zone deletion without deleting its row.
 $skipZoneDelete = static fn (string $sql): string => preg_match('/^DELETE FROM `?[^\s`]*woocommerce_shipping_zones`?\s/i', $sql) ? 'SELECT 1' : $sql;
 add_filter('query', $skipZoneDelete);
 try {
     $refusedDeletion = false;
-    try { \TypedPress\Commerce\Module::initialize($plugin); } catch (RuntimeException $e) {
+    try { \SpacePress\Commerce\Module::initialize($plugin); } catch (RuntimeException $e) {
         $refusedDeletion = str_contains($e->getMessage(), 'Persisted shipping zones');
     }
     check('a surviving obsolete zone prevents installation', $refusedDeletion);
@@ -451,8 +451,8 @@ eq('failed zone deletion preserves the previous shipping configuration', $shippi
 $noMethods = static fn () => [];
 add_filter('woocommerce_shipping_methods', $noMethods, PHP_INT_MAX);
 $shippingFailed = false;
-try { \TypedPress\Commerce\Module::initialize($plugin); } catch (RuntimeException $e) { $shippingFailed = str_contains($e->getMessage(), 'Could not add source shipping method'); }
-check('failed shipping writes do not record a completed installation', $shippingFailed && \TypedPress\Commerce\Module::plan($plugin) !== []);
+try { \SpacePress\Commerce\Module::initialize($plugin); } catch (RuntimeException $e) { $shippingFailed = str_contains($e->getMessage(), 'Could not add source shipping method'); }
+check('failed shipping writes do not record a completed installation', $shippingFailed && \SpacePress\Commerce\Module::plan($plugin) !== []);
 remove_filter('woocommerce_shipping_methods', $noMethods, PHP_INT_MAX);
 eq('failed shipping replacement preserves every previous zone and method', $shippingSnapshot(), $beforeFailedShipping);
 $newOption = null;
@@ -462,17 +462,17 @@ $failAfterSetting = static function ($instance, $type) use (&$newOption): void {
 };
 add_action('woocommerce_shipping_zone_method_added', $failAfterSetting, 10, 2);
 $lateShippingFailed = false;
-try { \TypedPress\Commerce\Module::initialize($plugin); } catch (RuntimeException $e) { $lateShippingFailed = str_contains($e->getMessage(), 'Test failure after'); }
+try { \SpacePress\Commerce\Module::initialize($plugin); } catch (RuntimeException $e) { $lateShippingFailed = str_contains($e->getMessage(), 'Test failure after'); }
 remove_action('woocommerce_shipping_zone_method_added', $failAfterSetting, 10);
 check('a late shipping failure rolls back method settings and their option cache', $lateShippingFailed && $newOption !== null && get_option($newOption) === false);
 eq('a late shipping failure preserves previous configuration', $shippingSnapshot(), $beforeFailedShipping);
-\TypedPress\Commerce\Module::initialize($plugin);
+\SpacePress\Commerce\Module::initialize($plugin);
 eq('source shipping restores its whole zone list after an admin edit', array_column(WC_Shipping_Zones::get_zones(), 'zone_name'), ['Poland', 'Germany']);
-eq('successful shipping retry clears the install plan', \TypedPress\Commerce\Module::plan($plugin), []);
+eq('successful shipping retry clears the install plan', \SpacePress\Commerce\Module::plan($plugin), []);
 check('the API exposes storefront-visible products to guests', count($products) === 2);
 problem('guests cannot write products', fn () => $db->insert('products', ['name' => 'No'], true, $guest), 401, 'unauthenticated');
 problem('guests cannot read orders', fn () => $db->findMany('orders', [], $guest), 401, 'unauthenticated');
-problem('editors cannot read orders', fn () => $db->findMany('orders', [], new \TypedPress\Viewer(['id' => $site->userId('ed'), 'name' => 'Editor', 'role' => 'editor'])), 403, 'forbidden');
+problem('editors cannot read orders', fn () => $db->findMany('orders', [], new \SpacePress\Viewer(['id' => $site->userId('ed'), 'name' => 'Editor', 'role' => 'editor'])), 403, 'forbidden');
 problem('scheduling a new product without a date is refused', fn () => $db->insert('products', ['name' => 'Premature product', 'status' => 'scheduled'], true, $admin), 422, 'invalid_input', '/status');
 eq('a refused scheduled product is absent from the public catalog', $db->findFirst('products', ['where' => ['name' => 'Premature product']], $guest), null);
 $future = new WC_Product_Simple();
@@ -520,17 +520,17 @@ check('coupons and new tax calculation are off', !wc_coupons_enabled() && !wc_ta
 eq('guest checkout remains on', get_option('woocommerce_enable_guest_checkout'), 'yes');
 eq('customer signup remains off', get_option('woocommerce_enable_signup_and_login_from_checkout'), 'no');
 eq('reviews and ratings remain off', [get_option('woocommerce_enable_reviews'), get_option('woocommerce_enable_review_rating')], ['no', 'no']);
-$seed = \TypedPress\Sync\Seed::run($plugin, $plugin->dir . '/tp/app/seed');
+$seed = \SpacePress\Sync\Seed::run($plugin, $plugin->dir . '/sp/app/seed');
 eq('repeat deploy preserves merchant price edits', wc_get_product($mug['id'])->get_regular_price(), '25.00');
 eq('repeat deploy preserves operational stock', wc_get_product($mug['id'])->get_stock_quantity(), 2);
 eq('repeat deploy preserves download ids', array_keys(wc_get_product($guide['id'])->get_downloads()), ['field-guide']);
 check('repeat deploy creates nothing', array_sum(array_column($seed, 'created')) === 0);
-$seedFile = $plugin->dir . '/tp/app/seed/products.php';
+$seedFile = $plugin->dir . '/sp/app/seed/products.php';
 $originalSeed = file_get_contents($seedFile); $seedInput = require $seedFile;
-$waitingUid = \TypedPress\Sync\Uid::mint();
+$waitingUid = \SpacePress\Sync\Uid::mint();
 $seedInput['records'][] = ['uid' => $waitingUid, 'fields' => ['name' => 'Must not be reseeded']];
 file_put_contents($seedFile, '<?php return ' . var_export($seedInput, true) . ';');
-$seedKey = 'tp_' . $plugin->schema->name() . '_seed';
+$seedKey = 'sp_' . $plugin->schema->name() . '_seed';
 foreach (['old value', 'missing option'] as $cached) {
     wp_cache_delete($seedKey, 'options'); wp_cache_delete('alloptions', 'options');
     if ($cached === 'old value') { wp_cache_set($seedKey, 'stale-before-lock', 'options'); }
@@ -589,36 +589,36 @@ $permissions = wc_get_customer_download_permissions(0);
 $downloads = $order->get_downloadable_items();
 check('a paid digital order receives a native download link', count($downloads) === 1 && str_contains($downloads[0]['download_url'], 'download_file='));
 eq('the stable download id is preserved on the entitlement', $downloads[0]['download_id'], 'field-guide');
-$read = json_decode(\TypedPress\Js::jsonStringify($db->findFirst('orders', ['where' => ['id' => $order->get_id()]], $admin)), true);
+$read = json_decode(\SpacePress\Js::jsonStringify($db->findFirst('orders', ['where' => ['id' => $order->get_id()]], $admin)), true);
 eq('authorized order reads carry purchase snapshots', $read['lines'][0]['name'], 'Field guide');
 eq('authorized order reads carry billing', $read['billing']['email'], 'buyer@example.test');
 eq('guest-order customer values and null filters agree', $db->findFirst('orders', ['where' => ['id' => $order->get_id(), 'customer' => null]], $admin)['customer'], null);
 $historicalTax = new WC_Order_Item_Tax(); $historicalTax->set_label('Historical VAT'); $historicalTax->set_tax_total('1.23'); $order->add_item($historicalTax);
 $historicalCoupon = new WC_Order_Item_Coupon(); $historicalCoupon->set_code('historical'); $historicalCoupon->set_discount('2.00'); $order->add_item($historicalCoupon);
 $order->set_cart_tax('1.23'); $order->set_discount_total('2.00'); $order->save();
-$historical = json_decode(\TypedPress\Js::jsonStringify($db->findFirst('orders', ['where' => ['id' => $order->get_id()]], $admin)), true);
+$historical = json_decode(\SpacePress\Js::jsonStringify($db->findFirst('orders', ['where' => ['id' => $order->get_id()]], $admin)), true);
 eq('v1 restrictions do not erase historical tax and coupon snapshots', [$historical['taxTotal'], $historical['taxLines'][0]['tax_total'], $historical['couponLines'][0]['discount']], ['1.23', '1.23', '2.00']);
 $refund = wc_create_refund(['order_id' => $order->get_id(), 'amount' => '1.00', 'reason' => 'Test refund', 'refund_payment' => false, 'restock_items' => false]);
-$refunded = json_decode(\TypedPress\Js::jsonStringify($db->findFirst('orders', ['where' => ['id' => $order->get_id()]], $admin)), true);
+$refunded = json_decode(\SpacePress\Js::jsonStringify($db->findFirst('orders', ['where' => ['id' => $order->get_id()]], $admin)), true);
 check('authorized order reads include native refund summaries', !is_wp_error($refund) && count($refunded['refunds']) === 1 && $refunded['refunds'][0]['reason'] === 'Test refund' && $refunded['refunds'][0]['amount'] === '1.00', $refunded['refunds']);
 problem('read projections are not silently accepted as arbitrary filters', fn () => $db->findMany('orders', ['where' => ['billing' => ['city' => 'Kraków']]], $admin), 422, 'invalid_input', '/where/billing');
 $db->update('products', ['name' => 'Revised guide'], ['id' => $guide['id']], false, $admin);
-eq('later product edits do not rewrite purchased names', json_decode(\TypedPress\Js::jsonStringify($db->findFirst('orders', ['where' => ['id' => $order->get_id()]], $admin)), true)['lines'][0]['name'], 'Field guide');
+eq('later product edits do not rewrite purchased names', json_decode(\SpacePress\Js::jsonStringify($db->findFirst('orders', ['where' => ['id' => $order->get_id()]], $admin)), true)['lines'][0]['name'], 'Field guide');
 $spec = $plugin->schema->collection('products');
-$wire = \TypedPress\Sync\Wire::encode('products', [$db->findFirst('products', ['where' => ['id' => $mug['id']]])])[0]['record'];
-eq('sync carries term UIDs', $wire['fields']['categories'], [get_term_meta($mug['categories'][0], '_tp_uid', true)]);
+$wire = \SpacePress\Sync\Wire::encode('products', [$db->findFirst('products', ['where' => ['id' => $mug['id']]])])[0]['record'];
+eq('sync carries term UIDs', $wire['fields']['categories'], [get_term_meta($mug['categories'][0], '_sp_uid', true)]);
 check('sync omits operational/read-only projections', array_intersect(['availability', 'purchasable', 'type', 'url'], array_keys($wire['fields'])) === []);
 $current = $mug; $current['categories'] = [999999, $mug['categories'][0]];
-$unnamed = \TypedPress\Sync\Wire::encode('products', [$current])[0]['record'];
+$unnamed = \SpacePress\Sync\Wire::encode('products', [$current])[0]['record'];
 $missing = null;
-eq('a refList pull with an unnamed target can be pushed without losing the link', \TypedPress\Sync\Wire::decode('products', $unnamed, false, $missing, $current)['categories'], $current['categories']);
-$seedDir = sys_get_temp_dir() . '/tp-commerce-seed-' . bin2hex(random_bytes(4)); mkdir($seedDir);
-$categoryUid = \TypedPress\Sync\Uid::mint(); $parentUid = \TypedPress\Sync\Uid::mint(); $productUid = \TypedPress\Sync\Uid::mint();
+eq('a refList pull with an unnamed target can be pushed without losing the link', \SpacePress\Sync\Wire::decode('products', $unnamed, false, $missing, $current)['categories'], $current['categories']);
+$seedDir = sys_get_temp_dir() . '/sp-commerce-seed-' . bin2hex(random_bytes(4)); mkdir($seedDir);
+$categoryUid = \SpacePress\Sync\Uid::mint(); $parentUid = \SpacePress\Sync\Uid::mint(); $productUid = \SpacePress\Sync\Uid::mint();
 $seedProduct = $wire; $seedProduct['uid'] = $productUid;
 $seedProduct['fields'] = array_replace($seedProduct['fields'], ['name' => 'Dry-run product', 'slug' => 'dry-run-product', 'sku' => 'DRY-RUN', 'categories' => [$categoryUid]]);
 file_put_contents($seedDir . '/categories.json', wp_json_encode(['collection' => 'categories', 'format' => 'md', 'records' => [['uid' => $categoryUid, 'fields' => ['name' => 'Dry-run category', 'slug' => 'dry-run-category', 'parent' => $parentUid]], ['uid' => $parentUid, 'fields' => ['name' => 'Dry-run parent', 'slug' => 'dry-run-parent']]]]));
 file_put_contents($seedDir . '/products.json', wp_json_encode(['collection' => 'products', 'format' => 'md', 'records' => [$seedProduct]]));
-$dry = \TypedPress\Sync\Seed::run($plugin, $seedDir, true);
+$dry = \SpacePress\Sync\Seed::run($plugin, $seedDir, true);
 eq('a dry run orders parent terms and resolves references between new collections', [$dry['categories']['created'], $dry['products']['created']], [2, 1]);
 eq('the dry run rolls back parent terms, children and products together', [$db->findFirst('categories', ['where' => ['uid' => $parentUid]]), $db->findFirst('categories', ['where' => ['uid' => $categoryUid]]), $db->findFirst('products', ['where' => ['uid' => $productUid]])], [null, null, null]);
 unlink($seedDir . '/categories.json'); unlink($seedDir . '/products.json'); rmdir($seedDir);
@@ -679,30 +679,30 @@ check('a later product veto rolls back the whole batch', $batchFailed);
 eq('batch rollback restores the first product database status', $site->scalar('SELECT post_status FROM {prefix}posts WHERE ID = ?', [$batchFirst['id']]), 'publish');
 eq('batch rollback clears the first product native post cache', get_post_status($batchFirst['id']), 'publish');
 $trashFailed = false;
-try { $db->transaction(static fn () => \TypedPress\Sync\Trash::trash('products', $spec, $retired, $admin)); } catch (RuntimeException $e) { $trashFailed = str_contains($e->getMessage(), 'Could not move post'); }
+try { $db->transaction(static fn () => \SpacePress\Sync\Trash::trash('products', $spec, $retired, $admin)); } catch (RuntimeException $e) { $trashFailed = str_contains($e->getMessage(), 'Could not move post'); }
 check('a vetoed native product trash is reported as a failure', $trashFailed && get_post_status($retired['id']) !== 'trash');
 remove_filter('pre_trash_post', $vetoTrash, PHP_INT_MAX);
 add_action('woocommerce_trash_product', static function ($id) use (&$wooTrashed, $retired): void { if ((int) $id === $retired['id']) { $wooTrashed++; } });
-$db->transaction(static fn () => \TypedPress\Sync\Trash::trash('products', $spec, $retired, $admin));
+$db->transaction(static fn () => \SpacePress\Sync\Trash::trash('products', $spec, $retired, $admin));
 eq('explicit sync retirement uses Woo CRUD and its lifecycle hook', [get_post_status($retired['id']), $wooTrashed], ['trash', 1]);
 problem('trashed products retain ownership of their UID', fn () => $db->insert('products', ['name' => 'Duplicate trashed product UID', 'uid' => $retired['uid']], true, $admin), 409, 'unique_violation', '/uid');
-eq('duplicate refusal preserves the trashed product identity', [get_post_status($retired['id']), get_post_meta($retired['id'], '_tp_uid', true)], ['trash', $retired['uid']]);
+eq('duplicate refusal preserves the trashed product identity', [get_post_status($retired['id']), get_post_meta($retired['id'], '_sp_uid', true)], ['trash', $retired['uid']]);
 
 // A stock update bypasses post save; both the product and any page that listed it must purge.
 $purged = [];
-add_action('tp_purge_urls', static function ($urls) use (&$purged): void { $purged = array_merge($purged, $urls); });
+add_action('sp_purge_urls', static function ($urls) use (&$purged): void { $purged = array_merge($purged, $urls); });
 $stocked = wc_get_product($guide['id']); $stocked->set_manage_stock(true); $stocked->save();
-\TypedPress\Wp\Purges::flush(); $purged = [];
-\TypedPress\Render\Cache::record('/products/field-guide', ['products' => ['ids' => [$guide['id']], 'listed' => false]]);
-\TypedPress\Render\Cache::record('/catalog-stock-test', ['products' => ['ids' => [], 'listed' => true]]);
+\SpacePress\Wp\Purges::flush(); $purged = [];
+\SpacePress\Render\Cache::record('/products/field-guide', ['products' => ['ids' => [$guide['id']], 'listed' => false]]);
+\SpacePress\Render\Cache::record('/catalog-stock-test', ['products' => ['ids' => [], 'listed' => true]]);
 wc_update_product_stock($stocked, 3);
-\TypedPress\Wp\Purges::flush();
+\SpacePress\Wp\Purges::flush();
 $purgedPaths = array_map(static fn ($url) => rtrim($url, '/'), $purged);
 check('native stock updates purge item and listing reads', in_array('/products/field-guide', $purgedPaths, true) && in_array('/catalog-stock-test', $purgedPaths, true), $purged);
 
 // Real HTTP authentication: the administrator's capability never bypasses the credential's scope.
 [$password, $item] = WP_Application_Passwords::create_new_application_password($site->userId('admin'), ['name' => 'Commerce test agent']);
-\TypedPress\Wp\AgentScope::store($site->userId('admin'), $item['uuid'], \TypedPress\Wp\AgentScope::DEFAULT);
+\SpacePress\Wp\AgentScope::store($site->userId('admin'), $item['uuid'], \SpacePress\Wp\AgentScope::DEFAULT);
 $request = static function (string $path, string $method = 'GET', ?array $body = null, array $headers = []) use ($site, $password): array {
     $ch = curl_init($site->url() . $path);
     $responseHeaders = [];
@@ -712,40 +712,40 @@ $request = static function (string $path, string $method = 'GET', ?array $body =
     $text = curl_exec($ch);
     return [(int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE), json_decode((string) $text, true), $responseHeaders];
 };
-eq('scoped read credential reads public catalog', $request('/wp-json/typedpress/v1/products')[0], 200);
-$scopedGuide = array_values(array_filter($request('/wp-json/typedpress/v1/products')[1]['data'], static fn ($p) => $p['sku'] === 'GUIDE-PDF'))[0];
+eq('scoped read credential reads public catalog', $request('/wp-json/spacepress/v1/products')[0], 200);
+$scopedGuide = array_values(array_filter($request('/wp-json/spacepress/v1/products')[1]['data'], static fn ($p) => $p['sku'] === 'GUIDE-PDF'))[0];
 check('a credential without personal scope cannot export download locations', !array_key_exists('file', $scopedGuide['downloads'][0]));
-eq('orders need the personal grant on the facade', $request('/wp-json/typedpress/v1/orders')[0], 403);
-eq('orders need the personal grant on native TypedPress REST', $request('/wp-json/wp/v2/tp_orders')[0], 403);
+eq('orders need the personal grant on the facade', $request('/wp-json/spacepress/v1/orders')[0], 403);
+eq('orders need the personal grant on native SpacePress REST', $request('/wp-json/wp/v2/sp_orders')[0], 403);
 eq('orders need the personal grant on abilities', $request('/wp-json/wp-abilities/v1/abilities/shop/orders-list/run?input=%7B%7D')[0], 403);
 eq('scoped credentials cannot run Woo abilities', $request('/wp-json/wp-abilities/v1/abilities/woocommerce/orders-query/run?input=%7B%7D')[0], 403);
-$initialize = $request('/wp-json/mcp/typedpress-shop', 'POST', ['jsonrpc' => '2.0', 'id' => 1, 'method' => 'initialize', 'params' => ['protocolVersion' => '2025-11-25', 'capabilities' => new stdClass(), 'clientInfo' => ['name' => 'Commerce test', 'version' => '1']]]);
-$tools = $request('/wp-json/mcp/typedpress-shop', 'POST', ['jsonrpc' => '2.0', 'id' => 2, 'method' => 'tools/list', 'params' => new stdClass()], ['Mcp-Session-Id: ' . ($initialize[2]['mcp-session-id'] ?? ''), 'Mcp-Protocol-Version: 2025-11-25']);
+$initialize = $request('/wp-json/mcp/spacepress-shop', 'POST', ['jsonrpc' => '2.0', 'id' => 1, 'method' => 'initialize', 'params' => ['protocolVersion' => '2025-11-25', 'capabilities' => new stdClass(), 'clientInfo' => ['name' => 'Commerce test', 'version' => '1']]]);
+$tools = $request('/wp-json/mcp/spacepress-shop', 'POST', ['jsonrpc' => '2.0', 'id' => 2, 'method' => 'tools/list', 'params' => new stdClass()], ['Mcp-Session-Id: ' . ($initialize[2]['mcp-session-id'] ?? ''), 'Mcp-Protocol-Version: 2025-11-25']);
 $names = array_column($tools[1]['result']['tools'] ?? [], 'name');
 check('an agent without personal scope sees product and store tools, no order or Woo tools', $tools[0] === 200 && in_array('shop-products-list', $names, true) && in_array('shop-store-get', $names, true) && !array_filter($names, static fn ($n) => str_starts_with($n, 'shop-orders-') || str_starts_with($n, 'woocommerce-')), $tools);
-eq('a read-only agent cannot edit a product', $request('/wp-json/typedpress/v1/products/' . $guide['id'], 'PATCH', ['name' => 'Refused'])[0], 403);
-\TypedPress\Wp\AgentScope::store($site->userId('admin'), $item['uuid'], ['write' => true, 'personal' => false, 'abilities' => null]);
-eq('a write grant alone cannot change protected download locations', $request('/wp-json/typedpress/v1/products/' . $guide['id'], 'PATCH', ['downloads' => [['id' => 'field-guide', 'name' => 'Field guide', 'file' => 'https://private.example.test/new.pdf']]])[0], 403);
+eq('a read-only agent cannot edit a product', $request('/wp-json/spacepress/v1/products/' . $guide['id'], 'PATCH', ['name' => 'Refused'])[0], 403);
+\SpacePress\Wp\AgentScope::store($site->userId('admin'), $item['uuid'], ['write' => true, 'personal' => false, 'abilities' => null]);
+eq('a write grant alone cannot change protected download locations', $request('/wp-json/spacepress/v1/products/' . $guide['id'], 'PATCH', ['downloads' => [['id' => 'field-guide', 'name' => 'Field guide', 'file' => 'https://private.example.test/new.pdf']]])[0], 403);
 $protectedCreate = ['name' => 'Scoped download create probe', 'virtual' => true, 'downloadable' => true, 'downloads' => [['id' => 'scoped-file', 'name' => 'Scoped file', 'file' => 'https://create-scope.example.test/files/file.pdf']]];
 $beforeScopedApproval = $directories->count(true);
-$refusedCreate = $request('/wp-json/typedpress/v1/products', 'POST', $protectedCreate);
+$refusedCreate = $request('/wp-json/spacepress/v1/products', 'POST', $protectedCreate);
 eq('a write grant alone cannot create protected download locations, and the refusal names the missing grant', [$refusedCreate[0], $refusedCreate[1]['code'] ?? null], [403, 'scope']);
 eq('refused scoped creation leaves no product', $db->findFirst('products', ['where' => ['name' => $protectedCreate['name']]]), null);
 eq('refused scoped creation leaves download approvals unchanged', $directories->count(true), $beforeScopedApproval);
-eq('a write grant can still create a product without protected fields', $request('/wp-json/typedpress/v1/products', 'POST', ['name' => 'Scoped ordinary create probe', 'price' => '1.00'])[0], 201);
+eq('a write grant can still create a product without protected fields', $request('/wp-json/spacepress/v1/products', 'POST', ['name' => 'Scoped ordinary create probe', 'price' => '1.00'])[0], 201);
 eq('Woo REST cannot bypass the app scope', $request('/wp-json/wc/v3/orders')[0], 403);
 eq('Woo core product REST aliases cannot bypass the app scope', $request('/wp-json/wp/v2/product')[0], 403);
 eq('Woo core term REST aliases cannot bypass the app scope', $request('/wp-json/wp/v2/product_cat')[0], 403);
-\TypedPress\Wp\AgentScope::store($site->userId('admin'), $item['uuid'], ['write' => true, 'personal' => true, 'abilities' => null]);
+\SpacePress\Wp\AgentScope::store($site->userId('admin'), $item['uuid'], ['write' => true, 'personal' => true, 'abilities' => null]);
 $protectedCreate['name'] = 'Personal download create probe';
-eq('the personal grant permits protected product creation', $request('/wp-json/typedpress/v1/products', 'POST', $protectedCreate)[0], 201);
+eq('the personal grant permits protected product creation', $request('/wp-json/spacepress/v1/products', 'POST', $protectedCreate)[0], 201);
 eq('authorized creation persists the protected download location', $db->findFirst('products', ['where' => ['name' => $protectedCreate['name']]])['downloads'][0]['file'], $protectedCreate['downloads'][0]['file']);
-eq('personal grant permits authorized order reads', $request('/wp-json/typedpress/v1/orders')[0], 200);
-$privateGuide = array_values(array_filter($request('/wp-json/typedpress/v1/products')[1]['data'], static fn ($p) => $p['sku'] === 'GUIDE-PDF'))[0];
+eq('personal grant permits authorized order reads', $request('/wp-json/spacepress/v1/orders')[0], 200);
+$privateGuide = array_values(array_filter($request('/wp-json/spacepress/v1/products')[1]['data'], static fn ($p) => $p['sku'] === 'GUIDE-PDF'))[0];
 check('an administrator credential with personal scope retains download management', is_string($privateGuide['downloads'][0]['file'] ?? null));
 eq('even a personal write agent cannot use Woo REST', $request('/wp-json/wc/v3/orders')[0], 403);
 eq('even a personal write agent cannot use Woo core aliases', $request('/wp-json/wp/v2/product')[0], 403);
-eq('orders remain read-only with every grant', $request('/wp-json/typedpress/v1/orders', 'POST', [])[0], 405);
+eq('orders remain read-only with every grant', $request('/wp-json/spacepress/v1/orders', 'POST', [])[0], 405);
 // An administrator who turns HPOS synchronization on closes the shop, not wp-admin. Woo itself
 // refuses HPOS as the authoritative storage while orders are unsynchronized, so this is the first step.
 foreach (['woocommerce_custom_orders_table_data_sync_enabled'] as $option) {
@@ -754,25 +754,25 @@ foreach (['woocommerce_custom_orders_table_data_sync_enabled'] as $option) {
     curl_setopt_array($login, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 60]);
     curl_exec($login);
     eq('WordPress login survives ' . $option, (int) curl_getinfo($login, CURLINFO_RESPONSE_CODE), 200);
-    $closed = $request('/wp-json/typedpress/v1/store');
+    $closed = $request('/wp-json/spacepress/v1/store');
     eq('the shop is unavailable under ' . $option, [$closed[0], $closed[1]['code'] ?? null], [503, 'unavailable']);
-    check('the reason is logged for the administrator', str_contains($site->debugLog(), 'TypedPress commerce requires legacy order storage'));
+    check('the reason is logged for the administrator', str_contains($site->debugLog(), 'SpacePress commerce requires legacy order storage'));
     eq('native checkout is refused under ' . $option, $request('/wp-json/wc/store/v1/checkout', 'POST', [])[0], 503);
     update_option($option, 'no');
-    eq('the shop returns once storage is changed back from ' . $option, $request('/wp-json/typedpress/v1/store')[0], 200);
+    eq('the shop returns once storage is changed back from ' . $option, $request('/wp-json/spacepress/v1/store')[0], 200);
 }
-// A request-time install failure refuses TypedPress and leaves core admin available for repairs.
-\TypedPress\Wp\InstallMarker::forget(); delete_option('tp_shop_shipping');
+// A request-time install failure refuses SpacePress and leaves core admin available for repairs.
+\SpacePress\Wp\InstallMarker::forget(); delete_option('sp_shop_shipping');
 add_filter('woocommerce_shipping_methods', $noMethods, PHP_INT_MAX);
-\TypedPress\Commerce\Module::onInit($plugin);
-check('request installation failure is caught and remains retryable', str_contains($plugin->unavailable() ?? '', 'Could not add source shipping method') && !get_option(\TypedPress\Wp\InstallMarker::OPTION));
+\SpacePress\Commerce\Module::onInit($plugin);
+check('request installation failure is caught and remains retryable', str_contains($plugin->unavailable() ?? '', 'Could not add source shipping method') && !get_option(\SpacePress\Wp\InstallMarker::OPTION));
 foreach (['/wc/store/v1/checkout', '/wc/store/v1/checkout/' . $order->get_id()] as $route) {
     $response = rest_do_request(new WP_REST_Request('POST', $route));
-    eq('unavailable shop refuses native checkout before payment', [$response->get_status(), $response->get_data()['code'] ?? null], [503, 'tp_unavailable']);
+    eq('unavailable shop refuses native checkout before payment', [$response->get_status(), $response->get_data()['code'] ?? null], [503, 'sp_unavailable']);
 }
 remove_filter('woocommerce_shipping_methods', $noMethods, PHP_INT_MAX);
-\TypedPress\Commerce\Module::initialize($plugin);
-eq('repair can finish shipping installation after the request failure', \TypedPress\Commerce\Module::plan($plugin), []);
+\SpacePress\Commerce\Module::initialize($plugin);
+eq('repair can finish shipping installation after the request failure', \SpacePress\Commerce\Module::plan($plugin), []);
 $log = $site->debugLog();
 check('commerce runtime has no PHP warnings or fatal errors', !preg_match('/PHP (Warning|Fatal error):/', $log), $log);
 finish('commerce');

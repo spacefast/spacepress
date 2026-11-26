@@ -1,19 +1,19 @@
 import { useDispatch, useSelect } from '@wordpress/data';
 import { store as preferencesStore } from '@wordpress/preferences';
 import {
-	store as tpAdminStore,
+	store as spAdminStore,
 	type StoreSelectors,
-} from '@typedpress-admin/boot';
-import type { DashboardWidget } from '@typedpress-admin/dashboard';
+} from '@spacepress-admin/boot';
+import type { DashboardWidget } from '@spacepress-admin/dashboard';
 
 /**
  * Hook for managing dashboard layout preferences.
  *
- * Uses `tpDashboardLayout` by default so legacy upstream stub layouts are replaced
+ * Uses `spDashboardLayout` by default so legacy upstream stub layouts are replaced
  * by SpacePress's real default widgets while keeping user customizations persisted.
  */
 function useDashboardLayout(
-	preferenceKey: string = 'tpDashboardLayout',
+	preferenceKey: string = 'spDashboardLayout',
 	fallbackLayout?: DashboardWidget< unknown >[]
 ): [
 	DashboardWidget< unknown >[],
@@ -39,7 +39,7 @@ function useDashboardLayout(
 		( select ) =>
 			// eslint-disable-next-line @typescript-eslint/no-unsafe-return -- StoreSelectors cast
 			(
-				select( tpAdminStore ) as StoreSelectors
+				select( spAdminStore ) as StoreSelectors
 			 ).getDashboardDefaultLayout(),
 		[]
 	);

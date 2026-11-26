@@ -4,8 +4,8 @@
 // `.validate` closure (called with each fake ctx in ACCESS_CTXS / FIELD_CTXS / each value in VALUES).
 import { register } from "node:module";
 import { pathToFileURL } from "node:url";
-register(new URL("./resolve-typedpress.mjs", import.meta.url));
-const { transaction } = await import("./typedpress-shim.mjs");
+register(new URL("./resolve-spacepress.mjs", import.meta.url));
+const { transaction } = await import("./spacepress-shim.mjs");
 const mod = await import(pathToFileURL(process.argv[2]).href);
 // Kinds and actions register by export name, as the compiler reads them (docs/spec/spec.md §1.1).
 const exported = (what) => Object.fromEntries(Object.entries(mod).filter(([, v]) => v?.$first === what));
@@ -58,4 +58,4 @@ for (const [name, c] of Object.entries(exported("kind"))) {
   }
 }
 if (Object.keys(out).length === 0) throw new Error("differential oracle executed no cases");
-process.stdout.write(JSON.stringify({ schema: "typedpress-differential", version: 1, complete: true, cases: out }));
+process.stdout.write(JSON.stringify({ schema: "spacepress-differential", version: 1, complete: true, cases: out }));

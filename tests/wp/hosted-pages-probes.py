@@ -1,6 +1,6 @@
 """Adds probe routes to a copy of examples/full-site for tests/wp/hosted-pages-run.sh.
 
-Each probe is a `tp/app/<path>/route.ts` file beside the example's own routes.
+Each probe is a `sp/app/<path>/route.ts` file beside the example's own routes.
 """
 import os
 import sys
@@ -81,7 +81,7 @@ export function GET(req: RouteRequest) {
 """,
 }
 for path, body in probes.items():
-    folder = os.path.join(project, "tp", "app", *path.split("/"))
+    folder = os.path.join(project, "sp", "app", *path.split("/"))
     os.makedirs(folder, exist_ok=False)
     with open(os.path.join(folder, "route.ts"), "w") as f:
-        f.write('import { once, type HookCtx, type RouteRequest } from "typedpress";\n' + body)
+        f.write('import { once, type HookCtx, type RouteRequest } from "spacepress";\n' + body)

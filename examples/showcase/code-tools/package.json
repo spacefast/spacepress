@@ -1,8 +1,8 @@
 {
-  "name": "typedpress-showcase-code-tools",
+  "name": "spacepress-showcase-code-tools",
   "private": true,
   "type": "module",
-  "description": "Offline source lab and real diffs.com viewer for the local TypedPress showcase.",
+  "description": "Offline source lab and real diffs.com viewer for the local SpacePress showcase.",
   "scripts": {"build": "node build.mjs"},
   "dependencies": {
     "@pierre/diffs": "1.6.2",

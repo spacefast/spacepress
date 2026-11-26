@@ -1,12 +1,12 @@
 <?php declare(strict_types = 1);
 
-namespace TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type;
+namespace SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Ast\Type;
 
-use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\ConstExpr\ConstExprIntegerNode;
-use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\ConstExpr\ConstExprStringNode;
-use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\ConstExpr\ConstFetchNode;
-use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\Node;
-use TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Ast\NodeAttributes;
+use SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Ast\ConstExpr\ConstExprIntegerNode;
+use SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Ast\ConstExpr\ConstExprStringNode;
+use SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Ast\ConstExpr\ConstFetchNode;
+use SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Ast\Node;
+use SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Ast\NodeAttributes;
 use function sprintf;
 
 class ArrayShapeItemNode implements Node

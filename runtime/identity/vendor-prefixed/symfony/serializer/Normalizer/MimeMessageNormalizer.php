@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer;
+namespace SpacePress\Identity\Vendor\Symfony\Component\Serializer\Normalizer;
 
 use Symfony\Component\Mime\Address;
 use Symfony\Component\Mime\Header\HeaderInterface;
@@ -17,10 +17,10 @@ use Symfony\Component\Mime\Header\Headers;
 use Symfony\Component\Mime\Header\UnstructuredHeader;
 use Symfony\Component\Mime\Part\AbstractPart;
 use Symfony\Component\Mime\RawMessage;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\LogicException;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Exception\NotNormalizableValueException;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\SerializerAwareInterface;
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\SerializerInterface;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Exception\LogicException;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Exception\NotNormalizableValueException;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\SerializerAwareInterface;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\SerializerInterface;
 
 /**
  * Normalize Mime message classes.

@@ -4,25 +4,25 @@ declare(strict_types=1);
 
 /*
  * Prebuilt pages next to server-rendered ones (tests/app_router.rs `prebuilt_pages_serve_before_wordpress_and_rebuild_after_writes`):
- * tests/fixtures/app-prebuilt, built by `typedpress build`, on WordPress-on-SQLite served by php -S with
+ * tests/fixtures/app-prebuilt, built by `spacepress build`, on WordPress-on-SQLite served by php -S with
  * the theme front end on. Action Scheduler runs in this process, as WP-Cron would run it. Prints JSON.
  *
- *   TP_WP_THEMES=1 php tests/php/app_prebuilt.php <wp-content dir>
+ *   SP_WP_THEMES=1 php tests/php/app_prebuilt.php <wp-content dir>
  */
 
 require __DIR__ . '/wp.php';
 
 $site = wpSite('app-prebuilt', ['wpContent' => $argv[1], 'users' => ['chief' => 'editor']]);
 wp_set_current_user(1);
-$hello = \TypedPress\db()->insert('notes', ['title' => 'Hello', 'slug' => 'hello', 'status' => 'published'], true)[0];
-\TypedPress\db()->insert('notes', ['title' => 'Secret', 'slug' => 'secret', 'status' => 'draft']);
+$hello = \SpacePress\db()->insert('notes', ['title' => 'Hello', 'slug' => 'hello', 'status' => 'published'], true)[0];
+\SpacePress\db()->insert('notes', ['title' => 'Secret', 'slug' => 'secret', 'status' => 'draft']);
 $site->actAs(null);
 $site->startServer();
 $url = $site->url();
 
 // The end of the request that wrote: WordPress post writes outside a transaction announce what they
-// changed at shutdown (TypedPress\Wp\Purges), which this long-running test process never reaches.
-$written = static fn () => \TypedPress\Wp\Purges::flush();
+// changed at shutdown (SpacePress\Wp\Purges), which this long-running test process never reaches.
+$written = static fn () => \SpacePress\Wp\Purges::flush();
 
 function fetch(string $url, array $headers = []): array
 {
@@ -43,7 +43,7 @@ function fetch(string $url, array $headers = []): array
     $body = (string) curl_exec($ch);
     return [
         'status' => (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE),
-        'prebuilt' => isset($out['x-typedpress-prebuilt']),
+        'prebuilt' => isset($out['x-spacepress-prebuilt']),
         'cache' => $out['cache-control'][0] ?? null,
         'type' => $out['content-type'][0] ?? null,
         'body' => $body,
@@ -52,8 +52,8 @@ function fetch(string $url, array $headers = []): array
 
 $drain = static function (): int {
     $ran = 0;
-    for ($i = 0; $i < 10 && as_has_scheduled_action(\TypedPress\Render\Prebuilt::ACTION, null, 'typedpress'); $i++) {
-        $ran += ActionScheduler_QueueRunner::instance()->run('TypedPress tests');
+    for ($i = 0; $i < 10 && as_has_scheduled_action(\SpacePress\Render\Prebuilt::ACTION, null, 'spacepress'); $i++) {
+        $ran += ActionScheduler_QueueRunner::instance()->run('SpacePress tests');
     }
     return $ran;
 };
@@ -66,7 +66,7 @@ $text = static fn (array $r, string $class): ?string => preg_match('#class="' . 
 // What setting the site up changed (the hidden Pages of static routes) is announced before measuring.
 $written();
 $out = [];
-// What to build, as an editor lists it (typedpress export uses the same answer).
+// What to build, as an editor lists it (spacepress export uses the same answer).
 [$status, $list] = $site->call('GET', '/prerender', as: 'chief');
 $out['list'] = [$status, array_column($list['urls'] ?? [], 'path')];
 $out['list anonymous'] = $site->call('GET', '/prerender')[0];
@@ -75,9 +75,9 @@ $out['list subscriber'] = $site->call('GET', '/prerender', as: 'subscriber')[0];
 // Before the prebuild has run, every page renders per request.
 $out['before'] = fetch("$url/about/")['prebuilt'];
 // Init schedules the build once; Action Scheduler runs it.
-$out['scheduled'] = as_has_scheduled_action(\TypedPress\Render\Prebuilt::ACTION, null, 'typedpress');
+$out['scheduled'] = as_has_scheduled_action(\SpacePress\Render\Prebuilt::ACTION, null, 'spacepress');
 $out['ran'] = $drain() > 0;
-$dir = \TypedPress\Render\Prebuilt::dir();
+$dir = \SpacePress\Render\Prebuilt::dir();
 $out['files'] = array_values(array_map(static fn (string $f): string => substr($f, strlen($dir) + 1), array_filter(
     iterator_to_array(new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS)), false),
     static fn ($f) => $f->isFile(),
@@ -99,12 +99,12 @@ $out['draft'] = [fetch("$url/notes/secret/")['status'], fetch("$url/notes/secret
 $out['signed in'] = fetch("$url/about/", [$cookie('chief')])['prebuilt'];
 $out['query'] = fetch("$url/about/?utm=x")['prebuilt'];
 // A prerender header that isn't this site's is an ordinary request.
-$out['forged'] = fetch("$url/notes/hello/", ['X-TypedPress-Prerender: ' . str_repeat('0', 64), $cookie('chief')])['prebuilt'];
+$out['forged'] = fetch("$url/notes/hello/", ['X-SpacePress-Prerender: ' . str_repeat('0', 64), $cookie('chief')])['prebuilt'];
 
 // On-demand regeneration: an edit deletes the note's files at once, so the next visitor gets the
 // new title from WordPress; the action then writes the new files.
 wp_set_current_user(1);
-\TypedPress\db()->update('notes', ['title' => 'Hello again'], ['id' => (int) $hello['id']]);
+\SpacePress\db()->update('notes', ['title' => 'Hello again'], ['id' => (int) $hello['id']]);
 $written();
 $site->actAs(null);
 $after = fetch("$url/notes/hello/");
@@ -115,13 +115,13 @@ $rebuilt = fetch("$url/notes/hello/");
 $out['rebuilt'] = [$rebuilt['prebuilt'], $text($rebuilt, 'note')];
 // A note published later gets its file from the same action, and unpublishing removes it.
 wp_set_current_user(1);
-$late = \TypedPress\db()->insert('notes', ['title' => 'Late', 'slug' => 'late', 'status' => 'published'], true)[0];
+$late = \SpacePress\db()->insert('notes', ['title' => 'Late', 'slug' => 'late', 'status' => 'published'], true)[0];
 $written();
 $site->actAs(null);
 $drain();
 $out['published later'] = fetch("$url/notes/late/")['prebuilt'];
 wp_set_current_user(1);
-\TypedPress\db()->update('notes', ['status' => 'draft'], ['id' => (int) $late['id']]);
+\SpacePress\db()->update('notes', ['status' => 'draft'], ['id' => (int) $late['id']]);
 $written();
 $site->actAs(null);
 $out['unpublished'] = [fetch("$url/notes/late/")['status'], fetch("$url/notes/late/")['prebuilt']];
@@ -131,7 +131,7 @@ $out['unpublished after rebuild'] = [fetch("$url/notes/late/")['status'], fetch(
 
 // A field stored outside the core post fields: the page read the item, so the write still names it.
 wp_set_current_user(1);
-\TypedPress\db()->update('notes', ['summary' => 'Fresh summary'], ['id' => (int) $hello['id']]);
+\SpacePress\db()->update('notes', ['summary' => 'Fresh summary'], ['id' => (int) $hello['id']]);
 $written();
 $site->actAs(null);
 $out['meta field'] = [fetch("$url/notes/hello/")['prebuilt'], $text(fetch("$url/notes/hello/"), 'summary')];
@@ -139,36 +139,36 @@ $drain();
 $out['meta field rebuilt'] = [fetch("$url/notes/hello/")['prebuilt'], $text(fetch("$url/notes/hello/"), 'summary')];
 // A site-wide setting no content write announces: every file goes, and the next build has it.
 update_option('blogname', 'Renamed');
-\TypedPress\Wp\Purges::flush();
+\SpacePress\Wp\Purges::flush();
 $out['renamed'] = [fetch("$url/about/")['prebuilt'], fetch("$url/notes/hello/")['prebuilt']];
 do_action('init');
 $drain();
 $out['renamed rebuilt'] = fetch("$url/about/")['prebuilt'];
 // A file past MAX_AGE is not served; the next full build replaces it.
-$file = \TypedPress\Render\Prebuilt::dir() . '/about.html';
-touch($file, time() - \TypedPress\Render\Prebuilt::MAX_AGE - 10);
+$file = \SpacePress\Render\Prebuilt::dir() . '/about.html';
+touch($file, time() - \SpacePress\Render\Prebuilt::MAX_AGE - 10);
 clearstatcache();
 $out['too old'] = fetch("$url/about/")['prebuilt'];
 // `/index` is not the home page.
 $out['index'] = fetch("$url/index")['prebuilt'];
 // A gate (a private-site plugin) vetoes serving files; the request reaches WordPress.
-file_put_contents($site->content . '/mu-plugins/gate.php', "<?php add_filter('tp_prebuilt_serve', '__return_false');");
+file_put_contents($site->content . '/mu-plugins/gate.php', "<?php add_filter('sp_prebuilt_serve', '__return_false');");
 $out['gated'] = fetch("$url/notes/hello/")['prebuilt'];
 unlink($site->content . '/mu-plugins/gate.php');
 // An expired or reused-past-expiry token is an ordinary request.
-$expired = \TypedPress\Render\Prebuilt::token('/live/', time() - 5);
+$expired = \SpacePress\Render\Prebuilt::token('/live/', time() - 5);
 // An expired token is no prerender: the ordinary page, at its one address.
-$live = fetch("$url/live/", ['X-TypedPress-Prerender: ' . $expired]);
+$live = fetch("$url/live/", ['X-SpacePress-Prerender: ' . $expired]);
 $out['expired token'] = $live['cache'];
 // The same token, unexpired, for the same path: a prerender, so the expiry is what refused it above.
-$out['unexpired token'] = fetch("$url/live/", ['X-TypedPress-Prerender: ' . \TypedPress\Render\Prebuilt::token('/live/')])['cache'];
-$fresh = fetch("$url/live", ['X-TypedPress-Prerender: ' . \TypedPress\Render\Prebuilt::token('/live')]);
+$out['unexpired token'] = fetch("$url/live/", ['X-SpacePress-Prerender: ' . \SpacePress\Render\Prebuilt::token('/live/')])['cache'];
+$fresh = fetch("$url/live", ['X-SpacePress-Prerender: ' . \SpacePress\Render\Prebuilt::token('/live')]);
 $out['fresh token'] = $fresh['cache'];
 // A value staticParams no longer lists loses its file at the next build.
 update_option('prebuilt_drop', 'lab notes');
-\TypedPress\Render\Prebuilt::stale(['/tags/lab%20notes']);
+\SpacePress\Render\Prebuilt::stale(['/tags/lab%20notes']);
 $drain();
-$out['dropped value'] = [is_file(\TypedPress\Render\Prebuilt::dir() . '/tags/lab%20notes.html'), fetch("$url/tags/field/")['prebuilt']];
+$out['dropped value'] = [is_file(\SpacePress\Render\Prebuilt::dir() . '/tags/lab%20notes.html'), fetch("$url/tags/field/")['prebuilt']];
 
 // Another spelling of a prebuilt path is not its URL: `/%61bout` renders per request.
 $out['encoded spelling'] = fetch("$url/%61bout")['prebuilt'];
@@ -179,18 +179,18 @@ $drain();
 $out['coming soon'] = fetch("$url/notes/hello/")['prebuilt'];
 delete_option('wpcom_public_coming_soon');
 // A whole-site purge before any file exists is not an error.
-\TypedPress\Render\Prebuilt::forget();
-\TypedPress\Render\Prebuilt::stale(['/*']);
+\SpacePress\Render\Prebuilt::forget();
+\SpacePress\Render\Prebuilt::stale(['/*']);
 $out['purge all, no files'] = true;
 // A render older than a write that named its path is dropped, even inside one batch.
 do_action('init');
 $drain();
 $before = fetch("$url/about/")['prebuilt'];
-\TypedPress\Render\Prebuilt::stale(['/about']);
+\SpacePress\Render\Prebuilt::stale(['/about']);
 $started = microtime(true) - 5; // as if the render began before the write
-$m = new ReflectionMethod(\TypedPress\Render\Prebuilt::class, 'write');
-$written = $m->invoke(null, \TypedPress\Render\Prebuilt::dir() . '/about.html', 'old', '/about', $started);
-$out['race'] = [$before, $written, is_file(\TypedPress\Render\Prebuilt::dir() . '/about.html')];
+$m = new ReflectionMethod(\SpacePress\Render\Prebuilt::class, 'write');
+$written = $m->invoke(null, \SpacePress\Render\Prebuilt::dir() . '/about.html', 'old', '/about', $started);
+$out['race'] = [$before, $written, is_file(\SpacePress\Render\Prebuilt::dir() . '/about.html')];
 
 // `Accept: text/markdown` on a prebuilt HTML URL is never answered with the HTML file: the file lane
 // steps aside and the request reaches WordPress. (A host's engine lane answers it with Markdown
@@ -210,23 +210,23 @@ $out['bare about'] = [$bareAbout['status'], $bareAbout['prebuilt']];
 do_action('init');
 $drain();
 $started = microtime(true) - 5;
-\TypedPress\Render\Prebuilt::forget();
-$m = new ReflectionMethod(\TypedPress\Render\Prebuilt::class, 'write');
-$out['forget race'] = [$m->invoke(null, \TypedPress\Render\Prebuilt::dir() . '/about.html', 'old', '/about', $started), is_file(\TypedPress\Render\Prebuilt::dir() . '/about.html')];
+\SpacePress\Render\Prebuilt::forget();
+$m = new ReflectionMethod(\SpacePress\Render\Prebuilt::class, 'write');
+$out['forget race'] = [$m->invoke(null, \SpacePress\Render\Prebuilt::dir() . '/about.html', 'old', '/about', $started), is_file(\SpacePress\Render\Prebuilt::dir() . '/about.html')];
 
 // A prebuilt path longer than the read index holds (Cache::MAX_URL): the render can't be recorded,
 // so no write would mark a file stale. Neither the page nor its twin becomes a file.
 wp_set_current_user(1);
 $long = str_repeat('a', 190);
-\TypedPress\db()->insert('notes', ['title' => 'Long', 'slug' => $long, 'status' => 'published'], true);
-\TypedPress\Wp\Purges::flush();
+\SpacePress\db()->insert('notes', ['title' => 'Long', 'slug' => $long, 'status' => 'published'], true);
+\SpacePress\Wp\Purges::flush();
 $site->actAs(null);
 do_action('init');
 $drain();
 $longPage = fetch("$url/notes/$long/");
 $longTwin = fetch("$url/notes/$long.md");
 $out['long address'] = [
-    is_file(\TypedPress\Render\Prebuilt::dir() . "/notes/$long.html"), is_file(\TypedPress\Render\Prebuilt::dir() . "/notes/$long.md"),
+    is_file(\SpacePress\Render\Prebuilt::dir() . "/notes/$long.html"), is_file(\SpacePress\Render\Prebuilt::dir() . "/notes/$long.md"),
     $longPage['status'], $longPage['prebuilt'], $longTwin['status'], $longTwin['prebuilt'],
 ];
 
@@ -235,9 +235,9 @@ $out['long address'] = [
 wp_mkdir_p($dir);
 file_put_contents($dir . '/about.html', $about['body']);
 $cached = fetch("$url/about/");
-$appRoot = \TypedPress\Wp\Runtime::plugin()->dir;
+$appRoot = \SpacePress\Wp\Runtime::plugin()->dir;
 $asset = $appRoot . '/public/about-module.mjs';
-$map = $appRoot . '/tp/app/public-files.json';
+$map = $appRoot . '/sp/app/public-files.json';
 $prior = substr(hash_file('sha256', $asset), 0, 12);
 $script = str_replace('version = 1', 'version = 2', (string) file_get_contents($asset));
 $next = substr(hash('sha256', $script), 0, 12);
@@ -249,9 +249,9 @@ touch($map, $mtime);
 clearstatcache();
 $updated = fetch("$url/about/");
 $out['public script updated'] = [
-    $cached['prebuilt'], str_contains($cached['body'], 'tpv=' . $prior),
+    $cached['prebuilt'], str_contains($cached['body'], 'spv=' . $prior),
     filesize($map) === $mapSize && filemtime($map) === $mtime,
-    $updated['status'], $updated['prebuilt'], str_contains($updated['body'], 'tpv=' . $next),
+    $updated['status'], $updated['prebuilt'], str_contains($updated['body'], 'spv=' . $next),
 ];
 
 echo json_encode($out, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT), "\n";

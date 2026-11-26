@@ -1,6 +1,6 @@
 // Generated client types for localized collections (§7.3).
-import type { Code, CodeInsert, Guide, GuideInsert, GuidePatch, Locale, LocaleRow } from "./tp/_generated/client/types";
-import { db } from "typedpress";
+import type { Code, CodeInsert, Guide, GuideInsert, GuidePatch, Locale, LocaleRow } from "./sp/_generated/client/types";
+import { db } from "spacepress";
 
 async function registryTranslations() {
   for (const row of await db.query.guides.findMany()) {

@@ -1,4 +1,4 @@
-//! One `typedpress sync` run (design §5.4): for every synced collection, references first, read the files,
+//! One `spacepress sync` run (design §5.4): for every synced collection, references first, read the files,
 //! the site and the bases, plan each uid, apply, and record the new bases.
 
 use crate::sync::base::Bases;
@@ -18,7 +18,7 @@ pub struct Options {
     pub check: bool,
 }
 
-/// A synced collection, as the facade's schema (`GET /wp-json/typedpress/v1`) describes it.
+/// A synced collection, as the facade's schema (`GET /wp-json/spacepress/v1`) describes it.
 struct Collection {
     name: String,
     dir: PathBuf,
@@ -42,7 +42,7 @@ struct Collection {
 /// Collections that sync, targets of references first (a cycle keeps config order).
 fn collections(schema: &Value, project: &Path, only: &Option<Vec<String>>) -> Result<Vec<Collection>, String> {
     let all = schema["kinds"].as_object().ok_or(
-        "the site's schema (GET /wp-json/typedpress/v1) has no kinds; deploy this TypedPress version to the site",
+        "the site's schema (GET /wp-json/spacepress/v1) has no kinds; deploy this SpacePress version to the site",
     )?;
     let mut synced: IndexMap<String, Collection> = IndexMap::new();
     for (name, spec) in all {
@@ -148,7 +148,7 @@ fn read_files(c: &Collection, report: &mut Report, check: bool) -> (IndexMap<Str
     let mut clean = true;
     let entries = match std::fs::read_dir(&c.dir) {
         Ok(entries) => entries,
-        // No directory yet: genuinely no files (typedpress pull creates it).
+        // No directory yet: genuinely no files (spacepress pull creates it).
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return (out, true),
         // Anything else would look like every file was deleted: report it and infer no deletions.
         Err(e) => {
@@ -264,7 +264,7 @@ fn read_files(c: &Collection, report: &mut Report, check: bool) -> (IndexMap<Str
                 // Never write over an edit (or recreate a deletion) made since the file was read.
                 if !unchanged(&path, Some(&bytes)) {
                     report.fail(format!(
-                        "{rel}: changed while typedpress sync ran; left as it is, run typedpress sync again"
+                        "{rel}: changed while spacepress sync ran; left as it is, run spacepress sync again"
                     ));
                     clean = false;
                     continue;
@@ -280,7 +280,7 @@ fn read_files(c: &Collection, report: &mut Report, check: bool) -> (IndexMap<Str
             }
             None => {
                 report.pending(format!(
-                    "{rel}: new file; typedpress sync will give it a uid and push it"
+                    "{rel}: new file; spacepress sync will give it a uid and push it"
                 ));
                 continue;
             }
@@ -531,12 +531,12 @@ pub fn run(project: &Path, client: &Client, options: &Options, report: &mut Repo
         .map_err(|p| report.problem("could not read the site's schema", &p))?;
     let site = schema["site"]["id"]
         .as_str()
-        .ok_or("the site's schema has no site id; rebuild and deploy with this TypedPress version")?
+        .ok_or("the site's schema has no site id; rebuild and deploy with this SpacePress version")?
         .to_string();
     let mut bases = Bases::load(project)?;
     let known = bases.knows_site(&site);
     if !known {
-        report.note("typedpress sync with this site: records are matched, nothing is deleted".into());
+        report.note("spacepress sync with this site: records are matched, nothing is deleted".into());
     }
     let all = collections(&schema, project, &options.only)?;
     // Every base change is made only after both sides landed, so whatever the run did is recorded
@@ -784,7 +784,7 @@ fn collection(
                 }
                 Err(Stale) => {
                     report.fail(format!(
-                        "{}/{uid}: the site kept changing; run typedpress sync again",
+                        "{}/{uid}: the site kept changing; run spacepress sync again",
                         c.name
                     ));
                     break;
@@ -930,7 +930,7 @@ fn perform(
                 Ok(None) => {}
                 Ok(Some(back)) => {
                     report.fail(format!(
-                        "{}: reappeared while typedpress sync ran; nothing was trashed, run typedpress sync again",
+                        "{}: reappeared while spacepress sync ran; nothing was trashed, run spacepress sync again",
                         report.rel(&back)
                     ));
                     return Ok(());
@@ -949,11 +949,11 @@ fn perform(
                     match reappeared(c, uid) {
                         Ok(None) => report.applied(),
                         Ok(Some(back)) => report.fail(format!(
-                            "{}: came back while its record was being trashed; the next typedpress sync pushes it again",
+                            "{}: came back while its record was being trashed; the next spacepress sync pushes it again",
                             report.rel(&back)
                         )),
                         Err(e) => report.fail(format!(
-                            "{e}; the record was trashed, check the file and run typedpress sync again"
+                            "{e}; the record was trashed, check the file and run spacepress sync again"
                         )),
                     }
                 }
@@ -973,7 +973,7 @@ fn perform(
             let path = &f.path;
             if !unchanged(path, Some(&f.bytes)) {
                 report.fail(format!(
-                    "{}: changed while typedpress sync ran; left as it is, run typedpress sync again",
+                    "{}: changed while spacepress sync ran; left as it is, run spacepress sync again",
                     report.rel(path)
                 ));
                 return Ok(());
@@ -992,7 +992,7 @@ fn perform(
                 Remote::Live(item) => Some(item),
                 _ => None,
             };
-            let path = report.project().join(".tp/conflicts").join(format!("{uid}.md"));
+            let path = report.project().join(".sp/conflicts").join(format!("{uid}.md"));
             if !options.check {
                 let text = conflict::render(conflict::Conflict {
                     uid,
@@ -1115,7 +1115,7 @@ fn write_record(c: &Collection, current: Option<&File>, record: &Value, report: 
     if changed {
         let shown = current.map_or(target.clone(), |f| f.path.clone());
         report.fail(format!(
-            "{}: changed while typedpress sync ran; left as it is, run typedpress sync again",
+            "{}: changed while spacepress sync ran; left as it is, run spacepress sync again",
             report.rel(&shown)
         ));
         return false;
@@ -1155,14 +1155,14 @@ fn write_record(c: &Collection, current: Option<&File>, record: &Value, report: 
     true
 }
 
-/// `typedpress sync resolve <uid>`: the edited conflict file becomes the record on both sides.
+/// `spacepress sync resolve <uid>`: the edited conflict file becomes the record on both sides.
 pub fn resolve(project: &Path, client: &Client, uid: &str, report: &mut Report) -> Result<(), String> {
-    let path = project.join(".tp/conflicts").join(format!("{uid}.md"));
+    let path = project.join(".sp/conflicts").join(format!("{uid}.md"));
     let raw = std::fs::read(&path).map_err(|e| format!("{}: {e}", report.rel(&path)))?;
     let draft = bytes_digest(&raw);
     let text = String::from_utf8(raw).map_err(|_| format!("{}: not UTF-8 text", report.rel(&path)))?;
     let (files_digest, site_digest) =
-        conflict::digests(&text).ok_or("the conflict file's header is missing; rerun typedpress sync")?;
+        conflict::digests(&text).ok_or("the conflict file's header is missing; rerun spacepress sync")?;
     let resolved = conflict::resolved(&text)?;
     let schema = client.get("").map_err(|p| report.problem("site", &p))?;
     let site = schema["site"]["id"]
@@ -1197,7 +1197,7 @@ pub fn resolve(project: &Path, client: &Client, uid: &str, report: &mut Report) 
         };
         if local_now != files_digest || remote_now != site_digest {
             return Err(format!(
-                "{uid} changed since the conflict was written; delete .tp/conflicts/{uid}.md and run typedpress sync to write a fresh one"
+                "{uid} changed since the conflict was written; delete .sp/conflicts/{uid}.md and run spacepress sync to write a fresh one"
             ));
         }
         // Keeping the deleted side: the draft below its header is exactly `(deleted)`. Both sides go.
@@ -1228,7 +1228,7 @@ pub fn resolve(project: &Path, client: &Client, uid: &str, report: &mut Report) 
                 // Edited while the trash request ran: keep that edit, and the draft with it.
                 if !unchanged(&f.path, Some(&f.bytes)) {
                     return Err(format!(
-                        "{} changed while resolve ran; the record was trashed but your newer file is kept (the next typedpress sync pushes it back)",
+                        "{} changed while resolve ran; the record was trashed but your newer file is kept (the next spacepress sync pushes it back)",
                         report.rel(&f.path)
                     ));
                 }
@@ -1295,7 +1295,7 @@ pub fn resolve(project: &Path, client: &Client, uid: &str, report: &mut Report) 
             let site_digest = answer["digest"].as_str().unwrap_or_default();
             write_atomic(&path, conflict::with_digests(&now, &local, site_digest).as_bytes())?;
             return Err(format!(
-                "{} changed while resolve ran; the version read before was applied, and your newer edit is kept there (run typedpress sync resolve again to apply it)",
+                "{} changed while resolve ran; the version read before was applied, and your newer edit is kept there (run spacepress sync resolve again to apply it)",
                 report.rel(&path)
             ));
         }

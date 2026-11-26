@@ -9,10 +9,10 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\PropertyInfo\Extractor;
+namespace SpacePress\Identity\Vendor\Symfony\Component\PropertyInfo\Extractor;
 
-use TypedPress\Identity\Vendor\Symfony\Component\PropertyInfo\Type as LegacyType;
-use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Type;
+use SpacePress\Identity\Vendor\Symfony\Component\PropertyInfo\Type as LegacyType;
+use SpacePress\Identity\Vendor\Symfony\Component\TypeInfo\Type;
 
 /**
  * Infers the constructor argument type.

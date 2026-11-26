@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Webauthn\Exception;
+namespace SpacePress\Identity\Vendor\Webauthn\Exception;
 
 use Throwable;
-use TypedPress\Identity\Vendor\Webauthn\AttestationStatement\AttestationStatement;
+use SpacePress\Identity\Vendor\Webauthn\AttestationStatement\AttestationStatement;
 
 final class InvalidAttestationStatementException extends AttestationStatementException
 {

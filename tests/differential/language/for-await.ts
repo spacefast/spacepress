@@ -1,8 +1,8 @@
-// `for await` in authored TypeScript over sync iterables, the narrow form that TypedPress's blocking
-// model runs exactly: each element is a plain value or the settled result of a TypedPress call. Async
+// `for await` in authored TypeScript over sync iterables, the narrow form that SpacePress's blocking
+// model runs exactly: each element is a plain value or the settled result of a SpacePress call. Async
 // iterables and generators work in imported JavaScript (the job queue) and stay refused here.
 // Every action runs under Node and as compiled PHP; the JSON results must be byte-identical.
-import { defineConfig, mutation } from "typedpress";
+import { defineConfig, mutation } from "spacepress";
 
 const run = (handler: () => unknown) => mutation({}, handler);
 

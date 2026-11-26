@@ -5,9 +5,9 @@ $input = json_decode(stream_get_contents(STDIN), true);
 echo "READY\n";
 flush();
 try {
-    \TypedPress\Identity\Plugin::$accounts->provider('https://issuer.test', $input['subject'], null, '', $input['uid'], $input['session']);
+    \SpacePress\Identity\Plugin::$accounts->provider('https://issuer.test', $input['subject'], null, '', $input['uid'], $input['session']);
     echo "LINKED\n";
     exit(1);
-} catch (\TypedPress\Identity\Failure $e) {
+} catch (\SpacePress\Identity\Failure $e) {
     echo $e->kind . "\n";
 }

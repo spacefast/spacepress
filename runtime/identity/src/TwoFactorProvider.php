@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity;
+namespace SpacePress\Identity;
 
 /**
  * Identity's authenticator (TOTP and recovery codes) as a Two Factor provider, so an account with
@@ -13,7 +13,7 @@ namespace TypedPress\Identity;
  *
  * Loaded only through Two Factor's `two_factor_providers` filter, after Two Factor's own provider
  * base class exists. Two Factor names a provider by its class: this one is
- * `TypedPress\Identity\TwoFactorProvider`.
+ * `SpacePress\Identity\TwoFactorProvider`.
  */
 final class TwoFactorProvider extends \Two_Factor_Provider
 {
@@ -24,12 +24,12 @@ final class TwoFactorProvider extends \Two_Factor_Provider
 
     public function get_label()
     {
-        return __('Authenticator app or recovery code', 'typedpress-identity');
+        return __('Authenticator app or recovery code', 'spacepress-identity');
     }
 
     public function get_alternative_provider_label()
     {
-        return __('Use your authenticator app or a recovery code', 'typedpress-identity');
+        return __('Use your authenticator app or a recovery code', 'spacepress-identity');
     }
 
     public function is_available_for_user($user)
@@ -46,12 +46,12 @@ final class TwoFactorProvider extends \Two_Factor_Provider
     {
         require_once ABSPATH . '/wp-admin/includes/template.php';
         do_action('two_factor_before_authentication_prompt', $this);
-        echo '<p class="two-factor-prompt">' . esc_html__('Enter the code from your authenticator app, or a recovery code.', 'typedpress-identity') . '</p>';
+        echo '<p class="two-factor-prompt">' . esc_html__('Enter the code from your authenticator app, or a recovery code.', 'spacepress-identity') . '</p>';
         do_action('two_factor_after_authentication_prompt', $this);
-        echo '<p><label for="authcode">' . esc_html__('Code:', 'typedpress-identity') . '</label>'
+        echo '<p><label for="authcode">' . esc_html__('Code:', 'spacepress-identity') . '</label>'
             . '<input type="text" name="authcode" id="authcode" class="input authcode" value="" size="20" autocomplete="one-time-code" autocapitalize="off" spellcheck="false"></p>';
         do_action('two_factor_after_authentication_input', $this);
-        submit_button(__('Verify', 'typedpress-identity'));
+        submit_button(__('Verify', 'spacepress-identity'));
     }
 
     public function validate_authentication($user)

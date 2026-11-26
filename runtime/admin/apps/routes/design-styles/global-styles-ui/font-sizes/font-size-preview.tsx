@@ -1,4 +1,4 @@
-import type { FontSize } from '@typedpress-admin/global-styles-engine';
+import type { FontSize } from '@spacepress-admin/global-styles-engine';
 // @ts-expect-error - WordPress block-editor package doesn't have complete type definitions
 import { getComputedFluidTypographyValue } from '@wordpress/block-editor';
 import { __ } from '@wordpress/i18n';
@@ -26,13 +26,13 @@ function FontSizePreview( { fontSize }: FontSizePreviewProps ) {
 	const computedFontSize = getComputedFluidTypographyValue( input );
 	return (
 		<div
-			className="typedpress-admin-typography-preview"
+			className="spacepress-admin-typography-preview"
 			style={ {
 				fontSize: computedFontSize,
 				fontFamily: font?.fontFamily ?? 'serif',
 			} }
 		>
-			{ __( 'Aa', 'typedpress-admin' ) }
+			{ __( 'Aa', 'spacepress-admin' ) }
 		</div>
 	);
 }

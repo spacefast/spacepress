@@ -3,11 +3,11 @@ import {
 	useWidgetTypes,
 	type DashboardWidgetType,
 	type RegisteredDashboardWidgetType,
-} from '@typedpress-admin/dashboard';
+} from '@spacepress-admin/dashboard';
 import type {
 	DashboardContext,
 	DeclarativeWidgetDefinition,
-} from '@typedpress-admin/boot';
+} from '@spacepress-admin/boot';
 import { BUILTIN_WIDGET_TYPES } from './builtins';
 import { toDashboardWidgetType } from './declarative';
 import './style.scss';
@@ -28,7 +28,7 @@ export function useSpacePressWidgetTypes(
 
 	return useMemo(() => {
 		const builtins = BUILTIN_WIDGET_TYPES.filter(
-			(w) => w.name !== 'tp/store-pulse' || context?.has_store !== false
+			(w) => w.name !== 'sp/store-pulse' || context?.has_store !== false
 		);
 		const custom = declarative.map(toDashboardWidgetType);
 		const seen = new Set<string>();

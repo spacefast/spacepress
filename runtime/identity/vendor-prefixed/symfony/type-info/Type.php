@@ -9,10 +9,10 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\TypeInfo;
+namespace SpacePress\Identity\Vendor\Symfony\Component\TypeInfo;
 
-use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Type\CompositeTypeInterface;
-use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Type\WrappingTypeInterface;
+use SpacePress\Identity\Vendor\Symfony\Component\TypeInfo\Type\CompositeTypeInterface;
+use SpacePress\Identity\Vendor\Symfony\Component\TypeInfo\Type\WrappingTypeInterface;
 
 /**
  * @author Mathias Arlaud <mathias.arlaud@gmail.com>

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Webmozart\Assert;
+namespace SpacePress\Identity\Vendor\Webmozart\Assert;
 
 use ArrayAccess;
 use Closure;

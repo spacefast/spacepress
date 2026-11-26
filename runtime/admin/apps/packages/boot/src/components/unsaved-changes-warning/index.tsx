@@ -1,7 +1,7 @@
 import { useEffect } from '@wordpress/element';
 import { useSelect } from '@wordpress/data';
 import { store as coreStore } from '@wordpress/core-data';
-import { useEntityValidity } from '@typedpress-admin/admin-toolkit';
+import { useEntityValidity } from '@spacepress-admin/admin-toolkit';
 
 /**
  * Warns the user if there are unsaved changes before leaving the editor.

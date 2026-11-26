@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Brick\Math;
+namespace SpacePress\Identity\Vendor\Brick\Math;
 
 /**
  * Specifies rounding behavior by defining how discarded digits affect the returned result when an exact value cannot

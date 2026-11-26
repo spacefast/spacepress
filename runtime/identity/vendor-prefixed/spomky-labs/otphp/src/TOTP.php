@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\OTPHP;
+namespace SpacePress\Identity\Vendor\OTPHP;
 
 use function is_int;
-use TypedPress\Identity\Vendor\OTPHP\Exception\InvalidParameterException;
-use TypedPress\Identity\Vendor\Psr\Clock\ClockInterface;
+use SpacePress\Identity\Vendor\OTPHP\Exception\InvalidParameterException;
+use SpacePress\Identity\Vendor\Psr\Clock\ClockInterface;
 
 /**
  * @readonly
@@ -21,7 +21,7 @@ final class TOTP extends OTP implements TOTPInterface
     {
         parent::__construct($secret);
         if ($clock === null) {
-            typedpress_identity_vendor_trigger_deprecation(
+            spacepress_identity_vendor_trigger_deprecation(
                 'spomky-labs/otphp',
                 '11.3.0',
                 'The parameter "$clock" will become mandatory in 12.0.0. Please set a valid PSR Clock implementation instead of "null".'

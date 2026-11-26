@@ -2,9 +2,9 @@
 	"name": "core-comments-fields",
 	"version": "1.0.0",
 	"dependencies": {
-		"@typedpress-admin/admin-toolkit": "workspace:*",
-		"@typedpress-admin/design-system": "workspace:*",
-		"@typedpress-admin/dataviews": "workspace:*",
+		"@spacepress-admin/admin-toolkit": "workspace:*",
+		"@spacepress-admin/design-system": "workspace:*",
+		"@spacepress-admin/dataviews": "workspace:*",
 		"@wordpress/components": "catalog:",
 		"@wordpress/core-data": "catalog:",
 		"@wordpress/dom": "catalog:",

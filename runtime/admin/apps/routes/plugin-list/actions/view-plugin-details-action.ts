@@ -1,7 +1,7 @@
 import { __ } from '@wordpress/i18n';
 import { info } from '@wordpress/icons';
 import type { Plugin } from '@wordpress/core-data';
-import type { Action } from '@typedpress-admin/dataviews';
+import type { Action } from '@spacepress-admin/dataviews';
 import { useNavigate, useSearch } from '@wordpress/route';
 
 export const useViewPluginDetailsAction = (): Action< Plugin > => {
@@ -10,7 +10,7 @@ export const useViewPluginDetailsAction = (): Action< Plugin > => {
 
 	return {
 		id: 'view-plugin-details',
-		label: __( 'View Details', 'typedpress-admin' ),
+		label: __( 'View Details', 'spacepress-admin' ),
 		isPrimary: false,
 		icon: info,
 		callback: ( items: Plugin[] ) => {

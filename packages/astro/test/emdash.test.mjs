@@ -1,4 +1,4 @@
-// @typedpress/astro/emdash against a real TypedPress site: test/emdash-fixture built with `typedpress build` and
+// @spacepress/astro/emdash against a real SpacePress site: test/emdash-fixture built with `spacepress build` and
 // served on WordPress-on-SQLite (tests/php/wp.php serve). Each part of the `emdash` API EmDash's
 // templates call is checked against what the site holds, then a real `astro build` of
 // test/emdash-site, which imports only from "emdash", renders it.
@@ -15,8 +15,8 @@ import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = resolve(here, "../../..");
-const bin = process.env.TP_BIN ?? join(repo, "target/debug/typedpress");
-const work = mkdtempSync(join(tmpdir(), "typedpress-emdash-"));
+const bin = process.env.SP_BIN ?? join(repo, "target/debug/spacepress");
+const work = mkdtempSync(join(tmpdir(), "spacepress-emdash-"));
 let site;
 let server;
 let emdash; // the `emdash` module
@@ -25,20 +25,20 @@ let ids = {};
 async function api(method, path, body) {
   const headers = { accept: "application/json", authorization: `Basic ${btoa(site.users.admin.appPassword)}` };
   if (body !== undefined) headers["content-type"] = "application/json";
-  const response = await fetch(path.startsWith("/wp-json") ? `${site.url}${path}` : `${site.url}/wp-json/typedpress/v1${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+  const response = await fetch(path.startsWith("/wp-json") ? `${site.url}${path}` : `${site.url}/wp-json/spacepress/v1${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
   const json = await response.json();
   assert.ok(response.ok, `${method} ${path}: ${JSON.stringify(json)}`);
   return json.data ?? json;
 }
 
 before(async () => {
-  assert.ok(existsSync(bin), `build the compiler first (cargo build --bin typedpress), or set TP_BIN; ${bin} is missing`);
+  assert.ok(existsSync(bin), `build the compiler first (cargo build --bin spacepress), or set SP_BIN; ${bin} is missing`);
   const project = join(work, "app");
   cpSync(join(here, "emdash-fixture"), project, { recursive: true });
   const built = spawnSync(bin, ["build", project, "--quiet"], { encoding: "utf8" });
   assert.equal(built.status, 0, built.stdout + built.stderr);
-  server = spawn("php", ["-d", "memory_limit=512M", join(repo, "tests/php/wp.php"), "serve", join(project, "tp/dist/wp-content")], {
-    env: { ...process.env, TP_WP_CLI: "1" },
+  server = spawn("php", ["-d", "memory_limit=512M", join(repo, "tests/php/wp.php"), "serve", join(project, "sp/dist/wp-content")], {
+    env: { ...process.env, SP_WP_CLI: "1" },
     stdio: ["ignore", "pipe", "inherit"],
   });
   site = JSON.parse(await new Promise((ok, fail) => {
@@ -70,9 +70,9 @@ before(async () => {
   await api("POST", "/wp-json/wp/v2/comments", { post: first.id, content: "Lovely.", author_name: "Reader", author_email: "r@example.test", status: "approved" });
   await api("POST", "/wp-json/wp/v2/comments", { post: first.id, content: "Held.", author_name: "Spam", author_email: "s@example.test", status: "hold" });
   ids = { first: first.id, second: second.id, draft: draft.id };
-  process.env.TP_URL = site.url;
+  process.env.SP_URL = site.url;
   // A server that builds with an editor's credentials still renders pages as a visitor.
-  process.env.TP_APP_PASSWORD = site.users.admin.appPassword;
+  process.env.SP_APP_PASSWORD = site.users.admin.appPassword;
   emdash = await import("../src/emdash/client.js");
 });
 
@@ -106,7 +106,7 @@ test("getEmDashCollection and getEmDashEntry read published posts in the templat
   assert.equal(paragraph.children[0].text, "Up at last & early.");
   assert.match(paragraph._html, /<strong>last<\/strong>/);
 
-  assert.equal((await emdash.getEmDashEntry("posts", "unfinished")).entry, null, "a draft without a preview token is no entry, whatever TP_APP_PASSWORD holds");
+  assert.equal((await emdash.getEmDashEntry("posts", "unfinished")).entry, null, "a draft without a preview token is no entry, whatever SP_APP_PASSWORD holds");
   assert.equal((await emdash.getEmDashCollection("posts", { cursor: "NaN" })).nextCursor, undefined, "a cursor that isn't one reads the first page");
   assert.equal((await emdash.getEmDashCollection("posts", { limit: 1, cursor: "9999999999" })).entries.length, 1, "nor does an out-of-range one fail");
   assert.equal((await emdash.getEmDashEntry("posts", "no-such-post")).entry, null);
@@ -149,7 +149,7 @@ test("comments are the approved ones, threaded by parent; open follows the post"
   const raw = await api("POST", "/wp-json/wp/v2/comments", { post: ids.second, content: "<p>Hi <img src=x onerror=alert(1)> there</p>", author_name: "Admin", author_email: "a@example.test", status: "approved" });
   const shown = (await emdash.getComments(String(ids.second))).items.find((c) => c.id === String(raw.id));
   assert.equal(/<img|onerror/.test(shown.html), false, shown.html);
-  await api("POST", `/wp-json/wp/v2/tp_posts/${ids.first}`, { comment_status: "closed" });
+  await api("POST", `/wp-json/wp/v2/sp_posts/${ids.first}`, { comment_status: "closed" });
   assert.equal((await emdash.getComments(String(ids.first))).open, false);
 });
 
@@ -191,7 +191,7 @@ test("the middleware: admin redirect, comment forwarding, preview headers, prere
 });
 
 test("/api/search answers the templates' live search", async () => {
-  globalThis.__TP_EMDASH_PAGES_AT__ = "/pages/";
+  globalThis.__SP_EMDASH_PAGES_AT__ = "/pages/";
   const { GET } = await import("../src/emdash/search-route.js");
   const answer = await (await GET({ url: new URL("http://astro.test/api/search?q=about") })).json();
   assert.deepEqual(answer, { items: [{ title: "About", path: "/pages/about" }] });
@@ -202,7 +202,7 @@ test("astro build of a page written against \"emdash\" renders the site", { time
   const out = join(work, "site");
   const run = spawnSync(process.execPath, [join(here, "../node_modules/astro/bin/astro.mjs"), "build", "--root", join(here, "emdash-site")], {
     cwd: join(here, "emdash-site"),
-    env: { ...process.env, TP_URL: site.url, ASTRO_TELEMETRY_DISABLED: "1", ASTRO_TEST_OUT: out },
+    env: { ...process.env, SP_URL: site.url, ASTRO_TELEMETRY_DISABLED: "1", ASTRO_TEST_OUT: out },
     encoding: "utf8",
   });
   assert.equal(run.status, 0, run.stdout + run.stderr);
@@ -215,10 +215,10 @@ test("astro build of a page written against \"emdash\" renders the site", { time
   assert.match(post, /class="headings">Crocuses</);
 });
 
-test("a page written against \"emdash\" type-checks with tpEmdash()'s declarations alone", { timeout: 300_000 }, () => {
+test("a page written against \"emdash\" type-checks with spEmdash()'s declarations alone", { timeout: 300_000 }, () => {
   const run = spawnSync(process.execPath, [join(here, "../node_modules/astro/bin/astro.mjs"), "check", "--root", join(here, "emdash-site")], {
     cwd: join(here, "emdash-site"),
-    env: { ...process.env, TP_URL: site.url, ASTRO_TELEMETRY_DISABLED: "1" },
+    env: { ...process.env, SP_URL: site.url, ASTRO_TELEMETRY_DISABLED: "1" },
     encoding: "utf8",
   });
   assert.equal(run.status, 0, run.stdout + run.stderr);

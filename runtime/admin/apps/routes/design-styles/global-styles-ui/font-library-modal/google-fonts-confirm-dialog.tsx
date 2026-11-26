@@ -23,20 +23,20 @@ function GoogleFontsConfirmDialog(): JSX.Element {
 			<Card>
 				<CardBody>
 					<Heading level={ 2 }>
-						{ __( 'Connect to Google Fonts', 'typedpress-admin' ) }
+						{ __( 'Connect to Google Fonts', 'spacepress-admin' ) }
 					</Heading>
 					<Spacer margin={ 6 } />
 					<Text as="p">
 						{ __(
 							'To install fonts from Google you must give permission to connect directly to Google servers. The fonts you install will be downloaded from Google and stored on your site. Your site will then use these locally-hosted fonts.',
-							'typedpress-admin'
+							'spacepress-admin'
 						) }
 					</Text>
 					<Spacer margin={ 3 } />
 					<Text as="p">
 						{ __(
 							'You can alternatively upload files directly on the Upload tab.',
-							'typedpress-admin'
+							'spacepress-admin'
 						) }
 					</Text>
 					<Spacer margin={ 6 } />
@@ -45,7 +45,7 @@ function GoogleFontsConfirmDialog(): JSX.Element {
 						variant="primary"
 						onClick={ handleConfirm }
 					>
-						{ __( 'Allow access to Google Fonts', 'typedpress-admin' ) }
+						{ __( 'Allow access to Google Fonts', 'spacepress-admin' ) }
 					</Button>
 				</CardBody>
 			</Card>

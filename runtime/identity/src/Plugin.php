@@ -2,18 +2,18 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity;
+namespace SpacePress\Identity;
 
 final class Plugin
 {
-    /** Equal to the typedpress-runtime version built alongside it (`Runtime::identity()` compares them). */
+    /** Equal to the spacepress-runtime version built alongside it (`Runtime::identity()` compares them). */
     /**
      * Identity's authenticator as a Two Factor method ({@see TwoFactorProvider}). A key without
      * backslashes: Two Factor stores it in user meta and in the WordPress session, and WordPress's
      * meta writes unslash what they store. Here, not on the provider, so reading it never loads a
      * class that extends Two Factor's (a site without Two Factor has none).
      */
-    public const TWO_FACTOR_KEY = "TypedPress_Identity_TwoFactorProvider";
+    public const TWO_FACTOR_KEY = "SpacePress_Identity_TwoFactorProvider";
     public const VERSION = "0.3.0";
     private static ?\WP_Error $authenticationError = null;
     public static DB $db;
@@ -37,12 +37,12 @@ final class Plugin
         return new \WP_Error($error->kind, $error->getMessage(), ["status" => $error->status]);
     }
     /**
-     * Whether a build from the store mounted identity (`TypedPress\Loader\Loader::load`): then booting
+     * Whether a build from the store mounted identity (`SpacePress\Loader\Loader::load`): then booting
      * installs nothing, and {@see install()} runs when the host initializes the build.
      */
     public static function managed(): bool
     {
-        return class_exists(\TypedPress\Loader\Loader::class, false) && \TypedPress\Loader\Loader::loaded() !== null;
+        return class_exists(\SpacePress\Loader\Loader::class, false) && \SpacePress\Loader\Loader::loaded() !== null;
     }
 
     /**
@@ -60,9 +60,23 @@ final class Plugin
 
     private static function installStorage(): void
     {
-        if (!Schema::ready()) {
+        if (!Schema::ready() && self::storageCurrent()) {
             Schema::migrate(self::$db);
         }
+    }
+
+    /**
+     * False while the runtime has yet to move this site's identity storage from the pre-release name
+     * (`SpacePress\Wp\BrandUpgrade`, which records `sp_brand_upgrade`): installing now would create
+     * empty tables beside the site's own. The runtime runs that move when it registers the app, then
+     * calls {@see install()}. The earlier name is the schema version option the old identity wrote.
+     */
+    public static function storageCurrent(): bool
+    {
+        // The runtime's marker answers on a settled site (autoloaded: no query).
+        $upgrade = get_option('sp_brand_upgrade', 0);
+
+        return $upgrade !== 'started' && ((int) $upgrade > 0 || !Legacy::stored());
     }
 
     public static function boot(string $file): void
@@ -71,19 +85,19 @@ final class Plugin
         self::$db = new DB($wpdb);
         self::$security = new Security(self::$db);
         self::$accounts = new Accounts(self::$db, self::$security);
-        // A site that installs TypedPress as plugins installs identity on boot; a build mounted from the
+        // A site that installs SpacePress as plugins installs identity on boot; a build mounted from the
         // store installs nothing until the host initializes it (install()).
         if (!self::managed()) {
             // The install checks below and provisionPasswordHash() read these on every request, and
             // none is autoloaded: one query instead of one each.
-            wp_prime_option_caches(["tp_identity_schema_version", ...Accounts::INSTALL_OPTIONS]);
+            wp_prime_option_caches(["sp_identity_schema_version", ...Accounts::INSTALL_OPTIONS]);
             add_action("plugins_loaded", [Accounts::class, "provisionPasswordHash"]);
         }
         add_filter('cron_schedules', static function (array $schedules): array {
-            $schedules['tp_identity_minute'] = ['interval' => 60, 'display' => 'Every minute'];
+            $schedules['sp_identity_minute'] = ['interval' => 60, 'display' => 'Every minute'];
             return $schedules;
         });
-        add_action('tp_identity_password_inventory', [Accounts::class, 'inventoryPasswordHashes']);
+        add_action('sp_identity_password_inventory', [Accounts::class, 'inventoryPasswordHashes']);
         self::$sessions = new Sessions(self::$db, self::$security);
         self::$api = new Api(
             self::$db,
@@ -94,6 +108,25 @@ final class Plugin
         );
         if (!self::managed()) {
             self::installStorage();
+            // Identity's storage under the pre-release name, on a site without the runtime to move it:
+            // decided once every plugin has loaded (WordPress loads identity before the runtime), and
+            // a conflict is reported, not fatal. A settled site (an autoloaded marker) reads nothing for
+            // it; a current schema version alone doesn't say so: the earlier storage may sit beside it.
+            if (!Legacy::settled() && !Legacy::stored()) {
+                Legacy::settle();
+            } elseif (!Legacy::settled()) {
+                add_action('plugins_loaded', static function (): void {
+                    global $wpdb;
+                    try {
+                        Legacy::move($wpdb);
+                        self::installStorage();
+                    } catch (\Throwable $failure) {
+                        // Any failure, a database error too: reported, never fatal to the request.
+                        error_log('[spacepress] ' . $failure->getMessage());
+                        add_action('admin_notices', static fn () => current_user_can('manage_options') && printf('<div class="notice notice-error"><p>%s</p></div>', esc_html('SpacePress Identity: ' . $failure->getMessage())));
+                    }
+                }, 2);
+            }
         }
         add_action("rest_api_init", [self::$api, "register"]);
         add_filter(
@@ -119,7 +152,7 @@ final class Plugin
         add_filter(
             "admin_body_class",
             static fn($classes) => $classes .
-                (($_GET["page"] ?? "") === "typedpress-identity"
+                (($_GET["page"] ?? "") === "spacepress-identity"
                     ? " zi-admin-screen"
                     : ""),
         );
@@ -128,7 +161,7 @@ final class Plugin
                 "Identity",
                 "Identity",
                 "manage_options",
-                "typedpress-identity",
+                "spacepress-identity",
                 fn() => self::adminPage($file),
                 "dashicons-admin-users",
                 3,
@@ -345,7 +378,7 @@ final class Plugin
             $prefix = self::url("/authorize?");
             $return = str_starts_with($redirect, $prefix) ? Providers::continuation(substr($redirect, strlen(self::url("")))) : "";
             $url = add_query_arg(array_filter(["methods" => "1", "return_to" => $return !== "" ? rawurlencode($return) : null]), self::url(""));
-            echo '<p class="typedpress-identity-methods"><a href="' . esc_url($url) . '">' . esc_html__("Sign in with an email code, a passkey or another account", "typedpress-identity") . "</a></p>";
+            echo '<p class="spacepress-identity-methods"><a href="' . esc_url($url) . '">' . esc_html__("Sign in with an email code, a passkey or another account", "spacepress-identity") . "</a></p>";
         });
         $rememberPassword = static function ($uid): void {
             $user = get_userdata((int) $uid);
@@ -392,7 +425,7 @@ final class Plugin
         }, 10, 2);
         // Guests can't plant WordPress credentials (password, application passwords) a former
         // holder of the guest could keep after an upgrade: those belong to saved accounts.
-        add_filter("wp_is_application_passwords_available_for_user", static fn ($available, $user) => $available && !($user instanceof \WP_User && in_array("tp_guest", (array) $user->roles, true)), 10, 2);
+        add_filter("wp_is_application_passwords_available_for_user", static fn ($available, $user) => $available && !($user instanceof \WP_User && in_array("sp_guest", (array) $user->roles, true)), 10, 2);
         // Application passwords skip the `authenticate` filter; refuse inactive accounts here too.
         add_action("wp_authenticate_application_password_errors", static function ($error, $user) {
             try {
@@ -449,13 +482,13 @@ final class Plugin
         }, PHP_INT_MAX);
         add_filter("rest_authentication_errors", static fn ($error) => self::authenticationError() ?? $error, 99);
         add_action(
-            "tp_identity_maintenance",
+            "sp_identity_maintenance",
             fn() => (new Maintenance(self::$db, self::$security))->run(),
         );
         add_filter("wp_privacy_personal_data_exporters", static function (
             $exporters,
         ) {
-            $exporters["typedpress-identity"] = [
+            $exporters["spacepress-identity"] = [
                 "exporter_friendly_name" => "Identity",
                 "callback" => static function ($email) {
                     $uid = self::$accounts->owner($email);
@@ -489,7 +522,7 @@ final class Plugin
         add_filter("wp_privacy_personal_data_erasers", static function (
             $erasers,
         ) {
-            $erasers["typedpress-identity"] = [
+            $erasers["spacepress-identity"] = [
                 "eraser_friendly_name" => "Identity",
                 "callback" => static function ($email) {
                     $uid = self::$accounts->owner($email);
@@ -525,7 +558,7 @@ final class Plugin
         });
         add_action("wp_abilities_api_init", static function () {
             if (function_exists("wp_register_ability")) {
-                wp_register_ability("typedpress-identity/account", [
+                wp_register_ability("spacepress-identity/account", [
                     "label" => "Get identity account",
                     "description" => "Read a WordPress identity account.",
                     "input_schema" => [
@@ -543,23 +576,23 @@ final class Plugin
             }
         });
         if (defined("WP_CLI") && WP_CLI) {
-            // `wp typedpress identity …`: one `typedpress` namespace, owned by the runtime's dispatcher.
-            $register = static fn() => \TypedPress\Wp\Runtime::command(
+            // `wp spacepress identity …`: one `spacepress` namespace, owned by the runtime's dispatcher.
+            $register = static fn() => \SpacePress\Wp\Runtime::command(
                 "identity",
                 Cli::run(...),
             );
-            did_action("tp_runtime_loaded")
+            did_action("sp_runtime_loaded")
                 ? $register()
-                : add_action("tp_runtime_loaded", $register);
-            // Without the runtime (identity on its own), `wp typedpress` serves `identity` only.
+                : add_action("sp_runtime_loaded", $register);
+            // Without the runtime (identity on its own), `wp spacepress` serves `identity` only.
             add_action("plugins_loaded", static function () {
-                if (did_action("tp_runtime_loaded")) {
+                if (did_action("sp_runtime_loaded")) {
                     return;
                 }
-                \WP_CLI::add_command("typedpress", static function (array $args, array $flags) {
+                \WP_CLI::add_command("spacepress", static function (array $args, array $flags) {
                     if (($args[0] ?? "") !== "identity") {
                         \WP_CLI::error(
-                            "Only wp typedpress identity is available without the typedpress-runtime plugin.",
+                            "Only wp spacepress identity is available without the spacepress-runtime plugin.",
                         );
                     }
                     $code = Cli::run(array_slice($args, 1), $flags);
@@ -642,9 +675,10 @@ final class Plugin
         // An account with Identity MFA counts as signed in only when that WordPress sign-in passed
         // Identity's factor on wp-login.php (Two Factor records the method on the session). A
         // session made any other way (another Two Factor method, a plugin that sets the auth cookie
-        // itself) doesn't open an identity session.
+        // itself) doesn't open an identity session. A sign-in made before the rename recorded the
+        // provider's earlier name.
         if ((new Mfa(self::$db, self::$security))->enabled($uid)
-            && (($wp["two-factor-provider"] ?? null) !== self::TWO_FACTOR_KEY || empty($wp["two-factor-login"]))) {
+            && (!in_array($wp["two-factor-provider"] ?? null, [self::TWO_FACTOR_KEY, Legacy::TWO_FACTOR_KEY], true) || empty($wp["two-factor-login"]))) {
             return null;
         }
         self::$accounts->ensure($uid);
@@ -692,7 +726,7 @@ final class Plugin
         if ($post && isset($_POST["confirm"])) {
             Api::checkOrigin((string) ($_SERVER["HTTP_ORIGIN"] ?? ""), true, true);
             $confirmed = $uid > 0 && $uid === get_current_user_id()
-                && wp_verify_nonce(is_string($_POST["csrf"] ?? null) ? $_POST["csrf"] : "", "typedpress-identity-logout") !== false;
+                && wp_verify_nonce(is_string($_POST["csrf"] ?? null) ? $_POST["csrf"] : "", "spacepress-identity-logout") !== false;
             if (!$confirmed) {
                 throw new Failure("invalid_csrf", "Refresh the page and try again.", 403);
             }
@@ -700,16 +734,16 @@ final class Plugin
         if ($uid > 0 && !$named && !$confirmed) {
             status_header(200);
             echo '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Sign out</title></head><body><main class="consent"><h1>'
-                . esc_html(sprintf(__("Sign out of %s?", "typedpress-identity"), get_bloginfo("name")))
+                . esc_html(sprintf(__("Sign out of %s?", "spacepress-identity"), get_bloginfo("name")))
                 . '</h1><form method="post">';
             foreach ($query as $key => $value) {
                 if (is_string($value) && $key !== "csrf" && $key !== "confirm") {
                     echo '<input type="hidden" name="' . esc_attr($key) . '" value="' . esc_attr($value) . '">';
                 }
             }
-            echo '<input type="hidden" name="csrf" value="' . esc_attr(wp_create_nonce("typedpress-identity-logout")) . '"><button name="confirm" value="1">'
-                . esc_html__("Sign out", "typedpress-identity") . '</button></form><a href="' . esc_url(home_url("/")) . '">'
-                . esc_html__("Stay signed in", "typedpress-identity") . "</a></main></body></html>";
+            echo '<input type="hidden" name="csrf" value="' . esc_attr(wp_create_nonce("spacepress-identity-logout")) . '"><button name="confirm" value="1">'
+                . esc_html__("Sign out", "spacepress-identity") . '</button></form><a href="' . esc_url(home_url("/")) . '">'
+                . esc_html__("Stay signed in", "spacepress-identity") . "</a></main></body></html>";
             exit();
         }
         // Here the sign-out may happen: the hint names this browser's user, the user confirmed, or
@@ -747,9 +781,9 @@ final class Plugin
             header("Retry-After: 30");
             header("Content-Type: text/html; charset=utf-8");
             echo '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>'
-                . esc_html__("Try again shortly", "typedpress-identity") . '</title></head><body><main class="consent"><h1>'
-                . esc_html__("Your account is being updated", "typedpress-identity") . "</h1><p>"
-                . esc_html__("This takes a moment. Try again shortly.", "typedpress-identity") . "</p></main></body></html>";
+                . esc_html__("Try again shortly", "spacepress-identity") . '</title></head><body><main class="consent"><h1>'
+                . esc_html__("Your account is being updated", "spacepress-identity") . "</h1><p>"
+                . esc_html__("This takes a moment. Try again shortly.", "spacepress-identity") . "</p></main></body></html>";
             exit();
         }
         wp_redirect(wp_login_url($back));
@@ -822,8 +856,8 @@ final class Plugin
         if (
             !is_ssl() &&
             !(
-                defined("TP_IDENTITY_DEV_HTTP") &&
-                TP_IDENTITY_DEV_HTTP &&
+                defined("SP_IDENTITY_DEV_HTTP") &&
+                SP_IDENTITY_DEV_HTTP &&
                 wp_get_environment_type() === "local"
             )
         ) {
@@ -1117,13 +1151,13 @@ final class Plugin
             esc_attr(get_bloginfo("name")) .
             '"></div>';
         wp_enqueue_style(
-            "typedpress-identity-admin",
+            "spacepress-identity-admin",
             plugins_url("build/admin.css", $file),
             [],
             self::VERSION,
         );
         wp_enqueue_script(
-            "typedpress-identity-admin",
+            "spacepress-identity-admin",
             plugins_url("build/admin.js", $file),
             [],
             self::VERSION,

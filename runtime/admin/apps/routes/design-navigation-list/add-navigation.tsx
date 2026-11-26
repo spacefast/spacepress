@@ -5,8 +5,8 @@ import { store as coreStore } from '@wordpress/core-data';
 import { store as noticesStore } from '@wordpress/notices';
 import { useDispatch } from '@wordpress/data';
 import { Button } from '@wordpress/ui';
-// eslint-disable-next-line @typedpress-admin/design-system/use-new-components -- See: ARC-1359
-import { Stack, InputControl } from '@typedpress-admin/design-system';
+// eslint-disable-next-line @spacepress-admin/design-system/use-new-components -- See: ARC-1359
+import { Stack, InputControl } from '@spacepress-admin/design-system';
 import { Modal } from '@wordpress/components';
 
 const NAVIGATION_POST_TYPE = 'wp_navigation';
@@ -47,7 +47,7 @@ export const AddNavigationModal = ( {
 
 			if ( savedRecord ) {
 				createSuccessNotice(
-					__( 'Navigation menu created successfully.', 'typedpress-admin' ),
+					__( 'Navigation menu created successfully.', 'spacepress-admin' ),
 					{
 						type: 'snackbar',
 					}
@@ -66,7 +66,7 @@ export const AddNavigationModal = ( {
 			createErrorNotice(
 				sprintf(
 					/* translators: %s: error message describing why the navigation menu could not be created. */
-					__( 'Unable to create navigation menu: %s', 'typedpress-admin' ),
+					__( 'Unable to create navigation menu: %s', 'spacepress-admin' ),
 					errorMessage
 				),
 				{
@@ -81,7 +81,7 @@ export const AddNavigationModal = ( {
 
 	return (
 		<Modal
-			title={ __( 'Add New Navigation Menu', 'typedpress-admin' ) }
+			title={ __( 'Add New Navigation Menu', 'spacepress-admin' ) }
 			onRequestClose={ () => closeModal?.() }
 			focusOnMount="firstContentElement"
 			size="small"
@@ -98,10 +98,10 @@ export const AddNavigationModal = ( {
 							autoComplete="off"
 							value={ menuTitle }
 							onValueChange={ setMenuTitle }
-							label={ __( 'Name', 'typedpress-admin' ) }
+							label={ __( 'Name', 'spacepress-admin' ) }
 							placeholder={ __(
 								'Enter menu name',
-								'typedpress-admin'
+								'spacepress-admin'
 							) }
 							disabled={ isBusy }
 						/>
@@ -112,7 +112,7 @@ export const AddNavigationModal = ( {
 								disabled={ isBusy }
 								focusableWhenDisabled
 							>
-								{ __( 'Cancel', 'typedpress-admin' ) }
+								{ __( 'Cancel', 'spacepress-admin' ) }
 							</Button>
 							<Button
 								variant="solid"
@@ -121,7 +121,7 @@ export const AddNavigationModal = ( {
 								disabled={ isBusy || ! menuTitle?.trim() }
 								focusableWhenDisabled
 							>
-								{ __( 'Create Menu', 'typedpress-admin' ) }
+								{ __( 'Create Menu', 'spacepress-admin' ) }
 							</Button>
 						</Stack>
 					</Stack>

@@ -1,7 +1,7 @@
 import type { Plugin } from '@wordpress/core-data';
 import { __, _n, sprintf } from '@wordpress/i18n';
 import { linkOff } from '@wordpress/icons';
-import type { Action } from '@typedpress-admin/dataviews';
+import type { Action } from '@spacepress-admin/dataviews';
 import usePluginService from '../hooks/use-plugin-service';
 import { bulkAction } from './helpers/bulk-runner';
 
@@ -15,7 +15,7 @@ export const useDisableAutoUpdatesPluginAction = (): Action< Plugin > => {
 
 	return {
 		id: 'disable-auto-updates-plugin',
-		label: __( 'Disable auto-updates', 'typedpress-admin' ),
+		label: __( 'Disable auto-updates', 'spacepress-admin' ),
 		isPrimary: false,
 		icon: linkOff,
 		callback: async ( plugins: Plugin[] ) => {
@@ -37,7 +37,7 @@ export const useDisableAutoUpdatesPluginAction = (): Action< Plugin > => {
 									'Disabled auto-updates on %d plugin.',
 									'Disabled auto-updates on %d plugins.',
 									fulfilled,
-									'typedpress-admin'
+									'spacepress-admin'
 								),
 								fulfilled
 							);
@@ -53,7 +53,7 @@ export const useDisableAutoUpdatesPluginAction = (): Action< Plugin > => {
 									'%d plugin failed to disable auto-updates.',
 									'%d plugins failed to disable auto-updates.',
 									rejected,
-									'typedpress-admin'
+									'spacepress-admin'
 								),
 								rejected
 							);

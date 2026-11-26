@@ -9,16 +9,16 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\Clock\Test;
+namespace SpacePress\Identity\Vendor\Symfony\Component\Clock\Test;
 
 use PHPUnit\Framework\Attributes\After;
 use PHPUnit\Framework\Attributes\Before;
 use PHPUnit\Framework\Attributes\BeforeClass;
-use TypedPress\Identity\Vendor\Symfony\Component\Clock\Clock;
-use TypedPress\Identity\Vendor\Symfony\Component\Clock\ClockInterface;
-use TypedPress\Identity\Vendor\Symfony\Component\Clock\MockClock;
+use SpacePress\Identity\Vendor\Symfony\Component\Clock\Clock;
+use SpacePress\Identity\Vendor\Symfony\Component\Clock\ClockInterface;
+use SpacePress\Identity\Vendor\Symfony\Component\Clock\MockClock;
 
-use function TypedPress\Identity\Vendor\Symfony\Component\Clock\now;
+use function SpacePress\Identity\Vendor\Symfony\Component\Clock\now;
 
 /**
  * Helps with mocking the time in your test cases.

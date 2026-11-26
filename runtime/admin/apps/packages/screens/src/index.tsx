@@ -7,8 +7,8 @@ import {
 	type Action,
 	type Field,
 	type View,
-} from '@typedpress-admin/dataviews';
-import { DataViews, useView } from '@typedpress-admin/views';
+} from '@spacepress-admin/dataviews';
+import { DataViews, useView } from '@spacepress-admin/views';
 import {
 	actionInput,
 	display,
@@ -26,8 +26,8 @@ import './style.scss';
 
 export * from './model';
 
-/** Which admin hosts the screen: TypedPress Admin's route, or a classic wp-admin page. */
-export type Host = 'typedpress-admin' | 'classic';
+/** Which admin hosts the screen: SpacePress Admin's route, or a classic wp-admin page. */
+export type Host = 'spacepress-admin' | 'classic';
 
 type Load< T > =
 	| { kind: 'loading' }
@@ -44,7 +44,7 @@ function message( e: unknown ): string {
 /** The declaration, from the server, for the signed-in user. */
 export function fetchScreen( id: string ): Promise< Screen > {
 	return apiFetch< Screen >( {
-		path: `/typedpress-admin/v1/screens/${ encodeURIComponent( id ) }`,
+		path: `/spacepress-admin/v1/screens/${ encodeURIComponent( id ) }`,
 	} );
 }
 
@@ -76,7 +76,7 @@ function fields( declared: ScreenField[] ): Field< Item >[] {
 		filterBy: false,
 		getValue: ( { item } ) => item[ f.id ],
 		render: ( { item } ) => (
-			<span className="typedpress-admin-screen__value">
+			<span className="spacepress-admin-screen__value">
 				{ display( item[ f.id ] ) }
 			</span>
 		),
@@ -210,7 +210,7 @@ function ScreenList( {
 					size="small"
 				>
 					<p>{ confirming.action.confirm }</p>
-					<div className="typedpress-admin-screen__confirm">
+					<div className="spacepress-admin-screen__confirm">
 						<Button variant="tertiary" onClick={ () => setConfirming( null ) }>
 							Cancel
 						</Button>
@@ -265,7 +265,7 @@ function ScreenForm( {
 	const submit = declared.submit;
 	return (
 		<form
-			className="typedpress-admin-screen__form"
+			className="spacepress-admin-screen__form"
 			onSubmit={ ( e ) => {
 				e.preventDefault();
 				if ( ! submit || busy ) {
@@ -294,7 +294,7 @@ function ScreenForm( {
 }
 
 /**
- * One declared screen. The same component runs on TypedPress Admin's `/screens/<id>` route and on the
+ * One declared screen. The same component runs on SpacePress Admin's `/screens/<id>` route and on the
  * classic wp-admin page; only the surrounding chrome (title, layout) differs.
  */
 export function ScreenBody( {
@@ -304,7 +304,7 @@ export function ScreenBody( {
 }: {
 	id: string;
 	host: Host;
-	/** The host's chrome around the body: TypedPress Admin's Page with the declared title. */
+	/** The host's chrome around the body: SpacePress Admin's Page with the declared title. */
 	frame?: ( screen: Screen | null, body: JSX.Element ) => JSX.Element;
 } ) {
 	const [ state, setState ] = useState< Load< Screen > >( { kind: 'loading' } );
@@ -326,14 +326,14 @@ export function ScreenBody( {
 	const summary = Array.isArray( screen.data ) ? screen.data : screen.data == null ? [] : [ screen.data ];
 	return frame(
 		screen,
-		<div className={ `typedpress-admin-screen typedpress-admin-screen--${ host }` } data-screen={ screen.id }>
+		<div className={ `spacepress-admin-screen spacepress-admin-screen--${ host }` } data-screen={ screen.id }>
 			{ notice && (
 				<Notice status={ notice.status } onRemove={ () => setNotice( null ) }>
 					{ notice.text }
 				</Notice>
 			) }
 			{ summary.map( ( line, i ) => (
-				<p key={ i } className="typedpress-admin-screen__summary">
+				<p key={ i } className="spacepress-admin-screen__summary">
 					{ display( line ) }
 				</p>
 			) ) }

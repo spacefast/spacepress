@@ -9,9 +9,9 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\Serializer\Context\Normalizer;
+namespace SpacePress\Identity\Vendor\Symfony\Component\Serializer\Context\Normalizer;
 
-use TypedPress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\PropertyNormalizer;
+use SpacePress\Identity\Vendor\Symfony\Component\Serializer\Normalizer\PropertyNormalizer;
 
 /**
  * A helper providing autocompletion for available PropertyNormalizer options.

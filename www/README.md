@@ -4,12 +4,12 @@ The official website and documentation for **SpacePress** (`https://spacepress.d
 
 ## What's Inside
 
-- `typedpress.config.ts` & `tp/schema.ts` — defines the hierarchical `docs` collection (`content/docs/**/*.md`), `posts` (`wp.posts.extend` synced from `content/posts/*.md` with comments), `shares` SQL table (saved Playground edits), and `examples` SQL table (curated showcase with GitHub star counts)
-- `tp/server.ts` — `share` public action, `refreshStars` Action Scheduler background job, and `refreshStarsNow` admin action
-- `tp/app/` — Convex-inspired landing page (`/`), Quick Start (`/quick-start`), 14-section Interactive Engineering Handbook (`/handbook`, with `/guide` redirect), Browser Playground (`/play`), Documentation (`/docs` & `/docs/[...path]`), Examples (`/examples` & `/api/examples.json`), and Blog (`/blog` & `/blog/[slug]`)
-- `browser/` — client scripts bundled into `public/site.js` (`@pierre/diffs`, `@pierre/trees`, `<tp-sandbox>` inline WASM compiler, `<tp-play>` full Playground + WordPress Playground runner, copy buttons, and sticky TOC scroll spy)
+- `spacepress.config.ts` & `sp/schema.ts` — defines the hierarchical `docs` collection (`content/docs/**/*.md`), `posts` (`wp.posts.extend` synced from `content/posts/*.md` with comments), `shares` SQL table (saved Playground edits), and `examples` SQL table (curated showcase with GitHub star counts)
+- `sp/server.ts` — `share` public action, `refreshStars` Action Scheduler background job, and `refreshStarsNow` admin action
+- `sp/app/` — Convex-inspired landing page (`/`), Quick Start (`/quick-start`), 14-section Interactive Engineering Handbook (`/handbook`, with `/guide` redirect), Browser Playground (`/play`), Documentation (`/docs` & `/docs/[...path]`), Examples (`/examples` & `/api/examples.json`), and Blog (`/blog` & `/blog/[slug]`)
+- `browser/` — client scripts bundled into `public/site.js` (`@pierre/diffs`, `@pierre/trees`, `<sp-sandbox>` inline WASM compiler, `<sp-play>` full Playground + WordPress Playground runner, copy buttons, and sticky TOC scroll spy)
 - `lib/` — browser compiler wrapper, WordPress Playground blueprint generator, and example showcase loaders
-- `content/` — Markdown documentation (`content/docs/**/*.md`, also embedded into `typedpress mcp`) and blog posts (`content/posts/*.md`)
+- `content/` — Markdown documentation (`content/docs/**/*.md`, also embedded into `spacepress mcp`) and blog posts (`content/posts/*.md`)
 
 ## Build and run locally
 
@@ -29,12 +29,12 @@ GitHub for the header badge.
 
 ```bash
 cd www
-../target/debug/typedpress dev --port 8960 --detach
-TP_APP_PASSWORD="admin:<app-password>" ../target/debug/typedpress sync --no-commit
-TP_APP_PASSWORD="admin:<app-password>" npm run seed
+../target/debug/spacepress dev --port 8960 --detach
+SP_APP_PASSWORD="admin:<app-password>" ../target/debug/spacepress sync --no-commit
+SP_APP_PASSWORD="admin:<app-password>" npm run seed
 ```
 
-Stop the local server with `../target/debug/typedpress dev stop`. The dev site and
+Stop the local server with `../target/debug/spacepress dev stop`. The dev site and
 its content remain on disk.
 
 ## Test a fresh WordPress install
@@ -52,7 +52,7 @@ npm test --prefix www
 CI installs Chromium with `--with-deps` on Linux. The suite copies the site into
 a temporary project, starts WordPress on SQLite, syncs Markdown, and seeds the
 examples before running Chromium. It stops and removes its own site afterward.
-To use another port, set `TP_WWW_PORT` for the tests and use the same port in
+To use another port, set `SP_WWW_PORT` for the tests and use the same port in
 `PLUGINS_URL` when building.
 
 ## Serve the Playground ZIPs

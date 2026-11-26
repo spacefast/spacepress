@@ -26,7 +26,7 @@ A `**` folder pattern maps subdirectories into parent/child hierarchy (`index.md
 
 ## Running sync & CI workflows
 
-- Run `typedpress sync` to perform a 3-way merge between local Markdown files and WordPress. Front matter is validated against your TypeScript schema before writing.
-- Run `typedpress init --github` to scaffold GitHub Actions for automated content sync.
-- Configure `typedpress git-dispatch` so edits saved inside WordPress Admin trigger a repository dispatch event automatically.
+- Run `spacepress sync` to perform a 3-way merge between local Markdown files and WordPress. Front matter is validated against your TypeScript schema before writing.
+- Run `spacepress init --github` to scaffold GitHub Actions for automated content sync.
+- Configure `spacepress git-dispatch` so edits saved inside WordPress Admin trigger a repository dispatch event automatically.
 - Enable `seed: true` in `defineConfig()` to populate synced records when a fresh deployment activates the plugin without overwriting existing editorial changes.

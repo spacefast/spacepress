@@ -9,9 +9,9 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\Serializer\Mapping;
+namespace SpacePress\Identity\Vendor\Symfony\Component\Serializer\Mapping;
 
-use TypedPress\Identity\Vendor\Symfony\Component\PropertyAccess\PropertyPath;
+use SpacePress\Identity\Vendor\Symfony\Component\PropertyAccess\PropertyPath;
 
 /**
  * Stores metadata needed for serializing and deserializing attributes.

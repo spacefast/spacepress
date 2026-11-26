@@ -1,6 +1,6 @@
 //! Executable joins between compatibility claims, diagnostics, authoring and PHP behavior.
 
-// Runs the `typedpress` binary: only with the cli feature (the browser build of the core has none).
+// Runs the `spacepress` binary: only with the cli feature (the browser build of the core has none).
 #![cfg(feature = "cli")]
 use serde_json::{Value, json};
 use std::collections::HashSet;
@@ -11,7 +11,7 @@ fn root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
 
-/// Writes an app module, creating its directory (app code lives under `tp/`).
+/// Writes an app module, creating its directory (app code lives under `sp/`).
 fn write_app(path: impl AsRef<Path>, contents: impl AsRef<[u8]>) -> std::io::Result<()> {
     std::fs::create_dir_all(path.as_ref().parent().unwrap())?;
     std::fs::write(path, contents)
@@ -23,10 +23,10 @@ fn copy_app(from: impl AsRef<Path>, to: impl AsRef<Path>) -> std::io::Result<u64
     std::fs::copy(from, to)
 }
 
-/// A project whose app is `source` and the files beside it: the sources go under `tp/` (the only
-/// place app code loads from) and the root `typedpress.config.ts` re-exports `source`'s config.
+/// A project whose app is `source` and the files beside it: the sources go under `sp/` (the only
+/// place app code loads from) and the root `spacepress.config.ts` re-exports `source`'s config.
 fn project_from(project: &Path, source: &Path, siblings: &[&Path]) {
-    let app = project.join("tp");
+    let app = project.join("sp");
     std::fs::create_dir_all(&app).unwrap();
     for sibling in siblings {
         std::fs::copy(sibling, app.join(sibling.file_name().unwrap())).unwrap();
@@ -34,14 +34,14 @@ fn project_from(project: &Path, source: &Path, siblings: &[&Path]) {
     let name = source.file_name().unwrap().to_str().unwrap();
     std::fs::copy(source, app.join(name)).unwrap();
     std::fs::write(
-        project.join("typedpress.config.ts"),
-        format!("export {{ default }} from \"./tp/{name}\";\n"),
+        project.join("spacepress.config.ts"),
+        format!("export {{ default }} from \"./sp/{name}\";\n"),
     )
     .unwrap();
 }
 
 fn first() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_typedpress"))
+    Command::new(env!("CARGO_BIN_EXE_spacepress"))
 }
 
 fn checked(project: &Path) -> (Output, Value) {
@@ -65,7 +65,7 @@ fn php(script: &str, args: &[&Path]) -> Value {
 }
 
 fn build_wp(project: &Path) -> PathBuf {
-    let output = project.join("tp/dist/wp-content");
+    let output = project.join("sp/dist/wp-content");
     let out = first().arg("build").arg(project).output().unwrap();
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     output
@@ -114,16 +114,16 @@ fn registered_refusals_have_live_codes_and_no_stale_fixture_links() {
 #[test]
 fn json_check_groups_independent_module_errors_and_reports_utf16_columns() {
     let tmp = tempfile::tempdir().unwrap();
-    let source = "import './a';\nimport './b';\n/*😀*/ abstract class TypedPress {}\nabstract class Second {}\nconst clock = Date.now();\n";
-    let source = source.replace("'./a'", "'./tp/a'").replace("'./b'", "'./tp/b'");
+    let source = "import './a';\nimport './b';\n/*😀*/ abstract class SpacePress {}\nabstract class Second {}\nconst clock = Date.now();\n";
+    let source = source.replace("'./a'", "'./sp/a'").replace("'./b'", "'./sp/b'");
     let source = source.as_str();
-    std::fs::write(tmp.path().join("typedpress.config.ts"), source).unwrap();
+    std::fs::write(tmp.path().join("spacepress.config.ts"), source).unwrap();
     for name in ["a.ts", "b.ts"] {
-        write_app(tmp.path().join("tp").join(name), "abstract class Imported {}\n").unwrap();
+        write_app(tmp.path().join("sp").join(name), "abstract class Imported {}\n").unwrap();
     }
     let (out, report) = checked(tmp.path());
     assert_eq!(out.status.code(), Some(1));
-    assert_eq!(report["schema"], "typedpress-diagnostics");
+    assert_eq!(report["schema"], "spacepress-diagnostics");
     assert_eq!(report["version"], 1);
     assert_eq!(report["offsetEncoding"], "utf-8");
     assert_eq!(report["positionEncoding"], "utf-16");
@@ -138,13 +138,13 @@ fn json_check_groups_independent_module_errors_and_reports_utf16_columns() {
             .all(|d| d["code"] == "F1101")
     );
     let loc = &report["diagnostics"][0]["location"];
-    assert_eq!(loc["file"], "typedpress.config.ts");
-    assert_eq!(loc["start"], source.find("abstract class TypedPress").unwrap());
+    assert_eq!(loc["file"], "spacepress.config.ts");
+    assert_eq!(loc["start"], source.find("abstract class SpacePress").unwrap());
     assert_eq!(loc["column"], "/*😀*/ ".encode_utf16().count() + 1);
     assert_eq!(loc["line"], 3);
     assert_eq!(report, checked(tmp.path()).1, "diagnostics must be deterministic");
-    assert!(!tmp.path().join("tp/_generated").exists() && !tmp.path().join("tp/dist").exists());
-    assert!(!tmp.path().join(".tp").exists());
+    assert!(!tmp.path().join("sp/_generated").exists() && !tmp.path().join("sp/dist").exists());
+    assert!(!tmp.path().join(".sp").exists());
     // A partially lowered program must never run the Date.now() declaration.
     assert!(!report.to_string().contains("F2101"));
     let human = first().arg("check").arg(tmp.path()).output().unwrap();
@@ -155,7 +155,7 @@ fn json_check_groups_independent_module_errors_and_reports_utf16_columns() {
 #[test]
 fn successful_json_check_and_the_reusable_recipe_write_nothing() {
     let tmp = tempfile::tempdir().unwrap();
-    for file in ["typedpress.config.ts", "tp/seo.ts"] {
+    for file in ["spacepress.config.ts", "sp/seo.ts"] {
         copy_app(root().join("examples/recipes").join(file), tmp.path().join(file)).unwrap();
     }
     let (out, report) = checked(tmp.path());
@@ -166,47 +166,47 @@ fn successful_json_check_and_the_reusable_recipe_write_nothing() {
     assert_eq!(std::fs::read_dir(tmp.path()).unwrap().count(), 2);
 }
 
-/// `typedpress check --json` lists each SQL index the deploy keeps and why it exists (spec §2.9).
+/// `spacepress check --json` lists each SQL index the deploy keeps and why it exists (spec §2.9).
 /// A validator receives the input it checks: a `json<string[]>()` value can be an object, so its
 /// parameter takes no PHP type and the validator's own `Array.isArray` answers (422, not a TypeError).
 #[test]
 fn a_validator_parameter_accepts_any_json_value() {
     let tmp = tempfile::tempdir().unwrap();
     write_app(
-        tmp.path().join("typedpress.config.ts"),
-        "import { defineConfig, json, table } from \"typedpress\";\nexport const things = table({ tags: json<string[]>().$default(() => []).validate((tags) => Array.isArray(tags) || \"Tags must be a list.\") });\nexport default defineConfig({ name: \"tags\" });\n",
+        tmp.path().join("spacepress.config.ts"),
+        "import { defineConfig, json, table } from \"spacepress\";\nexport const things = table({ tags: json<string[]>().$default(() => []).validate((tags) => Array.isArray(tags) || \"Tags must be a list.\") });\nexport default defineConfig({ name: \"tags\" });\n",
     )
     .unwrap();
     let wp = build_wp(tmp.path());
-    let functions = std::fs::read_to_string(wp.join("plugins/typedpress-app-tags/tp/app/functions.php")).unwrap();
+    let functions = std::fs::read_to_string(wp.join("plugins/spacepress-app-tags/sp/app/functions.php")).unwrap();
     assert!(
         functions.contains("function things__validate__tags( $tags )"),
         "{functions}"
     );
     let out = php(
         r#"require $argv[1]; require $argv[2];
-        echo json_encode([\TypedPressApp\things__validate__tags(new \TypedPress\JsObject(['a' => true]), new \TypedPress\JsObject())]);"#,
+        echo json_encode([\SpacePressApp\things__validate__tags(new \SpacePress\JsObject(['a' => true]), new \SpacePress\JsObject())]);"#,
         &[
-            &root().join("runtime/TypedPress/bootstrap.php"),
-            &wp.join("plugins/typedpress-app-tags/tp/app/functions.php"),
+            &root().join("runtime/SpacePress/bootstrap.php"),
+            &wp.join("plugins/spacepress-app-tags/sp/app/functions.php"),
         ],
     );
     assert_eq!(out, json!(["Tags must be a list."]));
 }
 
-/// `.index(fields, { unique? })` (spec §2.9): a compound index the migration creates and `typedpress check
+/// `.index(fields, { unique? })` (spec §2.9): a compound index the migration creates and `spacepress check
 /// --json` lists with its reason; a field the kind doesn't have is refused where it is written.
 #[test]
 fn a_declared_index_is_created_and_listed() {
     let tmp = tempfile::tempdir().unwrap();
     write_app(
-        tmp.path().join("typedpress.config.ts"),
-        "import { defineConfig } from \"typedpress\";\nexport default defineConfig({ name: \"likes\" });\n",
+        tmp.path().join("spacepress.config.ts"),
+        "import { defineConfig } from \"spacepress\";\nexport default defineConfig({ name: \"likes\" });\n",
     )
     .unwrap();
     write_app(
-        tmp.path().join("tp/schema.ts"),
-        "import { table, integer } from \"typedpress\";\nexport const likes = table({ post: integer(), author: integer() }).index([\"post\", \"author\"], { unique: true });\n",
+        tmp.path().join("sp/schema.ts"),
+        "import { table, integer } from \"spacepress\";\nexport const likes = table({ post: integer(), author: integer() }).index([\"post\", \"author\"], { unique: true });\n",
     )
     .unwrap();
     let (out, report) = checked(tmp.path());
@@ -217,7 +217,7 @@ fn a_declared_index_is_created_and_listed() {
     );
     let built = first().args(["build", "--quiet"]).arg(tmp.path()).output().unwrap();
     assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
-    let init_dir = std::fs::read_dir(tmp.path().join("tp/_generated/migrations"))
+    let init_dir = std::fs::read_dir(tmp.path().join("sp/_generated/migrations"))
         .unwrap()
         .map(|e| e.unwrap().path())
         .find(|p| p.is_dir())
@@ -229,8 +229,8 @@ fn a_declared_index_is_created_and_listed() {
     );
 
     write_app(
-        tmp.path().join("tp/schema.ts"),
-        "import { table, integer } from \"typedpress\";\nexport const likes = table({ post: integer() }).index([\"psot\"]);\n",
+        tmp.path().join("sp/schema.ts"),
+        "import { table, integer } from \"spacepress\";\nexport const likes = table({ post: integer() }).index([\"psot\"]);\n",
     )
     .unwrap();
     let (out, report) = checked(tmp.path());
@@ -247,13 +247,13 @@ fn a_declared_index_is_created_and_listed() {
 fn json_check_lists_each_index_with_its_reason() {
     let tmp = tempfile::tempdir().unwrap();
     copy_app(
-        root().join("examples/pantry/typedpress.config.ts"),
-        tmp.path().join("typedpress.config.ts"),
+        root().join("examples/pantry/spacepress.config.ts"),
+        tmp.path().join("spacepress.config.ts"),
     )
     .unwrap();
     copy_app(
-        root().join("examples/pantry/tp/lib/fields.ts"),
-        tmp.path().join("tp/lib/fields.ts"),
+        root().join("examples/pantry/sp/lib/fields.ts"),
+        tmp.path().join("sp/lib/fields.ts"),
     )
     .unwrap();
     let (out, report) = checked(tmp.path());
@@ -272,7 +272,7 @@ fn json_check_lists_each_index_with_its_reason() {
         json!({ "table": "items", "name": "slug_unique", "unique": true, "columns": ["slug", "_live"], "reason": "`slug` is .unique()" })
     );
     assert_eq!(
-        find("items", "tp_items_locationId_fk")["reason"],
+        find("items", "sp_items_locationId_fk")["reason"],
         "`locationId` references locations: MySQL indexes a foreign key"
     );
     // Inferred (spec §2.9): a field a compiled `where` or `orderBy` names gets an index, unless one
@@ -301,7 +301,7 @@ fn json_check_lists_each_index_with_its_reason() {
 #[test]
 fn nested_presentation_reaches_scf_and_public_schema_without_storage_migrations() {
     let tmp = tempfile::tempdir().unwrap();
-    let config = r#"import { collection, defineConfig, text, group, repeater, blocks, json } from "typedpress";
+    let config = r#"import { collection, defineConfig, text, group, repeater, blocks, json } from "spacepress";
 const notes = collection({
   title: text(),
   seo: group({ summary: text().ui({ label: "Display name", help: "<b>Plain text</b>", placeholder: "Jane", width: 50 }).optional() }).ui({ label: "SEO" }).optional(),
@@ -310,19 +310,19 @@ const notes = collection({
   metadata: json().optional(),
 }, { title: "title" });
 export { notes }; export default defineConfig({ name: "presentation" });"#;
-    std::fs::write(tmp.path().join("typedpress.config.ts"), config).unwrap();
+    std::fs::write(tmp.path().join("spacepress.config.ts"), config).unwrap();
     let content = build_wp(tmp.path());
-    let schema = content.join("plugins/typedpress-app-presentation/tp/app/schema.php");
+    let schema = content.join("plugins/spacepress-app-presentation/sp/app/schema.php");
     let got = php(
         r#"
         require $argv[1];
-        $schema = \TypedPress\Schema::load($argv[2]);
+        $schema = \SpacePress\Schema::load($argv[2]);
         $columns = $schema->collection('notes')['columns'];
-        $field = \TypedPress\Wp\Scf::fieldFor($schema, 'field_seo', 'tp_seo', 'seo', $columns['seo'], []);
-        $json = \TypedPress\Wp\Scf::fieldFor($schema, 'field_metadata', 'tp_metadata', 'metadata', $columns['metadata'], []);
+        $field = \SpacePress\Wp\Scf::fieldFor($schema, 'field_seo', 'sp_seo', 'seo', $columns['seo'], []);
+        $json = \SpacePress\Wp\Scf::fieldFor($schema, 'field_metadata', 'sp_metadata', 'metadata', $columns['metadata'], []);
         echo json_encode(['columns' => $columns, 'public' => $schema->describe()['collections']['notes']['columns'], 'field' => $field, 'json' => $json]);
     "#,
-        &[&content.join("plugins/typedpress-runtime/tp/bootstrap.php"), &schema],
+        &[&content.join("plugins/spacepress-runtime/sp/bootstrap.php"), &schema],
     );
     let ui = json!({"label": "Display name", "help": "<b>Plain text</b>", "placeholder": "Jane", "width": 50});
     assert_eq!(got["columns"]["seo"]["fields"]["summary"]["ui"], ui);
@@ -345,7 +345,7 @@ export { notes }; export default defineConfig({ name: "presentation" });"#;
     assert_eq!(got["json"]["instructions"], "Enter valid JSON.");
     let ledger = || -> Vec<(String, Vec<u8>)> {
         let mut out = Vec::new();
-        for e in std::fs::read_dir(tmp.path().join("tp/_generated/migrations")).unwrap() {
+        for e in std::fs::read_dir(tmp.path().join("sp/_generated/migrations")).unwrap() {
             let p = e.unwrap().path();
             if p.is_dir() {
                 let name = p.file_name().unwrap().to_string_lossy().into_owned();
@@ -357,7 +357,7 @@ export { notes }; export default defineConfig({ name: "presentation" });"#;
     };
     let before = ledger();
     std::fs::write(
-        tmp.path().join("typedpress.config.ts"),
+        tmp.path().join("spacepress.config.ts"),
         config.replace("width: 50", "width: 100"),
     )
     .unwrap();
@@ -378,8 +378,8 @@ fn malformed_ui_is_rejected_including_unknown_keys_nulls_and_fractional_widths()
         "{ help: () => 'effect' }",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("typedpress.config.ts"), format!(
-            "import {{ collection, text, defineConfig }} from 'typedpress'; const notes = collection({{ title: text().ui({ui}).optional() }}, {{ title: 'title' }}); export {{ notes }}; export default defineConfig({{}});"
+        std::fs::write(tmp.path().join("spacepress.config.ts"), format!(
+            "import {{ collection, text, defineConfig }} from 'spacepress'; const notes = collection({{ title: text().ui({ui}).optional() }}, {{ title: 'title' }}); export {{ notes }}; export default defineConfig({{}});"
         )).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{ui}: {report}");
@@ -396,33 +396,33 @@ fn uri_vectors_agree_in_node_pure_evaluation_and_generated_php() {
     assert!(node.status.success());
     let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::write(tmp.path().join("typedpress.config.ts"), format!(r#"
-import {{ collection, text, json, defineConfig, mutation }} from "typedpress";
+    std::fs::write(tmp.path().join("spacepress.config.ts"), format!(r#"
+import {{ collection, text, json, defineConfig, mutation }} from "spacepress";
 const values = {values};
 const encoded = values.map(value => [encodeURI(value), encodeURIComponent(value)]);
 const notes = collection({{ title: text(), result: json().default(encoded).optional() }}, {{ title: "title" }});
 export {{ notes }}; const __encode = mutation({{}}, () => values.map(value => [encodeURI(value), encodeURIComponent(value)])); export {{ __encode as encode }}; export default defineConfig({{ name: "uri" }});
 "#)).unwrap();
     let content = build_wp(tmp.path());
-    let app = content.join("plugins/typedpress-app-uri/tp/app");
+    let app = content.join("plugins/spacepress-app-uri/sp/app");
     let result = php(
         r#"
         require $argv[1];
         $schema = require $argv[2] . '/schema.php';
         require $argv[2] . '/functions.php';
-        $fn = '\\TypedPressApp\\' . $schema['actions']['encode']['handler'];
-        echo \TypedPress\Js::jsonStringify([\TypedPress\Js::decodeJson($schema['collections']['notes']['columns']['result']['default']['json']), $fn(new \TypedPress\JsObject(), \TypedPress\Seam::ctx(['user' => null]))]);
+        $fn = '\\SpacePressApp\\' . $schema['actions']['encode']['handler'];
+        echo \SpacePress\Js::jsonStringify([\SpacePress\Js::decodeJson($schema['collections']['notes']['columns']['result']['default']['json']), $fn(new \SpacePress\JsObject(), \SpacePress\Seam::ctx(['user' => null]))]);
     "#,
-        &[&content.join("plugins/typedpress-runtime/tp/bootstrap.php"), &app],
+        &[&content.join("plugins/spacepress-runtime/sp/bootstrap.php"), &app],
     );
     assert_eq!(result, json!([expected, expected]));
     let invalid = php(
         r#"
         require $argv[1];
-        try { \TypedPress\Js::encodeURI("\xC0\xAF"); echo json_encode('accepted'); }
-        catch (\TypedPress\JsError $e) { echo json_encode($e->jsName); }
+        try { \SpacePress\Js::encodeURI("\xC0\xAF"); echo json_encode('accepted'); }
+        catch (\SpacePress\JsError $e) { echo json_encode($e->jsName); }
     "#,
-        &[&root().join("runtime/TypedPress/bootstrap.php")],
+        &[&root().join("runtime/SpacePress/bootstrap.php")],
     );
     assert_eq!(invalid, "URIError");
 }
@@ -432,25 +432,25 @@ fn timers_run_only_while_the_request_waits_and_refuse_to_outlive_the_handler() {
     // A timer still pending when the handler returns would fire after the response in Node; the PHP
     // request ends first, so the runtime refuses at handler end and names the creation site.
     let tmp = tempfile::tempdir().unwrap();
-    write_app(tmp.path().join("tp/timers.js"),
+    write_app(tmp.path().join("sp/timers.js"),
         "export function pending(){ setTimeout(() => {}, 5); return 1; }\nexport function cleared(){ const h = setTimeout(() => {}, 5); clearTimeout(h); AbortSignal.timeout(5); return 2; }\nexport function late(){ const h = setTimeout(() => {}, 'x'); return typeof h; }",
     )
     .unwrap();
-    std::fs::write(tmp.path().join("typedpress.config.ts"), "import {defineConfig, mutation} from 'typedpress';import {pending,cleared,late} from './tp/timers.js';const __pending = mutation({}, ()=>pending()); export { __pending as pending }; const __cleared = mutation({}, ()=>cleared()); export { __cleared as cleared }; const __late = mutation({}, ()=>late()); export { __late as late }; export default defineConfig({ name:'timers' });").unwrap();
+    std::fs::write(tmp.path().join("spacepress.config.ts"), "import {defineConfig, mutation} from 'spacepress';import {pending,cleared,late} from './sp/timers.js';const __pending = mutation({}, ()=>pending()); export { __pending as pending }; const __cleared = mutation({}, ()=>cleared()); export { __cleared as cleared }; const __late = mutation({}, ()=>late()); export { __late as late }; export default defineConfig({ name:'timers' });").unwrap();
     let content = build_wp(tmp.path());
     let result = php(
         r#"require $argv[1];$s=require $argv[2].'/schema.php';require $argv[2].'/functions.php';
         $out=[];
         foreach (['pending','cleared','late'] as $a) {
-            $fn='\\TypedPressApp\\'.$s['actions'][$a]['handler'];
-            try { $out[]=['ok', \TypedPress\Timers::run(fn() => $fn(new \TypedPress\JsObject(), \TypedPress\Seam::ctx(['user'=>null])))]; }
-            catch (\TypedPress\JsError $e) { $out[]=[$e->jsName, $e->getMessage()]; }
-            $out[]=\TypedPress\Timers::pending();
+            $fn='\\SpacePressApp\\'.$s['actions'][$a]['handler'];
+            try { $out[]=['ok', \SpacePress\Timers::run(fn() => $fn(new \SpacePress\JsObject(), \SpacePress\Seam::ctx(['user'=>null])))]; }
+            catch (\SpacePress\JsError $e) { $out[]=[$e->jsName, $e->getMessage()]; }
+            $out[]=\SpacePress\Timers::pending();
         }
         echo json_encode($out);"#,
         &[
-            &content.join("plugins/typedpress-runtime/tp/bootstrap.php"),
-            &content.join("plugins/typedpress-app-timers/tp/app"),
+            &content.join("plugins/spacepress-runtime/sp/bootstrap.php"),
+            &content.join("plugins/spacepress-app-timers/sp/app"),
         ],
     );
     assert_eq!(
@@ -474,23 +474,23 @@ fn timers_run_only_while_the_request_waits_and_refuse_to_outlive_the_handler() {
     // (due, creation) order, and refuses waits past the request budget.
     let order = php(
         r#"require $argv[1];
-        putenv('TP_NOW=1000'); putenv('TP_TIMER_BUDGET_MS=100');
+        putenv('SP_NOW=1000'); putenv('SP_TIMER_BUDGET_MS=100');
         $log=[];
-        \TypedPress\Timers::set(function() use (&$log) { $log[]='b'; }, 20);
-        \TypedPress\Timers::set(function() use (&$log) { $log[]='a'; }, 10);
-        \TypedPress\Timers::set(function() use (&$log) { $log[]='c'; }, 20);
-        $signal = \TypedPress\JsAbortSignal::timeout(15);
-        while (\TypedPress\Timers::runNext()) { $log[] = \TypedPress\Timers::clock(); }
-        \TypedPress\Timers::set(function() {}, 500);
-        try { \TypedPress\Timers::runNext(); $log[]='slept'; } catch (\TypedPress\JsError $e) { $log[]=$e->jsName; }
+        \SpacePress\Timers::set(function() use (&$log) { $log[]='b'; }, 20);
+        \SpacePress\Timers::set(function() use (&$log) { $log[]='a'; }, 10);
+        \SpacePress\Timers::set(function() use (&$log) { $log[]='c'; }, 20);
+        $signal = \SpacePress\JsAbortSignal::timeout(15);
+        while (\SpacePress\Timers::runNext()) { $log[] = \SpacePress\Timers::clock(); }
+        \SpacePress\Timers::set(function() {}, 500);
+        try { \SpacePress\Timers::runNext(); $log[]='slept'; } catch (\SpacePress\JsError $e) { $log[]=$e->jsName; }
         // A throwing abort listener: dispatch continues (as in Node), then the error ends the
         // request where Node would report it as uncaught.
-        $faulty = new \TypedPress\JsAbortController(); $seen = [];
-        $faulty->signal->addEventListener('abort', function () use (&$seen) { $seen[] = 1; throw new \TypedPress\JsError('listener'); });
+        $faulty = new \SpacePress\JsAbortController(); $seen = [];
+        $faulty->signal->addEventListener('abort', function () use (&$seen) { $seen[] = 1; throw new \SpacePress\JsError('listener'); });
         $faulty->signal->addEventListener('abort', function () use (&$seen) { $seen[] = 2; });
-        try { $faulty->abort(); } catch (\TypedPress\JsError $e) { $seen[] = $e->getMessage(); }
+        try { $faulty->abort(); } catch (\SpacePress\JsError $e) { $seen[] = $e->getMessage(); }
         echo json_encode([$log, $signal->aborted, $signal->reason->jsName, $seen]);"#,
-        &[&root().join("runtime/TypedPress/bootstrap.php")],
+        &[&root().join("runtime/SpacePress/bootstrap.php")],
     );
     assert_eq!(
         order,
@@ -529,18 +529,18 @@ fn url_vectors_agree_in_node_and_generated_php() {
     assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
     let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
     let tmp = tempfile::tempdir().unwrap();
-    copy_app(dir.join("url.js"), tmp.path().join("tp/url.js")).unwrap();
+    copy_app(dir.join("url.js"), tmp.path().join("sp/url.js")).unwrap();
     std::fs::write(tmp.path().join("cases.json"), Value::Array(cases).to_string()).unwrap();
     std::fs::write(
-        tmp.path().join("typedpress.config.ts"),
-        r#"import { defineConfig, mutation } from "typedpress";
-import { parseAll, searchParams, invalid } from "./tp/url.js";
+        tmp.path().join("spacepress.config.ts"),
+        r#"import { defineConfig, mutation } from "spacepress";
+import { parseAll, searchParams, invalid } from "./sp/url.js";
 const __probe = mutation({}, () => [searchParams(), invalid()]); export { __probe as probe }; export default defineConfig({ name: "url" });
 "#,
     )
     .unwrap();
     let content = build_wp(tmp.path());
-    let app = content.join("plugins/typedpress-app-url/tp/app");
+    let app = content.join("plugins/spacepress-app-url/sp/app");
     // parseAll takes a data argument the action input can't carry at this size; call the compiled
     // module function directly with the decoded cases.
     let result = php(
@@ -548,23 +548,23 @@ const __probe = mutation({}, () => [searchParams(), invalid()]); export { __prob
         require $argv[1];
         $schema = require $argv[2] . '/schema.php';
         require $argv[2] . '/functions.php';
-        $fn = '\\TypedPressApp\\' . $schema['actions']['probe']['handler'];
-        $probe = $fn(new \TypedPress\JsObject(), \TypedPress\Seam::ctx(['user' => null]));
-        $cases = \TypedPress\Js::decodeJson(file_get_contents($argv[3]));
+        $fn = '\\SpacePressApp\\' . $schema['actions']['probe']['handler'];
+        $probe = $fn(new \SpacePress\JsObject(), \SpacePress\Seam::ctx(['user' => null]));
+        $cases = \SpacePress\Js::decodeJson(file_get_contents($argv[3]));
         $parse = static function ($cases) {
             $props = ['href', 'origin', 'protocol', 'username', 'password', 'host', 'hostname', 'port', 'pathname', 'search', 'hash'];
             $out = [];
             foreach ($cases->a as $c) {
-                $base = \TypedPress\Js::dynamicGet($c, 'base');
-                $parsed = \TypedPress\Js::dynamicStaticCall('URL', 'parse', new \TypedPress\JsArray($base === null ? [\TypedPress\Js::dynamicGet($c, 'input')] : [\TypedPress\Js::dynamicGet($c, 'input'), $base]));
-                $out[] = $parsed === null ? null : new \TypedPress\JsArray(array_map(static fn ($p) => \TypedPress\Js::dynamicGet($parsed, $p), $props));
+                $base = \SpacePress\Js::dynamicGet($c, 'base');
+                $parsed = \SpacePress\Js::dynamicStaticCall('URL', 'parse', new \SpacePress\JsArray($base === null ? [\SpacePress\Js::dynamicGet($c, 'input')] : [\SpacePress\Js::dynamicGet($c, 'input'), $base]));
+                $out[] = $parsed === null ? null : new \SpacePress\JsArray(array_map(static fn ($p) => \SpacePress\Js::dynamicGet($parsed, $p), $props));
             }
-            return new \TypedPress\JsArray($out);
+            return new \SpacePress\JsArray($out);
         };
-        echo \TypedPress\Js::jsonStringify(new \TypedPress\JsArray([$parse($cases), ...$probe->a]));
+        echo \SpacePress\Js::jsonStringify(new \SpacePress\JsArray([$parse($cases), ...$probe->a]));
     "#,
         &[
-            &content.join("plugins/typedpress-runtime/tp/bootstrap.php"),
+            &content.join("plugins/spacepress-runtime/sp/bootstrap.php"),
             &app,
             &tmp.path().join("cases.json"),
         ],
@@ -633,7 +633,7 @@ fn syntax_and_environment_failures_also_produce_a_complete_json_envelope() {
                 .contains(project.to_str().unwrap())
         );
     }
-    std::fs::write(tmp.path().join("typedpress.config.ts"), "const x = ;").unwrap();
+    std::fs::write(tmp.path().join("spacepress.config.ts"), "const x = ;").unwrap();
     let (out, syntax) = checked(tmp.path());
     assert_eq!(out.status.code(), Some(1));
     assert_eq!(syntax["diagnostics"][0]["code"], "F1001");
@@ -667,10 +667,10 @@ fn tagged_templates_refuse_lone_surrogates_except_under_string_raw() {
     ] {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(
-            tmp.path().join("typedpress.config.ts"),
+            tmp.path().join("spacepress.config.ts"),
             format!(
                 r#"
-import {{ collection, text, defineConfig, mutation }} from "typedpress";
+import {{ collection, text, defineConfig, mutation }} from "spacepress";
 const notes = collection({{ title: text() }}, {{ title: "title" }});
 const __raw = mutation({{}}, {handler});
 export {{ notes, __raw as raw }}; export default defineConfig({{}});
@@ -707,8 +707,8 @@ fn uri_encoding_refuses_coercion_and_discarded_arguments() {
             } else {
                 expression.to_string()
             };
-            std::fs::write(tmp.path().join("typedpress.config.ts"), format!(r#"
-import {{ collection, text, defineConfig, mutation }} from "typedpress";
+            std::fs::write(tmp.path().join("spacepress.config.ts"), format!(r#"
+import {{ collection, text, defineConfig, mutation }} from "spacepress";
 const result = {invocation};
 const notes = collection({{ title: text() }}, {{ title: "title" }});
 export {{ notes }}; const __encode = mutation({{}}, {handler_body}); export {{ __encode as encode }}; export default defineConfig({{}});
@@ -716,7 +716,7 @@ export {{ notes }}; const __encode = mutation({{}}, {handler_body}); export {{ _
             let (out, report) = checked(tmp.path());
             assert_eq!(out.status.code(), Some(1), "{expression}: {report}");
             assert_eq!(report["ok"], false);
-            assert!(!tmp.path().join(".tp").exists());
+            assert!(!tmp.path().join(".sp").exists());
         }
     }
 }
@@ -768,10 +768,10 @@ fn type_guards_validate_their_domains_and_boolean_returns() {
     ] {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(
-            tmp.path().join("typedpress.config.ts"),
+            tmp.path().join("spacepress.config.ts"),
             format!(
                 r#"
-import {{ defineConfig, mutation }} from "typedpress";
+import {{ defineConfig, mutation }} from "spacepress";
 {helper}
 const __probe = mutation({{}}, () => guard); export {{ __probe as probe }}; export default defineConfig({{}});
 "#
@@ -837,7 +837,7 @@ export function objects(value) {
   return holder.value;
 }
 "#;
-    write_app(tmp.path().join("tp/helpers.mjs"), helper).unwrap();
+    write_app(tmp.path().join("sp/helpers.mjs"), helper).unwrap();
     let mutation = r#"
 function mutation() { const object = { count: 1 }; replaceCount(object); return object.count + 1; }
 function copiedSlots(): number { const object = { count: 1 }; replaceCopiedSlot(object); return object.count + 1; }
@@ -873,13 +873,13 @@ function nonempty() {
     let expression = r#"({ nullish: nullishValues(), mutation: mutation(), copiedSlots: copiedSlots(), nonempty: nonempty(), method: methodOrder(), errors: errorEffects(), missingKinds: missingKinds(), number: combine(2, 3), string: combine('2', 3), missing: typeof absent(), object: objects({ count: 1 }), trimmed: read('  text  ') })"#;
     let node = Command::new("node")
         .current_dir(tmp.path())
-        .args(["--input-type=module-typescript", "-e", &format!("import {{combine, read, absent, objects, replaceCount, replaceCopiedSlot, methodOrder, missingKinds, errorEffects}} from './tp/helpers.mjs'; {mutation} process.stdout.write(JSON.stringify({expression}));")])
+        .args(["--input-type=module-typescript", "-e", &format!("import {{combine, read, absent, objects, replaceCount, replaceCopiedSlot, methodOrder, missingKinds, errorEffects}} from './sp/helpers.mjs'; {mutation} process.stdout.write(JSON.stringify({expression}));")])
         .output().unwrap();
     assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
     let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
-    std::fs::write(tmp.path().join("typedpress.config.ts"), format!(r#"
-import {{ defineConfig, mutation as server }} from 'typedpress';
-import {{ combine, read, absent, objects, replaceCount, replaceCopiedSlot, methodOrder, missingKinds, errorEffects }} from './tp/helpers.mjs';
+    std::fs::write(tmp.path().join("spacepress.config.ts"), format!(r#"
+import {{ defineConfig, mutation as server }} from 'spacepress';
+import {{ combine, read, absent, objects, replaceCount, replaceCopiedSlot, methodOrder, missingKinds, errorEffects }} from './sp/helpers.mjs';
 {mutation}
 function nullable(value: string | null) {{ return value.trim(); }}
 const __probe = server({{}}, () => {expression}); export {{ __probe as probe }}; const __dynamicError = server({{}}, () => {{ try {{ read(2); return false; }} catch {{ return true; }} }}); export {{ __dynamicError as dynamicError }}; const __nullableError = server({{}}, () => {{ try {{ nullable(null); return false; }} catch {{ return true; }} }}); export {{ __nullableError as nullableError }}; export default defineConfig({{ name: 'js-values' }});
@@ -892,23 +892,23 @@ $schema = require $argv[2] . '/schema.php';
 require $argv[2] . '/functions.php';
 $result = [];
 foreach (['probe', 'dynamicError', 'nullableError'] as $key) {
-  $fn = '\\TypedPressApp\\' . $schema['actions'][$key]['handler'];
-  $result[] = $fn(new \TypedPress\JsObject(), new \TypedPress\JsObject());
+  $fn = '\\SpacePressApp\\' . $schema['actions'][$key]['handler'];
+  $result[] = $fn(new \SpacePress\JsObject(), new \SpacePress\JsObject());
 }
-echo \TypedPress\Js::jsonStringify($result);
+echo \SpacePress\Js::jsonStringify($result);
 "#,
         &[
-            &content.join("plugins/typedpress-runtime/tp/bootstrap.php"),
-            &content.join("plugins/typedpress-app-js-values/tp/app"),
+            &content.join("plugins/spacepress-runtime/sp/bootstrap.php"),
+            &content.join("plugins/spacepress-app-js-values/sp/app"),
         ],
     );
     assert_eq!(actual, json!([expected, true, true]));
 
     // The nonempty proof belongs to the container and must disappear through aliases.
     std::fs::write(
-        tmp.path().join("typedpress.config.ts"),
+        tmp.path().join("spacepress.config.ts"),
         r#"
-import { defineConfig, mutation } from 'typedpress';
+import { defineConfig, mutation } from 'spacepress';
 const __probe = mutation({}, (): string => {
   const values = Array.from(['first']);
   const alias = values;
@@ -931,15 +931,15 @@ const __probe = mutation({}, (): string => {
 
     // Borrowed mutators cannot bypass a typed caller's array element domain.
     write_app(
-        tmp.path().join("tp/helpers.mjs"),
+        tmp.path().join("sp/helpers.mjs"),
         "export function change(values) { const push = [].push; push.call(values, 'x'); }",
     )
     .unwrap();
     std::fs::write(
-        tmp.path().join("typedpress.config.ts"),
+        tmp.path().join("spacepress.config.ts"),
         r#"
-import { defineConfig, mutation } from 'typedpress';
-import { change } from './tp/helpers.mjs';
+import { defineConfig, mutation } from 'spacepress';
+import { change } from './sp/helpers.mjs';
 const __probe = mutation({}, (): number => {
   const values: number[] = [1];
   change(values);
@@ -968,15 +968,15 @@ const __probe = mutation({}, (): number => {
         ("", "[].slice.call(arguments)", "[0].count", "...values"),
         ("first, value", "[].slice.call([value])", "[0].count", "...values"),
     ] {
-        write_app(tmp.path().join("tp/helpers.mjs"),
+        write_app(tmp.path().join("sp/helpers.mjs"),
             format!("function mutate({parameters}) {{ const method = 'apply'; const copied = {copied}; copied{field} = 'x'; }} export function change(values) {{ mutate({argument}); }}"),
         )
         .unwrap();
         std::fs::write(
-            tmp.path().join("typedpress.config.ts"),
+            tmp.path().join("spacepress.config.ts"),
             r#"
-import { defineConfig, mutation } from 'typedpress';
-import { change } from './tp/helpers.mjs';
+import { defineConfig, mutation } from 'spacepress';
+import { change } from './sp/helpers.mjs';
 const __probe = mutation({}, (): number => {
   const object = { count: 1 };
   const values = [object, object];
@@ -1007,7 +1007,7 @@ fn binary_data_matches_node_through_generated_php() {
     for file in ["binary.mjs", "files-sdk-md5.mjs"] {
         copy_app(
             root().join("tests/differential").join(file),
-            tmp.path().join("tp").join(file),
+            tmp.path().join("sp").join(file),
         )
         .unwrap();
     }
@@ -1016,7 +1016,7 @@ fn binary_data_matches_node_through_generated_php() {
         .args([
             "--input-type=module",
             "-e",
-            "import * as cases from './tp/binary.mjs'; const out = {}; for (const [name, run] of Object.entries(cases)) out[name] = await run(); process.stdout.write(JSON.stringify(out));",
+            "import * as cases from './sp/binary.mjs'; const out = {}; for (const [name, run] of Object.entries(cases)) out[name] = await run(); process.stdout.write(JSON.stringify(out));",
         ])
         .output()
         .unwrap();
@@ -1029,9 +1029,9 @@ fn binary_data_matches_node_through_generated_php() {
         .map(|name| format!("export const {name} = mutation({{}}, async () => await cases.{name}());"))
         .collect();
     std::fs::write(
-        tmp.path().join("typedpress.config.ts"),
+        tmp.path().join("spacepress.config.ts"),
         format!(
-            "import {{ defineConfig, mutation }} from 'typedpress';\nimport * as cases from './tp/binary.mjs';\n{}\nexport default defineConfig({{ name: 'binary-tests' }});\n",
+            "import {{ defineConfig, mutation }} from 'spacepress';\nimport * as cases from './sp/binary.mjs';\n{}\nexport default defineConfig({{ name: 'binary-tests' }});\n",
             actions.join("\n")
         ),
     )
@@ -1044,15 +1044,15 @@ fn binary_data_matches_node_through_generated_php() {
         require $argv[2] . '/functions.php';
         $out = [];
         foreach ($schema['actions'] as $name => $action) {
-            $fn = '\\TypedPressApp\\' . $action['handler'];
-            try { $out[$name] = $fn(new \TypedPress\JsObject(), new \TypedPress\JsObject()); }
+            $fn = '\\SpacePressApp\\' . $action['handler'];
+            try { $out[$name] = $fn(new \SpacePress\JsObject(), new \SpacePress\JsObject()); }
             catch (\Throwable $e) { $out[$name] = get_class($e) . ': ' . $e->getMessage(); }
         }
-        echo \TypedPress\Js::jsonStringify(new \TypedPress\JsObject($out));
+        echo \SpacePress\Js::jsonStringify(new \SpacePress\JsObject($out));
     "#,
         &[
-            &content.join("plugins/typedpress-runtime/tp/bootstrap.php"),
-            &content.join("plugins/typedpress-app-binary-tests/tp/app"),
+            &content.join("plugins/spacepress-runtime/sp/bootstrap.php"),
+            &content.join("plugins/spacepress-app-binary-tests/sp/app"),
         ],
     );
     for name in &names {
@@ -1066,11 +1066,11 @@ fn binary_data_matches_node_through_generated_php() {
     let refused = php(
         r#"
         require $argv[1];
-        $bytes = \TypedPress\JsTypedArray::fromBytes('ab');
-        try { \TypedPress\JsBinary::refuseWire(new \TypedPress\JsObject(['v' => new \TypedPress\JsArray([$bytes])]), 'action a'); echo 'null'; }
-        catch (\TypedPress\JsError $e) { echo json_encode([$e->jsName, $e->getMessage()]); }
+        $bytes = \SpacePress\JsTypedArray::fromBytes('ab');
+        try { \SpacePress\JsBinary::refuseWire(new \SpacePress\JsObject(['v' => new \SpacePress\JsArray([$bytes])]), 'action a'); echo 'null'; }
+        catch (\SpacePress\JsError $e) { echo json_encode([$e->jsName, $e->getMessage()]); }
     "#,
-        &[&content.join("plugins/typedpress-runtime/tp/bootstrap.php")],
+        &[&content.join("plugins/spacepress-runtime/sp/bootstrap.php")],
     );
     assert_eq!(refused[0], "TypeError");
     let message = refused[1].as_str().unwrap();
@@ -1127,10 +1127,10 @@ fn binary_globals_refuse_shared_memory_and_typed_code_with_fixes() {
         ),
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        write_app(tmp.path().join("tp").join(file), source).unwrap();
+        write_app(tmp.path().join("sp").join(file), source).unwrap();
         std::fs::write(
-            tmp.path().join("typedpress.config.ts"),
-            format!("import {{ defineConfig, mutation }} from 'typedpress';\nimport {{ make }} from './tp/{file}';\nconst __probe = mutation({{}}, () => {{ make(); return 1; }}); export {{ __probe as probe }}; export default defineConfig({{}});\n"),
+            tmp.path().join("spacepress.config.ts"),
+            format!("import {{ defineConfig, mutation }} from 'spacepress';\nimport {{ make }} from './sp/{file}';\nconst __probe = mutation({{}}, () => {{ make(); return 1; }}); export {{ __probe as probe }}; export default defineConfig({{}});\n"),
         )
         .unwrap();
         let (out, report) = checked(tmp.path());
@@ -1161,11 +1161,11 @@ fn promise_jobs_generators_and_async_iteration_match_node_in_generated_php() {
     let tmp = tempfile::tempdir().unwrap();
     copy_app(
         root().join("tests/differential/async.mjs"),
-        tmp.path().join("tp/async.mjs"),
+        tmp.path().join("sp/async.mjs"),
     )
     .unwrap();
     let script = format!(
-        "import * as m from './tp/async.mjs'; const out = []; for (const name of {cases:?}) out.push(await m[name]()); await new Promise((r) => setTimeout(r, 0)); process.stdout.write(JSON.stringify(out));"
+        "import * as m from './sp/async.mjs'; const out = []; for (const name of {cases:?}) out.push(await m[name]()); await new Promise((r) => setTimeout(r, 0)); process.stdout.write(JSON.stringify(out));"
     );
     let node = Command::new("node")
         .current_dir(tmp.path())
@@ -1180,9 +1180,9 @@ fn promise_jobs_generators_and_async_iteration_match_node_in_generated_php() {
         .collect::<Vec<_>>()
         .join("\n");
     std::fs::write(
-        tmp.path().join("typedpress.config.ts"),
+        tmp.path().join("spacepress.config.ts"),
         format!(
-            "import {{ defineConfig, mutation }} from 'typedpress';\nimport * as cases from './tp/async.mjs';\n{actions}\nexport default defineConfig({{ name: 'async-diff' }});\n"
+            "import {{ defineConfig, mutation }} from 'spacepress';\nimport * as cases from './sp/async.mjs';\n{actions}\nexport default defineConfig({{ name: 'async-diff' }});\n"
         ),
     )
     .unwrap();
@@ -1195,28 +1195,28 @@ $schema = require $argv[2] . '/schema.php';
 require $argv[2] . '/functions.php';
 $result = [];
 foreach ({} as $key) {{
-  $fn = '\\TypedPressApp\\' . $schema['actions'][$key]['handler'];
-  $result[] = $fn(new \TypedPress\JsObject(), new \TypedPress\JsObject());
+  $fn = '\\SpacePressApp\\' . $schema['actions'][$key]['handler'];
+  $result[] = $fn(new \SpacePress\JsObject(), new \SpacePress\JsObject());
 }}
-echo \TypedPress\Js::jsonStringify(new \TypedPress\JsArray($result));
+echo \SpacePress\Js::jsonStringify(new \SpacePress\JsArray($result));
 "#,
             serde_json::to_string(&cases).unwrap()
         ),
         &[
-            &content.join("plugins/typedpress-runtime/tp/bootstrap.php"),
-            &content.join("plugins/typedpress-app-async-diff/tp/app"),
+            &content.join("plugins/spacepress-runtime/sp/bootstrap.php"),
+            &content.join("plugins/spacepress-app-async-diff/sp/app"),
         ],
     );
     assert_eq!(actual, expected);
 
     // Handler end: an unhandled rejection and a promise nothing can settle are runtime errors.
-    write_app(tmp.path().join("tp/async.mjs"),
+    write_app(tmp.path().join("sp/async.mjs"),
         "export async function lost() { Promise.reject(new Error('lost')); return 1; }\nexport async function stuck() { await new Promise(() => {}); }\n",
     )
     .unwrap();
     std::fs::write(
-        tmp.path().join("typedpress.config.ts"),
-        "import { defineConfig, mutation } from 'typedpress';\nimport * as cases from './tp/async.mjs';\nexport const lost = mutation({}, async () => await cases.lost());\nexport const stuck = mutation({}, async () => await cases.stuck());\nexport default defineConfig({ name: 'async-diff' });\n",
+        tmp.path().join("spacepress.config.ts"),
+        "import { defineConfig, mutation } from 'spacepress';\nimport * as cases from './sp/async.mjs';\nexport const lost = mutation({}, async () => await cases.lost());\nexport const stuck = mutation({}, async () => await cases.stuck());\nexport default defineConfig({ name: 'async-diff' });\n",
     )
     .unwrap();
     let content = build_wp(tmp.path());
@@ -1227,22 +1227,22 @@ $schema = require $argv[2] . '/schema.php';
 require $argv[2] . '/functions.php';
 $result = [];
 foreach (['lost', 'stuck'] as $key) {
-  $fn = '\\TypedPressApp\\' . $schema['actions'][$key]['handler'];
-  try { $fn(new \TypedPress\JsObject(), new \TypedPress\JsObject()); $result[] = 'completed'; }
-  catch (\TypedPress\JsError $e) { $result[] = $e->getMessage(); }
+  $fn = '\\SpacePressApp\\' . $schema['actions'][$key]['handler'];
+  try { $fn(new \SpacePress\JsObject(), new \SpacePress\JsObject()); $result[] = 'completed'; }
+  catch (\SpacePress\JsError $e) { $result[] = $e->getMessage(); }
 }
 echo json_encode($result);
 "#,
         &[
-            &content.join("plugins/typedpress-runtime/tp/bootstrap.php"),
-            &content.join("plugins/typedpress-app-async-diff/tp/app"),
+            &content.join("plugins/spacepress-runtime/sp/bootstrap.php"),
+            &content.join("plugins/spacepress-app-async-diff/sp/app"),
         ],
     );
     assert_eq!(
         errors,
         json!([
             "lost",
-            "This promise can never settle: nothing left to run (awaited at typedpress.config.ts:4:47)"
+            "This promise can never settle: nothing left to run (awaited at spacepress.config.ts:4:47)"
         ])
     );
 }
@@ -1260,8 +1260,8 @@ fn documented_runtime_differences_are_measured_in_evaluation_and_compiled_php() 
         json!([{"nested":{"keep":1},"slots":[null]}, "undefined", "object", "a", 2, "a", ["x"], false, 2, "undefined"])
     );
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::write(tmp.path().join("typedpress.config.ts"), format!(r#"
-import {{ collection, text, json, defineConfig, mutation }} from "typedpress";
+    std::fs::write(tmp.path().join("spacepress.config.ts"), format!(r#"
+import {{ collection, text, json, defineConfig, mutation }} from "spacepress";
 const measured = {expression};
 const notes = collection({{ title: text(), result: json().default(measured).optional() }}, {{ title: "title" }});
 export {{ notes }}; const __measure = mutation({{}}, () => {expression}); export {{ __measure as measure }}; export default defineConfig({{ name: "differences" }});
@@ -1272,12 +1272,12 @@ export {{ notes }}; const __measure = mutation({{}}, () => {expression}); export
         require $argv[1];
         $schema = require $argv[2] . '/schema.php';
         require $argv[2] . '/functions.php';
-        $fn = '\\TypedPressApp\\' . $schema['actions']['measure']['handler'];
-        echo \TypedPress\Js::jsonStringify([\TypedPress\Js::decodeJson($schema['collections']['notes']['columns']['result']['default']['json']), $fn(new \TypedPress\JsObject(), \TypedPress\Seam::ctx(['user' => null]))]);
+        $fn = '\\SpacePressApp\\' . $schema['actions']['measure']['handler'];
+        echo \SpacePress\Js::jsonStringify([\SpacePress\Js::decodeJson($schema['collections']['notes']['columns']['result']['default']['json']), $fn(new \SpacePress\JsObject(), \SpacePress\Seam::ctx(['user' => null]))]);
     "#,
         &[
-            &content.join("plugins/typedpress-runtime/tp/bootstrap.php"),
-            &content.join("plugins/typedpress-app-differences/tp/app"),
+            &content.join("plugins/spacepress-runtime/sp/bootstrap.php"),
+            &content.join("plugins/spacepress-app-differences/sp/app"),
         ],
     );
     assert_eq!(
@@ -1288,7 +1288,7 @@ export {{ notes }}; const __measure = mutation({{}}, () => {expression}); export
         ])
     );
     std::fs::write(
-        tmp.path().join("typedpress.config.ts"),
+        tmp.path().join("spacepress.config.ts"),
         r#"const half = "🙂a".slice(1);"#,
     )
     .unwrap();
@@ -1341,7 +1341,7 @@ fn static_commonjs_packages_match_node_through_generated_php() {
             "exports.limit = 3;\nexports.label = 'items';\n",
         ),
         (
-            "tp/probe.cjs",
+            "sp/probe.cjs",
             "const toSource = require('glob-lite');\nconst { log } = require('glob-lite/lib/log');\nconst { limit, label } = require('counts');\nfunction run(glob) { return { source: toSource(glob), order: log.join(','), limit, label }; }\nmodule.exports = run;\n",
         ),
     ];
@@ -1352,7 +1352,7 @@ fn static_commonjs_packages_match_node_through_generated_php() {
     }
     std::fs::write(
         tmp.path().join("node.cjs"),
-        "process.stdout.write(JSON.stringify(require('./tp/probe.cjs')('src/*.test.js')));",
+        "process.stdout.write(JSON.stringify(require('./sp/probe.cjs')('src/*.test.js')));",
     )
     .unwrap();
     let node = Command::new("node").arg(tmp.path().join("node.cjs")).output().unwrap();
@@ -1363,10 +1363,10 @@ fn static_commonjs_packages_match_node_through_generated_php() {
         json!({"source": "src/[^/]*\\.test\\.js", "order": "index,constants,escape,after", "limit": 3, "label": "items"})
     );
     std::fs::write(
-        tmp.path().join("typedpress.config.ts"),
+        tmp.path().join("spacepress.config.ts"),
         r#"
-import { defineConfig, text, mutation } from "typedpress";
-import run from "./tp/probe.cjs";
+import { defineConfig, text, mutation } from "spacepress";
+import run from "./sp/probe.cjs";
 const __probe = mutation({ access: "anyone" }, (input: { glob: string }) => run(input.glob)); export { __probe as probe }; export default defineConfig({ name: "commonjs" });
 "#,
     )
@@ -1377,12 +1377,12 @@ const __probe = mutation({ access: "anyone" }, (input: { glob: string }) => run(
         require $argv[1];
         $schema = require $argv[2] . '/schema.php';
         require $argv[2] . '/functions.php';
-        $fn = '\\TypedPressApp\\' . $schema['actions']['probe']['handler'];
-        echo \TypedPress\Js::jsonStringify($fn(new \TypedPress\JsObject(['glob' => 'src/*.test.js']), \TypedPress\Seam::ctx(['user' => null])));
+        $fn = '\\SpacePressApp\\' . $schema['actions']['probe']['handler'];
+        echo \SpacePress\Js::jsonStringify($fn(new \SpacePress\JsObject(['glob' => 'src/*.test.js']), \SpacePress\Seam::ctx(['user' => null])));
     "#,
         &[
-            &content.join("plugins/typedpress-runtime/tp/bootstrap.php"),
-            &content.join("plugins/typedpress-app-commonjs/tp/app"),
+            &content.join("plugins/spacepress-runtime/sp/bootstrap.php"),
+            &content.join("plugins/spacepress-app-commonjs/sp/app"),
         ],
     );
     assert_eq!(result, expected);
@@ -1392,7 +1392,7 @@ const __probe = mutation({ access: "anyone" }, (input: { glob: string }) => run(
 fn classes_match_node_through_generated_php_and_wire_client_types() {
     let tmp = tempfile::tempdir().unwrap();
     let config = root().join("tests/differential/classes.ts");
-    std::fs::copy(&config, tmp.path().join("typedpress.config.ts")).unwrap();
+    std::fs::copy(&config, tmp.path().join("spacepress.config.ts")).unwrap();
     let js = tmp.path().join("node");
     let transpiled = Command::new(std::env::var_os("TSC").unwrap_or_else(|| "tsc".into()))
         .args(["--noCheck", "--target", "ES2022", "--module", "ESNext", "--outDir"])
@@ -1418,8 +1418,8 @@ fn classes_match_node_through_generated_php_and_wire_client_types() {
     assert_eq!(cases.len(), 5);
     assert!(cases.values().all(|result| result.get("data").is_some()), "{expected}");
     let content = build_wp(tmp.path());
-    let runtime = content.join("plugins/typedpress-runtime/tp/bootstrap.php");
-    let app = content.join("plugins/typedpress-app-class-tests/tp/app");
+    let runtime = content.join("plugins/spacepress-runtime/sp/bootstrap.php");
+    let app = content.join("plugins/spacepress-app-class-tests/sp/app");
     let actual = php(
         r#"
         require $argv[1];
@@ -1427,11 +1427,11 @@ fn classes_match_node_through_generated_php_and_wire_client_types() {
         require $argv[2] . '/functions.php';
         $out = [];
         foreach ($schema['actions'] as $name => $action) {
-            $fn = '\\TypedPressApp\\' . $action['handler'];
+            $fn = '\\SpacePressApp\\' . $action['handler'];
             try { $out[$name] = ['data' => $fn()]; }
             catch (\Throwable $e) { $out[$name] = ['error' => $e->getMessage()]; }
         }
-        echo \TypedPress\Js::jsonStringify($out);
+        echo \SpacePress\Js::jsonStringify($out);
     "#,
         &[&runtime, &app],
     );
@@ -1442,13 +1442,13 @@ fn classes_match_node_through_generated_php_and_wire_client_types() {
         require $argv[1];
         $schema = require $argv[2] . '/schema.php';
         require $argv[2] . '/functions.php';
-        $fn = '\\TypedPressApp\\' . $schema['actions']['classesWire']['handler'];
+        $fn = '\\SpacePressApp\\' . $schema['actions']['classesWire']['handler'];
         $instance = $fn();
-        $stored = \TypedPress\Seam::toPhp($instance, ['type' => 'json']);
-        $input = \TypedPress\Seam::toJs($stored, ['type' => 'json']);
+        $stored = \SpacePress\Seam::toPhp($instance, ['type' => 'json']);
+        $input = \SpacePress\Seam::toJs($stored, ['type' => 'json']);
         $stored->p['count'] = 99;
-        echo \TypedPress\Js::jsonStringify([
-            'wire' => \TypedPress\Seam::toWire($instance),
+        echo \SpacePress\Js::jsonStringify([
+            'wire' => \SpacePress\Seam::toWire($instance),
             'identity' => [$instance->class !== null, $stored->class === null, $input->class === null],
             'detached' => [$instance->p['count'], $stored->p['count'], $input->p['count']],
         ]);
@@ -1461,7 +1461,7 @@ fn classes_match_node_through_generated_php_and_wire_client_types() {
     std::fs::write(
         tmp.path().join("class-client.ts"),
         r#"
-import type { Actions } from './tp/_generated/client/types';
+import type { Actions } from './sp/_generated/client/types';
 declare const instance: Actions['classesWire']['output'];
 const count: number = instance.count;
 const label: string = instance.label;
@@ -1544,15 +1544,15 @@ fn private_names_accessors_and_imported_javascript_classes_match_node() {
         require $argv[2] . '/functions.php';
         $out = [];
         foreach ($schema['actions'] as $name => $action) {
-            $fn = '\\TypedPressApp\\' . $action['handler'];
+            $fn = '\\SpacePressApp\\' . $action['handler'];
             try { $out[$name] = ['data' => $fn()]; }
             catch (\Throwable $e) { $out[$name] = ['error' => $e->getMessage()]; }
         }
-        echo \TypedPress\Js::jsonStringify($out);
+        echo \SpacePress\Js::jsonStringify($out);
     "#,
         &[
-            &content.join("plugins/typedpress-runtime/tp/bootstrap.php"),
-            &content.join("plugins/typedpress-app-class-private/tp/app"),
+            &content.join("plugins/spacepress-runtime/sp/bootstrap.php"),
+            &content.join("plugins/spacepress-app-class-private/sp/app"),
         ],
     );
     assert_eq!(
@@ -1672,7 +1672,7 @@ fn class_boundaries_refuse_unsupported_semantics_at_the_source() {
         } else {
             "{}"
         };
-        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{ table, json, defineConfig, mutation }} from 'typedpress';\n{declarations}\nconst __n = table({fields}); export {{ __n as n }}; const __test = mutation({{}}, () => {handler}); export {{ __test as test }}; export default defineConfig({{}});\n")).unwrap();
+        std::fs::write(tmp.path().join("spacepress.config.ts"), format!("import {{ table, json, defineConfig, mutation }} from 'spacepress';\n{declarations}\nconst __n = table({fields}); export {{ __n as n }}; const __test = mutation({{}}, () => {handler}); export {{ __test as test }}; export default defineConfig({{}});\n")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{message}: {report}");
         let diagnostic = report["diagnostics"]
@@ -1681,7 +1681,7 @@ fn class_boundaries_refuse_unsupported_semantics_at_the_source() {
             .iter()
             .find(|d| d["message"].as_str().unwrap().contains(message))
             .unwrap_or_else(|| panic!("expected {message}: {report}"));
-        assert_eq!(diagnostic["location"]["file"], "typedpress.config.ts", "{report}");
+        assert_eq!(diagnostic["location"]["file"], "spacepress.config.ts", "{report}");
         assert!(diagnostic["location"]["line"].as_u64().unwrap() >= 2);
     }
 }
@@ -1732,12 +1732,12 @@ fn host_globals_match_node_through_generated_php() {
     );
     // The config imports its CommonJS helper, which Node loads with its own require.
     let module = std::fs::read_to_string(js.join("host-globals.js")).unwrap();
-    std::fs::write(js.join("typedpress.config.mjs"), module).unwrap();
+    std::fs::write(js.join("spacepress.config.mjs"), module).unwrap();
     std::fs::copy(dir.join("host-crypto.cjs"), js.join("host-crypto.cjs")).unwrap();
     // Node reads the origin directly; the PHP side sees the same answers through the stub.
     let node = Command::new("node")
         .arg(dir.join("run-node.mjs"))
-        .arg(js.join("typedpress.config.mjs"))
+        .arg(js.join("spacepress.config.mjs"))
         .env("HOST_URL", format!("http://127.0.0.1:{port}"))
         .env("HOST_SECRET", secret)
         .env_remove("HOST_UNSET")
@@ -1766,15 +1766,15 @@ $schema = require $argv[2] . '/schema.php';
 require $argv[2] . '/functions.php';
 $out = [];
 foreach ($schema['actions'] as $name => $action) {
-    $fn = '\\TypedPressApp\\' . $action['handler'];
-    try { $out[$name] = ['data' => $fn(new \TypedPress\JsObject(), \TypedPress\Seam::ctx(['user' => null]))]; }
+    $fn = '\\SpacePressApp\\' . $action['handler'];
+    try { $out[$name] = ['data' => $fn(new \SpacePress\JsObject(), \SpacePress\Seam::ctx(['user' => null]))]; }
     catch (\Throwable $e) { $out[$name] = ['error' => $e->getMessage()]; }
 }
-echo \TypedPress\Js::jsonStringify($out);
+echo \SpacePress\Js::jsonStringify($out);
 "#,
         ])
-        .arg(content.join("plugins/typedpress-runtime/tp/bootstrap.php"))
-        .arg(content.join("plugins/typedpress-app-host-globals/tp/app"))
+        .arg(content.join("plugins/spacepress-runtime/sp/bootstrap.php"))
+        .arg(content.join("plugins/spacepress-app-host-globals/sp/app"))
         .arg(dir.join("host-wp-http.php"))
         // The PHP side fetches the public name; the policy checks it, the stub connects locally.
         .env("HOST_URL", format!("https://origin.example:{port}"))
@@ -1789,28 +1789,28 @@ echo \TypedPress\Js::jsonStringify($out);
     assert_eq!(actual, expected, "generated PHP differs from Node");
 }
 
-/// `typedpress check --json` reports each plugin's package, integrity, locked and inferred grant, and
+/// `spacepress check --json` reports each plugin's package, integrity, locked and inferred grant, and
 /// the handlers that read data and send it out. A report, not a refusal: the check succeeds.
 #[test]
 fn check_reports_plugin_grants_and_read_to_send_flows() {
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::create_dir_all(tmp.path().join("node_modules/typedpress-plugin-sync/src")).unwrap();
+    std::fs::create_dir_all(tmp.path().join("node_modules/spacepress-plugin-sync/src")).unwrap();
     std::fs::write(
-        tmp.path().join("typedpress.config.ts"),
-        r#"import { collection, defineConfig, text } from "typedpress";
-import sync from "typedpress-plugin-sync";
+        tmp.path().join("spacepress.config.ts"),
+        r#"import { collection, defineConfig, text } from "spacepress";
+import sync from "spacepress-plugin-sync";
 const posts = collection({ title: text() }, { title: "title" });
 export { posts }; export default defineConfig({ name: "flows", use: [sync()] });"#,
     )
     .unwrap();
     std::fs::write(
-        tmp.path().join("node_modules/typedpress-plugin-sync/package.json"),
-        r#"{ "name": "typedpress-plugin-sync", "version": "3.1.0", "exports": "./src/index.ts" }"#,
+        tmp.path().join("node_modules/spacepress-plugin-sync/package.json"),
+        r#"{ "name": "spacepress-plugin-sync", "version": "3.1.0", "exports": "./src/index.ts" }"#,
     )
     .unwrap();
     std::fs::write(
-        tmp.path().join("node_modules/typedpress-plugin-sync/src/index.ts"),
-        r#"import { db, definePlugin, mutation } from "typedpress";
+        tmp.path().join("node_modules/spacepress-plugin-sync/src/index.ts"),
+        r#"import { db, definePlugin, mutation } from "spacepress";
 import { abilities, esc_html } from "php/wordpress";
 import { createHmac } from "node:crypto";
 // The send happens in a helper the handler calls with what it read. Package TypeScript compiles
@@ -1843,7 +1843,7 @@ export default () => definePlugin({
     let report: Value = serde_json::from_slice(&out.stdout).unwrap();
     assert!(out.status.success(), "{report}");
     let plugin = &report["plugins"][0];
-    assert_eq!(plugin["package"], "typedpress-plugin-sync");
+    assert_eq!(plugin["package"], "spacepress-plugin-sync");
     assert_eq!(plugin["version"], "3.1.0");
     assert!(plugin["integrity"].as_str().unwrap().starts_with("sha256-"));
     assert_eq!(plugin["status"], "added");
@@ -1868,7 +1868,7 @@ export default () => definePlugin({
             "sends": ["http: hooks.example.com"],
         }])
     );
-    assert!(!tmp.path().join("tp/_generated").exists(), "check writes no lock");
+    assert!(!tmp.path().join("sp/_generated").exists(), "check writes no lock");
     let frozen = first()
         .args(["check", "--json", "--frozen"])
         .arg(tmp.path())
@@ -1881,7 +1881,7 @@ export default () => definePlugin({
         report["diagnostics"][0]["message"]
             .as_str()
             .unwrap()
-            .contains("plugin \"sync\" (typedpress-plugin-sync@3.1.0) isn't in tp/_generated/plugins.lock.json"),
+            .contains("plugin \"sync\" (spacepress-plugin-sync@3.1.0) isn't in sp/_generated/plugins.lock.json"),
         "{report}"
     );
 }
@@ -1896,7 +1896,7 @@ fn installed_package_typescript_is_type_erased_like_javascript_and_matches_node(
         r#"{"name":"typed-lib","type":"module","exports":{".":{"types":"./src/index.d.ts","import":"./src/index.ts"}}}"#,
     )
     .unwrap();
-    // Every type-level construct here is refused in authored code or exceeds TypedPress's type subset.
+    // Every type-level construct here is refused in authored code or exceeds SpacePress's type subset.
     std::fs::write(
         package.join("src/index.ts"),
         r#"import type { Shape } from "./shape.js";
@@ -1981,9 +1981,9 @@ export const describe = (shape: Shape): string => (shape.kind === "circle" ? `r=
     assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
     let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
     std::fs::write(
-        tmp.path().join("typedpress.config.ts"),
+        tmp.path().join("spacepress.config.ts"),
         r#"
-import { defineConfig, text, mutation } from 'typedpress';
+import { defineConfig, text, mutation } from 'spacepress';
 import { run } from 'typed-lib';
 const __probe = mutation({}, (input: { key: string }) => run(input.key)); export { __probe as probe }; export default defineConfig({ name: 'typed-lib' });
 "#,
@@ -1995,14 +1995,14 @@ const __probe = mutation({}, (input: { key: string }) => run(input.key)); export
 require $argv[1];
 $schema = require $argv[2] . '/schema.php';
 require $argv[2] . '/functions.php';
-$fn = '\\TypedPressApp\\' . $schema['actions']['probe']['handler'];
-$input = new \TypedPress\JsObject();
+$fn = '\\SpacePressApp\\' . $schema['actions']['probe']['handler'];
+$input = new \SpacePress\JsObject();
 $input->p['key'] = 'hi';
-echo \TypedPress\Js::jsonStringify($fn($input, new \TypedPress\JsObject()));
+echo \SpacePress\Js::jsonStringify($fn($input, new \SpacePress\JsObject()));
 "#,
         &[
-            &content.join("plugins/typedpress-runtime/tp/bootstrap.php"),
-            &content.join("plugins/typedpress-app-typed-lib/tp/app"),
+            &content.join("plugins/spacepress-runtime/sp/bootstrap.php"),
+            &content.join("plugins/spacepress-app-typed-lib/sp/app"),
         ],
     );
     assert_eq!(actual, expected);
@@ -2016,17 +2016,17 @@ echo \TypedPress\Js::jsonStringify($fn($input, new \TypedPress\JsObject()));
         ),
         (
             "import { run, Mapper } from 'typed-lib'; const read = (key: string) => run(key);",
-            "`Mapper` comes from an installed package or JavaScript module, whose types TypedPress erases",
+            "`Mapper` comes from an installed package or JavaScript module, whose types SpacePress erases",
         ),
         (
             "import { run, type Mapper } from 'typed-lib'; const read = (key: string) => { const map: Mapper | null = null; return run(key); };",
-            "`Mapper` comes from an installed package or JavaScript module, whose types TypedPress erases",
+            "`Mapper` comes from an installed package or JavaScript module, whose types SpacePress erases",
         ),
     ] {
         std::fs::write(
-            tmp.path().join("typedpress.config.ts"),
+            tmp.path().join("spacepress.config.ts"),
             format!(
-                "import {{ defineConfig, text, mutation }} from 'typedpress'; {source} const __probe = mutation({{}}, (input: {{ key: string }}) => read(input.key)); export {{ __probe as probe }}; export default defineConfig({{}});"
+                "import {{ defineConfig, text, mutation }} from 'spacepress'; {source} const __probe = mutation({{}}, (input: {{ key: string }}) => read(input.key)); export {{ __probe as probe }}; export default defineConfig({{}});"
             ),
         )
         .unwrap();
@@ -2047,7 +2047,7 @@ echo \TypedPress\Js::jsonStringify($fn($input, new \TypedPress\JsObject()));
 fn checked_javascript_reads_and_calls_inherited_class_methods_like_node() {
     let tmp = tempfile::tempdir().unwrap();
     write_app(
-        tmp.path().join("tp/helper.js"),
+        tmp.path().join("sp/helper.js"),
         r#"
         class C { m() { return 4; } }
         class D extends C {}
@@ -2065,23 +2065,23 @@ fn checked_javascript_reads_and_calls_inherited_class_methods_like_node() {
     "#,
     )
     .unwrap();
-    std::fs::write(tmp.path().join("typedpress.config.ts"), "import {defineConfig, mutation} from 'typedpress'; import {test} from './tp/helper.js'; const __test = mutation({}, ()=>test()); export { __test as test }; export default defineConfig({ name:'classboundary' });").unwrap();
+    std::fs::write(tmp.path().join("spacepress.config.ts"), "import {defineConfig, mutation} from 'spacepress'; import {test} from './sp/helper.js'; const __test = mutation({}, ()=>test()); export { __test as test }; export default defineConfig({ name:'classboundary' });").unwrap();
     let content = build_wp(tmp.path());
-    let app = content.join("plugins/typedpress-app-classboundary/tp/app");
+    let app = content.join("plugins/spacepress-app-classboundary/sp/app");
     let actual = php(
         r#"
         require $argv[1];
         require $argv[2] . '/functions.php';
-        echo \TypedPress\Js::jsonStringify(\TypedPressApp\action__test());
+        echo \SpacePress\Js::jsonStringify(\SpacePressApp\action__test());
     "#,
-        &[&content.join("plugins/typedpress-runtime/tp/bootstrap.php"), &app],
+        &[&content.join("plugins/spacepress-runtime/sp/bootstrap.php"), &app],
     );
     let node = Command::new("node")
         .current_dir(tmp.path())
         .args([
             "--input-type=module",
             "-e",
-            "import {test} from './tp/helper.js'; process.stdout.write(JSON.stringify(test()));",
+            "import {test} from './sp/helper.js'; process.stdout.write(JSON.stringify(test()));",
         ])
         .output()
         .unwrap();
@@ -2107,7 +2107,7 @@ const attempt = (f) => { try { return f(); } catch (e) { return e.name; } };
 export function brand(target) { Object.defineProperty(target, BRAND, { value: true }); return target; }
 export function isBranded(value) { return isObject(value) && Object.hasOwn(value, BRAND) && value[BRAND] === true; }
 export function local() { return LOCAL; }
-// Built-in prototypes carry well-known symbol methods TypedPress doesn't model: refused, not guessed.
+// Built-in prototypes carry well-known symbol methods SpacePress doesn't model: refused, not guessed.
 export function unmodeled() {
   const list = [1];
   return [() => Symbol.iterator in list, () => list[Symbol.iterator], () => Symbol.hasInstance in isObject].map((f) => { try { return f(); } catch (e) { return [e.name, e.message]; } });
@@ -2141,21 +2141,21 @@ export function probe() {
   };
 }
 "#;
-    write_app(tmp.path().join("tp/helpers.mjs"), helper).unwrap();
+    write_app(tmp.path().join("sp/helpers.mjs"), helper).unwrap();
     let node = Command::new("node")
         .current_dir(tmp.path())
         .args([
             "--input-type=module",
             "-e",
-            "import {probe} from './tp/helpers.mjs'; process.stdout.write(JSON.stringify(probe()));",
+            "import {probe} from './sp/helpers.mjs'; process.stdout.write(JSON.stringify(probe()));",
         ])
         .output()
         .unwrap();
     assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
     let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
     std::fs::write(
-        tmp.path().join("typedpress.config.ts"),
-        "import { defineConfig, mutation } from 'typedpress'; import { probe, unmodeled } from './tp/helpers.mjs'; const __probe = mutation({}, () => probe()); export { __probe as probe }; const __unmodeled = mutation({}, () => unmodeled()); export { __unmodeled as unmodeled }; export default defineConfig({ name: 'symbols' });",
+        tmp.path().join("spacepress.config.ts"),
+        "import { defineConfig, mutation } from 'spacepress'; import { probe, unmodeled } from './sp/helpers.mjs'; const __probe = mutation({}, () => probe()); export { __probe as probe }; const __unmodeled = mutation({}, () => unmodeled()); export { __unmodeled as unmodeled }; export default defineConfig({ name: 'symbols' });",
     )
     .unwrap();
     let content = build_wp(tmp.path());
@@ -2164,12 +2164,12 @@ export function probe() {
 require $argv[1];
 $schema = require $argv[2] . '/schema.php';
 require $argv[2] . '/functions.php';
-$run = fn ($name) => ('\\TypedPressApp\\' . $schema['actions'][$name]['handler'])(new \TypedPress\JsObject(), new \TypedPress\JsObject());
-echo \TypedPress\Js::jsonStringify(new \TypedPress\JsArray([$run('probe'), $run('unmodeled')]));
+$run = fn ($name) => ('\\SpacePressApp\\' . $schema['actions'][$name]['handler'])(new \SpacePress\JsObject(), new \SpacePress\JsObject());
+echo \SpacePress\Js::jsonStringify(new \SpacePress\JsArray([$run('probe'), $run('unmodeled')]));
 "#,
         &[
-            &content.join("plugins/typedpress-runtime/tp/bootstrap.php"),
-            &content.join("plugins/typedpress-app-symbols/tp/app"),
+            &content.join("plugins/spacepress-runtime/sp/bootstrap.php"),
+            &content.join("plugins/spacepress-app-symbols/sp/app"),
         ],
     );
     let refused = json!([
@@ -2218,13 +2218,13 @@ echo \TypedPress\Js::jsonStringify(new \TypedPress\JsArray([$run('probe'), $run(
         ),
         (
             "const __a = mutation({}, () => globalThis.Bun()); export { __a as a }; export default defineConfig({});",
-            "`globalThis.Bun` is undefined in TypedPress",
+            "`globalThis.Bun` is undefined in SpacePress",
         ),
     ] {
-        std::fs::remove_file(tmp.path().join("tp/helpers.mjs")).ok();
+        std::fs::remove_file(tmp.path().join("sp/helpers.mjs")).ok();
         std::fs::write(
-            tmp.path().join("typedpress.config.ts"),
-            format!("import {{ defineConfig, mutation }} from 'typedpress';\n{source}"),
+            tmp.path().join("spacepress.config.ts"),
+            format!("import {{ defineConfig, mutation }} from 'spacepress';\n{source}"),
         )
         .unwrap();
         let (out, report) = checked(tmp.path());
@@ -2251,7 +2251,7 @@ fn builtin_vectors_agree_in_evaluation_generated_php_and_node() {
         let expression = v["expression"].as_str().unwrap();
         if let Some(files) = v["files"].as_object() {
             for (name, source) in files {
-                write_app(tmp.path().join("tp").join(name), source.as_str().unwrap()).unwrap();
+                write_app(tmp.path().join("sp").join(name), source.as_str().unwrap()).unwrap();
             }
         }
 
@@ -2274,13 +2274,13 @@ fn builtin_vectors_agree_in_evaluation_generated_php_and_node() {
             ));
         }
     }
-    write_app(tmp.path().join("tp/helper.js"), javascript).unwrap();
-    // The app and its helper modules live under tp/; the root config re-exports it.
-    let entry = tmp.path().join("tp/app.ts");
-    std::fs::write(&entry, format!("import {{ defineConfig, mutation }} from 'typedpress';\n{declarations}\n{}\nexport default defineConfig({{name: 'builtinparity'}});", actions.join("\n"))).unwrap();
+    write_app(tmp.path().join("sp/helper.js"), javascript).unwrap();
+    // The app and its helper modules live under sp/; the root config re-exports it.
+    let entry = tmp.path().join("sp/app.ts");
+    std::fs::write(&entry, format!("import {{ defineConfig, mutation }} from 'spacepress';\n{declarations}\n{}\nexport default defineConfig({{name: 'builtinparity'}});", actions.join("\n"))).unwrap();
     std::fs::write(
-        tmp.path().join("typedpress.config.ts"),
-        "export { default } from './tp/app.ts';\n",
+        tmp.path().join("spacepress.config.ts"),
+        "export { default } from './sp/app.ts';\n",
     )
     .unwrap();
     let node = Command::new("node")
@@ -2291,20 +2291,20 @@ fn builtin_vectors_agree_in_evaluation_generated_php_and_node() {
     assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
     let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
     let content = build_wp(tmp.path());
-    let app = content.join("plugins/typedpress-app-builtinparity/tp/app");
+    let app = content.join("plugins/spacepress-app-builtinparity/sp/app");
     let actual = php(
         r#"
         require $argv[1];
         $schema = require $argv[2] . '/schema.php';
         require $argv[2] . '/functions.php';
-        $out = new \TypedPress\JsObject();
+        $out = new \SpacePress\JsObject();
         foreach ($schema['actions'] as $name => $action) {
-            $fn = '\TypedPressApp\\' . $action['handler'];
-            $out->p[$name] = new \TypedPress\JsObject(['data' => $fn(new \TypedPress\JsObject(), \TypedPress\Seam::ctx(['user' => null]))]);
+            $fn = '\SpacePressApp\\' . $action['handler'];
+            $out->p[$name] = new \SpacePress\JsObject(['data' => $fn(new \SpacePress\JsObject(), \SpacePress\Seam::ctx(['user' => null]))]);
         }
-        echo \TypedPress\Js::jsonStringify($out);
+        echo \SpacePress\Js::jsonStringify($out);
     "#,
-        &[&content.join("plugins/typedpress-runtime/tp/bootstrap.php"), &app],
+        &[&content.join("plugins/spacepress-runtime/sp/bootstrap.php"), &app],
     );
     assert_eq!(actual, expected["cases"]);
 }
@@ -2409,7 +2409,7 @@ fn unsupported_builtin_overloads_are_located_in_both_phases() {
             } else {
                 (format!("const folded = {expression};"), "folded".into())
             };
-            std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{defineConfig, mutation}} from 'typedpress';\n{declaration}\nconst __probe = mutation({{}}, ()=>{result}); export {{ __probe as probe }}; export default defineConfig({{ name:'refusal' }});")).unwrap();
+            std::fs::write(tmp.path().join("spacepress.config.ts"), format!("import {{defineConfig, mutation}} from 'spacepress';\n{declaration}\nconst __probe = mutation({{}}, ()=>{result}); export {{ __probe as probe }}; export default defineConfig({{ name:'refusal' }});")).unwrap();
             let (out, report) = checked(tmp.path());
             assert_eq!(out.status.code(), Some(1), "{expression}, handler={handler}: {report}");
             let diagnostic = &report["diagnostics"][0];
@@ -2434,7 +2434,7 @@ fn javascript_invalid_regex_literals_receive_syntax_diagnostics() {
         assert!(!node.status.success(), "{expression}");
         assert!(String::from_utf8_lossy(&node.stderr).contains("SyntaxError"));
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{defineConfig, mutation}} from 'typedpress';const __probe = mutation({{}}, ()=>{expression}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
+        std::fs::write(tmp.path().join("spacepress.config.ts"), format!("import {{defineConfig, mutation}} from 'spacepress';const __probe = mutation({{}}, ()=>{expression}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{expression}: {report}");
         let diagnostic = &report["diagnostics"][0];
@@ -2444,7 +2444,7 @@ fn javascript_invalid_regex_literals_receive_syntax_diagnostics() {
             diagnostic["message"].as_str().unwrap().starts_with("syntax error:"),
             "{report}"
         );
-        assert_eq!(diagnostic["location"]["file"], "typedpress.config.ts");
+        assert_eq!(diagnostic["location"]["file"], "spacepress.config.ts");
     }
 }
 
@@ -2476,7 +2476,7 @@ fn unsupported_features_have_positions_and_actionable_help() {
         ),
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{defineConfig, mutation}} from 'typedpress';\nconst __probe = mutation({{}}, ()=>{{ {source} }}); export {{ __probe as probe }}; export default defineConfig({{ name:'diagnostics' }});")).unwrap();
+        std::fs::write(tmp.path().join("spacepress.config.ts"), format!("import {{defineConfig, mutation}} from 'spacepress';\nconst __probe = mutation({{}}, ()=>{{ {source} }}); export {{ __probe as probe }}; export default defineConfig({{ name:'diagnostics' }});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         let d = &report["diagnostics"][0];
@@ -2494,7 +2494,7 @@ fn configuration_refuses_unsupported_coercion_at_the_call_site() {
         "'a,b,c'.split(',', {valueOf: () => 2})",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{defineConfig, mutation}} from 'typedpress';\nconst result = {expression};\nconst __probe = mutation({{}}, ()=>result); export {{ __probe as probe }}; export default defineConfig({{ name:'coercion' }});")).unwrap();
+        std::fs::write(tmp.path().join("spacepress.config.ts"), format!("import {{defineConfig, mutation}} from 'spacepress';\nconst result = {expression};\nconst __probe = mutation({{}}, ()=>result); export {{ __probe as probe }}; export default defineConfig({{ name:'coercion' }});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         let diagnostic = &report["diagnostics"][0];
@@ -2508,7 +2508,7 @@ fn configuration_refuses_unsupported_coercion_at_the_call_site() {
 fn query_calls_refuse_extra_options_arguments_at_the_call_site() {
     for method in ["findMany", "findFirst"] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{defineConfig, table, db, mutation}} from 'typedpress';\nconst notes = table({{}});\nexport {{ notes }}; const __probe = mutation({{}}, async()=>{{let n=0; await db.query.notes.{method}({{}}, n++); return n;}}); export {{ __probe as probe }}; export default defineConfig({{ name:'queryarity' }});")).unwrap();
+        std::fs::write(tmp.path().join("spacepress.config.ts"), format!("import {{defineConfig, table, db, mutation}} from 'spacepress';\nconst notes = table({{}});\nexport {{ notes }}; const __probe = mutation({{}}, async()=>{{let n=0; await db.query.notes.{method}({{}}, n++); return n;}}); export {{ __probe as probe }}; export default defineConfig({{ name:'queryarity' }});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         let diagnostic = &report["diagnostics"][0];
@@ -2541,7 +2541,7 @@ fn database_builders_refuse_discarded_arguments_at_the_call_site() {
         "(n++, db.insert(notes).values({count: 1}))",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{defineConfig, table, integer, db, mutation}} from 'typedpress';\nconst notes=table({{count:integer().optional()}});\nexport {{ notes }}; const __probe = mutation({{}}, async()=>{{let n=0; await {expression}; return n;}}); export {{ __probe as probe }}; export default defineConfig({{ name:'builderarity' }});")).unwrap();
+        std::fs::write(tmp.path().join("spacepress.config.ts"), format!("import {{defineConfig, table, integer, db, mutation}} from 'spacepress';\nconst notes=table({{count:integer().optional()}});\nexport {{ notes }}; const __probe = mutation({{}}, async()=>{{let n=0; await {expression}; return n;}}); export {{ __probe as probe }}; export default defineConfig({{ name:'builderarity' }});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         let diagnostic = &report["diagnostics"][0];
@@ -2560,13 +2560,13 @@ fn dynamic_large_radix_values_fail_as_an_explicit_runtime_refusal() {
         r#"
         require $argv[1];
         try {
-            \TypedPress\Js::parseInt('120101100002111211120012010111012200200201', 3);
+            \SpacePress\Js::parseInt('120101100002111211120012010111012200200201', 3);
             echo json_encode(['accepted']);
-        } catch (\TypedPress\JsError $error) {
+        } catch (\SpacePress\JsError $error) {
             echo json_encode([$error->jsName, $error->getMessage()]);
         }
     "#,
-        &[&root().join("runtime/TypedPress/bootstrap.php")],
+        &[&root().join("runtime/SpacePress/bootstrap.php")],
     );
     assert_eq!(
         actual,
@@ -2583,7 +2583,7 @@ fn configuration_validates_callbacks_before_empty_input_shortcuts() {
         "[].map(Math)",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{defineConfig, mutation}} from 'typedpress';\nconst value = (() => {{try {{ {expression}; return 0; }} catch (e) {{ return 1; }} }})();\nconst __probe = mutation({{}}, ()=>value); export {{ __probe as probe }}; export default defineConfig({{}});" )).unwrap();
+        std::fs::write(tmp.path().join("spacepress.config.ts"), format!("import {{defineConfig, mutation}} from 'spacepress';\nconst value = (() => {{try {{ {expression}; return 0; }} catch (e) {{ return 1; }} }})();\nconst __probe = mutation({{}}, ()=>value); export {{ __probe as probe }}; export default defineConfig({{}});" )).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{expression}: {report}");
         let diagnostic = &report["diagnostics"][0];
@@ -2605,7 +2605,7 @@ fn schema_builders_refuse_discarded_arguments_at_the_call_site() {
         "new HttpError(400, 'bad', 'message')",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{text, json, select, defineConfig, HttpError, mutation}} from 'typedpress';\nconst invalid = {expression};\nconst __probe = mutation({{}}, ()=>1); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
+        std::fs::write(tmp.path().join("spacepress.config.ts"), format!("import {{text, json, select, defineConfig, HttpError, mutation}} from 'spacepress';\nconst invalid = {expression};\nconst __probe = mutation({{}}, ()=>1); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{expression}: {report}");
         let diagnostic = &report["diagnostics"][0];
@@ -2633,7 +2633,7 @@ fn configuration_refuses_calls_that_lose_an_extracted_method_receiver() {
         "const methods=[' abc '.trim]; const result=methods['0']();",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{defineConfig, mutation}} from 'typedpress';\n{source}\nconst __probe = mutation({{}}, ()=>result); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
+        std::fs::write(tmp.path().join("spacepress.config.ts"), format!("import {{defineConfig, mutation}} from 'spacepress';\n{source}\nconst __probe = mutation({{}}, ()=>result); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{source}: {report}");
         let diagnostic = &report["diagnostics"][0];
@@ -2666,7 +2666,7 @@ fn prototype_setter_literals_are_refused_in_configuration_and_handlers() {
         } else {
             format!("Object.hasOwn({expression}, '__proto__')")
         };
-        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{defineConfig, mutation}} from 'typedpress';\n{declaration}\nconst __probe = mutation({{}}, ()=>{body}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
+        std::fs::write(tmp.path().join("spacepress.config.ts"), format!("import {{defineConfig, mutation}} from 'spacepress';\n{declaration}\nconst __probe = mutation({{}}, ()=>{body}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         let diagnostic = &report["diagnostics"][0];
@@ -2693,7 +2693,7 @@ fn unknown_configuration_builtin_properties_are_located_refusals() {
         "typeof [1, 2]['+1']",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{defineConfig, mutation}} from 'typedpress';\nconst folded={expression};\nconst __probe = mutation({{}}, ()=>folded); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
+        std::fs::write(tmp.path().join("spacepress.config.ts"), format!("import {{defineConfig, mutation}} from 'spacepress';\nconst folded={expression};\nconst __probe = mutation({{}}, ()=>folded); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{expression}: {report}");
         assert!(
@@ -2710,8 +2710,8 @@ fn unknown_configuration_builtin_properties_are_located_refusals() {
 #[test]
 fn console_results_preserve_undefined_and_emit_the_log() {
     let tmp = tempfile::tempdir().unwrap();
-    let entry = tmp.path().join("typedpress.config.ts");
-    std::fs::write(&entry, "import {defineConfig, mutation} from 'typedpress'; const __probe = mutation({}, ()=>{const result=console.warn('builtin-return-marker');return [typeof result,result===undefined,result===null];}); export { __probe as probe }; export default defineConfig({ name:'logresult' });").unwrap();
+    let entry = tmp.path().join("spacepress.config.ts");
+    std::fs::write(&entry, "import {defineConfig, mutation} from 'spacepress'; const __probe = mutation({}, ()=>{const result=console.warn('builtin-return-marker');return [typeof result,result===undefined,result===null];}); export { __probe as probe }; export default defineConfig({ name:'logresult' });").unwrap();
     let node = Command::new("node")
         .arg(root().join("tests/differential/run-node.mjs"))
         .arg(&entry)
@@ -2721,8 +2721,8 @@ fn console_results_preserve_undefined_and_emit_the_log() {
     assert!(String::from_utf8_lossy(&node.stderr).contains("builtin-return-marker"));
     let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
     let content = build_wp(tmp.path());
-    let app = content.join("plugins/typedpress-app-logresult/tp/app");
-    let actual = Command::new("php").args(["-r", r#"require $argv[1]; $schema=require $argv[2].'/schema.php';require $argv[2].'/functions.php';$fn='\TypedPressApp\\'.$schema['actions']['probe']['handler'];echo \TypedPress\Js::jsonStringify($fn());"#]).arg(content.join("plugins/typedpress-runtime/tp/bootstrap.php")).arg(app).output().unwrap();
+    let app = content.join("plugins/spacepress-app-logresult/sp/app");
+    let actual = Command::new("php").args(["-r", r#"require $argv[1]; $schema=require $argv[2].'/schema.php';require $argv[2].'/functions.php';$fn='\SpacePressApp\\'.$schema['actions']['probe']['handler'];echo \SpacePress\Js::jsonStringify($fn());"#]).arg(content.join("plugins/spacepress-runtime/sp/bootstrap.php")).arg(app).output().unwrap();
     assert!(actual.status.success(), "{}", String::from_utf8_lossy(&actual.stderr));
     assert!(String::from_utf8_lossy(&actual.stderr).contains("builtin-return-marker"));
     assert_eq!(
@@ -2734,13 +2734,13 @@ fn console_results_preserve_undefined_and_emit_the_log() {
 #[test]
 fn dynamic_engine_dependent_math_fails_explicitly() {
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::write(tmp.path().join("typedpress.config.ts"), "import {defineConfig, mutation} from 'typedpress'; const power=(base:number,exponent:number)=>Math.pow(base,exponent); const log=(value:number)=>Math.log(value); const exp=(value:number)=>Math.exp(value); const __probe = mutation({}, ()=>{const out:string[]=[];try{power(3,35);}catch{out.push('power');}try{power(45.29,-1);}catch{out.push('reciprocal');}try{log(3);}catch{out.push('log');}try{exp(1);}catch{out.push('exp');}return out;}); export { __probe as probe }; export default defineConfig({ name:'powerrefusal' });").unwrap();
+    std::fs::write(tmp.path().join("spacepress.config.ts"), "import {defineConfig, mutation} from 'spacepress'; const power=(base:number,exponent:number)=>Math.pow(base,exponent); const log=(value:number)=>Math.log(value); const exp=(value:number)=>Math.exp(value); const __probe = mutation({}, ()=>{const out:string[]=[];try{power(3,35);}catch{out.push('power');}try{power(45.29,-1);}catch{out.push('reciprocal');}try{log(3);}catch{out.push('log');}try{exp(1);}catch{out.push('exp');}return out;}); export { __probe as probe }; export default defineConfig({ name:'powerrefusal' });").unwrap();
     let content = build_wp(tmp.path());
     let result = php(
-        r#"require $argv[1];$schema=require $argv[2].'/schema.php';require $argv[2].'/functions.php';$fn='\TypedPressApp\\'.$schema['actions']['probe']['handler'];echo \TypedPress\Js::jsonStringify($fn());"#,
+        r#"require $argv[1];$schema=require $argv[2].'/schema.php';require $argv[2].'/functions.php';$fn='\SpacePressApp\\'.$schema['actions']['probe']['handler'];echo \SpacePress\Js::jsonStringify($fn());"#,
         &[
-            &content.join("plugins/typedpress-runtime/tp/bootstrap.php"),
-            &content.join("plugins/typedpress-app-powerrefusal/tp/app"),
+            &content.join("plugins/spacepress-runtime/sp/bootstrap.php"),
+            &content.join("plugins/spacepress-app-powerrefusal/sp/app"),
         ],
     );
     assert_eq!(result, json!(["power", "reciprocal", "log", "exp"]));
@@ -2756,7 +2756,7 @@ fn configuration_refuses_unmodeled_inherited_properties() {
         "typeof ({}).hasOwnProperty",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{defineConfig, mutation}} from 'typedpress';\nconst folded={expression};\nconst __probe = mutation({{}}, ()=>folded); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
+        std::fs::write(tmp.path().join("spacepress.config.ts"), format!("import {{defineConfig, mutation}} from 'spacepress';\nconst folded={expression};\nconst __probe = mutation({{}}, ()=>folded); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{expression}: {report}");
         assert!(
@@ -2779,7 +2779,7 @@ fn json_annotations_refuse_unrepresentable_wire_values_at_the_source() {
         "Date",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{json,table,defineConfig}} from 'typedpress';\nconst __rows = table({{ values: json<{annotation}>().optional() }}); export {{ __rows as rows }}; export default defineConfig({{}});")).unwrap();
+        std::fs::write(tmp.path().join("spacepress.config.ts"), format!("import {{json,table,defineConfig}} from 'spacepress';\nconst __rows = table({{ values: json<{annotation}>().optional() }}); export {{ __rows as rows }}; export default defineConfig({{}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         let d = &report["diagnostics"][0];
@@ -2796,7 +2796,7 @@ fn json_annotations_refuse_unrepresentable_wire_values_at_the_source() {
 fn action_results_refuse_implicit_typed_date_serialization() {
     for expression in ["new Date(0)", "({date: new Date(0)})", "[new Date(0)]"] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{defineConfig, mutation}} from 'typedpress';\nconst __probe = mutation({{}}, ()=>({expression})); export {{ __probe as probe }}; export default defineConfig({{}});" )).unwrap();
+        std::fs::write(tmp.path().join("spacepress.config.ts"), format!("import {{defineConfig, mutation}} from 'spacepress';\nconst __probe = mutation({{}}, ()=>({expression})); export {{ __probe as probe }}; export default defineConfig({{}});" )).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         let d = &report["diagnostics"][0];
@@ -2817,7 +2817,7 @@ fn typed_date_coercion_requires_explicit_formatting() {
         "new Date(0) + ''",
         "''.concat(new Date(0))",
     ] {
-        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{defineConfig, mutation}} from 'typedpress';\nconst __probe = mutation({{}}, ()=>({expression})); export {{ __probe as probe }}; export default defineConfig({{}});" )).unwrap();
+        std::fs::write(tmp.path().join("spacepress.config.ts"), format!("import {{defineConfig, mutation}} from 'spacepress';\nconst __probe = mutation({{}}, ()=>({expression})); export {{ __probe as probe }}; export default defineConfig({{}});" )).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         assert_eq!(
@@ -2831,14 +2831,14 @@ fn typed_date_coercion_requires_explicit_formatting() {
 #[test]
 fn dynamic_array_prototype_writes_are_refused() {
     let tmp = tempfile::tempdir().unwrap();
-    write_app(tmp.path().join("tp/helper.js"), "export function probe(){const key='__proto__';const a=[];try {a[key]=1;} catch(e) {return [e.name,Object.hasOwn(a,key)];} return ['accepted'];}").unwrap();
-    std::fs::write(tmp.path().join("typedpress.config.ts"), "import {defineConfig, mutation} from 'typedpress';import {probe} from './tp/helper.js';const __probe = mutation({}, ()=>probe()); export { __probe as probe }; export default defineConfig({ name:'prototyperefusal' });").unwrap();
+    write_app(tmp.path().join("sp/helper.js"), "export function probe(){const key='__proto__';const a=[];try {a[key]=1;} catch(e) {return [e.name,Object.hasOwn(a,key)];} return ['accepted'];}").unwrap();
+    std::fs::write(tmp.path().join("spacepress.config.ts"), "import {defineConfig, mutation} from 'spacepress';import {probe} from './sp/helper.js';const __probe = mutation({}, ()=>probe()); export { __probe as probe }; export default defineConfig({ name:'prototyperefusal' });").unwrap();
     let content = build_wp(tmp.path());
     let result = php(
-        r#"require $argv[1];$s=require $argv[2].'/schema.php';require $argv[2].'/functions.php';$fn='\\TypedPressApp\\'.$s['actions']['probe']['handler'];echo \TypedPress\Js::jsonStringify($fn(new \TypedPress\JsObject(), \TypedPress\Seam::ctx(['user'=>null])));"#,
+        r#"require $argv[1];$s=require $argv[2].'/schema.php';require $argv[2].'/functions.php';$fn='\\SpacePressApp\\'.$s['actions']['probe']['handler'];echo \SpacePress\Js::jsonStringify($fn(new \SpacePress\JsObject(), \SpacePress\Seam::ctx(['user'=>null])));"#,
         &[
-            &content.join("plugins/typedpress-runtime/tp/bootstrap.php"),
-            &content.join("plugins/typedpress-app-prototyperefusal/tp/app"),
+            &content.join("plugins/spacepress-runtime/sp/bootstrap.php"),
+            &content.join("plugins/spacepress-app-prototyperefusal/sp/app"),
         ],
     );
     assert_eq!(result, json!(["TypeError", false]));
@@ -2847,7 +2847,7 @@ fn dynamic_array_prototype_writes_are_refused() {
 #[test]
 fn function_string_conversion_is_refused_at_known_and_dynamic_boundaries() {
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::write(tmp.path().join("typedpress.config.ts"), "import {defineConfig, mutation} from 'typedpress';\nconst __probe = mutation({}, ()=>String(()=>1)); export { __probe as probe }; export default defineConfig({});").unwrap();
+    std::fs::write(tmp.path().join("spacepress.config.ts"), "import {defineConfig, mutation} from 'spacepress';\nconst __probe = mutation({}, ()=>String(()=>1)); export { __probe as probe }; export default defineConfig({});").unwrap();
     let (out, report) = checked(tmp.path());
     assert_eq!(out.status.code(), Some(1), "{report}");
     assert_eq!(
@@ -2855,17 +2855,17 @@ fn function_string_conversion_is_refused_at_known_and_dynamic_boundaries() {
         "function string coercion isn't supported"
     );
     assert_eq!(report["diagnostics"][0]["location"]["line"], 2);
-    write_app(tmp.path().join("tp/helper.js"),
+    write_app(tmp.path().join("sp/helper.js"),
         "function convert(value){return String(value);} export function probe(){try{return convert(()=>1);}catch(e){return e.name;}}",
     )
     .unwrap();
-    std::fs::write(tmp.path().join("typedpress.config.ts"), "import {defineConfig, mutation} from 'typedpress';import {probe} from './tp/helper.js';const __probe = mutation({}, ()=>probe()); export { __probe as probe }; export default defineConfig({ name:'functionrefusal' });").unwrap();
+    std::fs::write(tmp.path().join("spacepress.config.ts"), "import {defineConfig, mutation} from 'spacepress';import {probe} from './sp/helper.js';const __probe = mutation({}, ()=>probe()); export { __probe as probe }; export default defineConfig({ name:'functionrefusal' });").unwrap();
     let content = build_wp(tmp.path());
     let result = php(
-        r#"require $argv[1];$s=require $argv[2].'/schema.php';require $argv[2].'/functions.php';$fn='\\TypedPressApp\\'.$s['actions']['probe']['handler'];echo \TypedPress\Js::jsonStringify($fn(new \TypedPress\JsObject(),\TypedPress\Seam::ctx(['user'=>null])));"#,
+        r#"require $argv[1];$s=require $argv[2].'/schema.php';require $argv[2].'/functions.php';$fn='\\SpacePressApp\\'.$s['actions']['probe']['handler'];echo \SpacePress\Js::jsonStringify($fn(new \SpacePress\JsObject(),\SpacePress\Seam::ctx(['user'=>null])));"#,
         &[
-            &content.join("plugins/typedpress-runtime/tp/bootstrap.php"),
-            &content.join("plugins/typedpress-app-functionrefusal/tp/app"),
+            &content.join("plugins/spacepress-runtime/sp/bootstrap.php"),
+            &content.join("plugins/spacepress-app-functionrefusal/sp/app"),
         ],
     );
     assert_eq!(result, "TypeError");
@@ -2874,17 +2874,17 @@ fn function_string_conversion_is_refused_at_known_and_dynamic_boundaries() {
 #[test]
 fn non_iso_date_literals_are_refused_at_the_call() {
     for text in ["2020-1-1", "-000000-01-01"] {
-        for name in ["typedpress.config.ts", "tp/helper.js"] {
+        for name in ["spacepress.config.ts", "sp/helper.js"] {
             let tmp = tempfile::tempdir().unwrap();
-            if name == "tp/helper.js" {
+            if name == "sp/helper.js" {
                 write_app(
                     tmp.path().join(name),
                     format!("export const probe=()=>new Date({text:?}).getTime();"),
                 )
                 .unwrap();
-                std::fs::write(tmp.path().join("typedpress.config.ts"),"import {defineConfig, mutation} from 'typedpress';import {probe} from './tp/helper.js';const __probe = mutation({}, ()=>probe()); export { __probe as probe }; export default defineConfig({});").unwrap();
+                std::fs::write(tmp.path().join("spacepress.config.ts"),"import {defineConfig, mutation} from 'spacepress';import {probe} from './sp/helper.js';const __probe = mutation({}, ()=>probe()); export { __probe as probe }; export default defineConfig({});").unwrap();
             } else {
-                std::fs::write(tmp.path().join(name),format!("import {{defineConfig, mutation}} from 'typedpress';const __probe = mutation({{}}, ()=>new Date({text:?}).getTime()); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
+                std::fs::write(tmp.path().join(name),format!("import {{defineConfig, mutation}} from 'spacepress';const __probe = mutation({{}}, ()=>new Date({text:?}).getTime()); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
             }
             let (out, report) = checked(tmp.path());
             assert_eq!(out.status.code(), Some(1), "{report}");
@@ -2900,15 +2900,15 @@ fn non_iso_date_literals_are_refused_at_the_call() {
 #[test]
 fn native_error_inspection_is_refused_during_configuration_evaluation() {
     let tmp = tempfile::tempdir().unwrap();
-    write_app(tmp.path().join("tp/helper.js"), "export function probe(){try{arguments.callee;}catch(e){return [Object.hasOwn(e,'name'),Object.hasOwn(e,'message'),Object.keys(e)];}}").unwrap();
-    std::fs::write(tmp.path().join("typedpress.config.ts"), "import {defineConfig, mutation} from 'typedpress';import {probe} from './tp/helper.js';const folded=probe();const __probe = mutation({}, ()=>folded); export { __probe as probe }; export default defineConfig({});").unwrap();
+    write_app(tmp.path().join("sp/helper.js"), "export function probe(){try{arguments.callee;}catch(e){return [Object.hasOwn(e,'name'),Object.hasOwn(e,'message'),Object.keys(e)];}}").unwrap();
+    std::fs::write(tmp.path().join("spacepress.config.ts"), "import {defineConfig, mutation} from 'spacepress';import {probe} from './sp/helper.js';const folded=probe();const __probe = mutation({}, ()=>folded); export { __probe as probe }; export default defineConfig({});").unwrap();
     let (out, report) = checked(tmp.path());
     assert_eq!(out.status.code(), Some(1), "{report}");
     assert_eq!(
         report["diagnostics"][0]["message"],
         "restricted arguments properties aren't supported during configuration evaluation"
     );
-    assert_eq!(report["diagnostics"][0]["location"]["file"], "tp/helper.js");
+    assert_eq!(report["diagnostics"][0]["location"]["file"], "sp/helper.js");
 }
 
 #[test]
@@ -2923,7 +2923,7 @@ fn undefined_cannot_be_narrowed_through_a_null_annotation_or_conditional_var() {
         "try {if(true) throw Error('stop'); var x=1;} catch {} return String(x+1);",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("typedpress.config.ts"),format!("import {{defineConfig, mutation}} from 'typedpress';\nconst __probe = mutation({{}}, ()=>{{{body}}}); export {{ __probe as probe }}; export default defineConfig({{ name:'undefinedflow' }});" )).unwrap();
+        std::fs::write(tmp.path().join("spacepress.config.ts"),format!("import {{defineConfig, mutation}} from 'spacepress';\nconst __probe = mutation({{}}, ()=>{{{body}}}); export {{ __probe as probe }}; export default defineConfig({{ name:'undefinedflow' }});" )).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{body}: {report}");
         let diagnostic = &report["diagnostics"][0];
@@ -2985,12 +2985,12 @@ fn engine_dependent_properties_and_unmodeled_flat_depths_are_located_refusals() 
         ),
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{defineConfig, mutation}} from 'typedpress';\nconst __probe = mutation({{}}, ()=>{{ {source} }}); export {{ __probe as probe }}; export default defineConfig({{ name:'boundaries' }});")).unwrap();
+        std::fs::write(tmp.path().join("spacepress.config.ts"), format!("import {{defineConfig, mutation}} from 'spacepress';\nconst __probe = mutation({{}}, ()=>{{ {source} }}); export {{ __probe as probe }}; export default defineConfig({{ name:'boundaries' }});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{source}: {report}");
         let d = &report["diagnostics"][0];
         assert!(d["message"].as_str().unwrap().contains(message), "{source}: {report}");
-        assert_eq!(d["location"]["file"], "typedpress.config.ts");
+        assert_eq!(d["location"]["file"], "spacepress.config.ts");
         assert!(!d["help"].as_str().unwrap().is_empty(), "{report}");
     }
 }
@@ -3003,7 +3003,7 @@ fn optional_chains_refuse_unguarded_continuations_at_source() {
             let body = format!("const a=null;let n=0;try{{{expression};}}catch{{}}return n;");
             let handler = if javascript {
                 write_app(
-                    tmp.path().join("tp/helper.js"),
+                    tmp.path().join("sp/helper.js"),
                     format!("export function probe(){{{body}}}"),
                 )
                 .unwrap();
@@ -3012,11 +3012,11 @@ fn optional_chains_refuse_unguarded_continuations_at_source() {
                 format!("()=>{{{body}}}")
             };
             let import = if javascript {
-                "import {probe} from './tp/helper.js';"
+                "import {probe} from './sp/helper.js';"
             } else {
                 ""
             };
-            std::fs::write(tmp.path().join("typedpress.config.ts"),format!("import {{defineConfig, mutation}} from 'typedpress';{import}const __probe = mutation({{}}, {handler}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
+            std::fs::write(tmp.path().join("spacepress.config.ts"),format!("import {{defineConfig, mutation}} from 'spacepress';{import}const __probe = mutation({{}}, {handler}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
             let (out, report) = checked(tmp.path());
             assert_eq!(out.status.code(), Some(1), "{expression}: {report}");
             let diagnostic = &report["diagnostics"][0];
@@ -3052,7 +3052,7 @@ fn missing_reads_cannot_satisfy_nullable_required_arguments() {
         "function g(a:{x:number}|null){f(a?.['x']);}g(null);",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("typedpress.config.ts"),format!("import {{defineConfig, mutation}} from 'typedpress';const __probe = mutation({{}}, ()=>{{function f(v:number|null){{return typeof Number(v);}}{source}return 0;}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
+        std::fs::write(tmp.path().join("spacepress.config.ts"),format!("import {{defineConfig, mutation}} from 'spacepress';const __probe = mutation({{}}, ()=>{{function f(v:number|null){{return typeof Number(v);}}{source}return 0;}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{source}: {report}");
         let diagnostic = &report["diagnostics"][0];
@@ -3071,14 +3071,14 @@ fn missing_reads_cannot_satisfy_nullable_required_arguments() {
 #[test]
 fn unsupported_native_properties_are_not_fabricated_as_undefined() {
     let tmp = tempfile::tempdir().unwrap();
-    write_app(tmp.path().join("tp/helper.js"), "function read(value,key){try{return ['accepted',typeof value[key]];}catch(e){return [e.name,e.message];}}function get(value,key){return value[key];}export function probe(){const a=[];a.custom=2;return [read(new Set(),'union'),read([],'copyWithin'),typeof get({},'missing'),get(a,'custom'),typeof get('ab','flags')];}").unwrap();
-    std::fs::write(tmp.path().join("typedpress.config.ts"), "import {defineConfig, mutation} from 'typedpress';import {probe} from './tp/helper.js';const __probe = mutation({}, ()=>probe()); export { __probe as probe }; export default defineConfig({ name:'nativeproperties' });").unwrap();
+    write_app(tmp.path().join("sp/helper.js"), "function read(value,key){try{return ['accepted',typeof value[key]];}catch(e){return [e.name,e.message];}}function get(value,key){return value[key];}export function probe(){const a=[];a.custom=2;return [read(new Set(),'union'),read([],'copyWithin'),typeof get({},'missing'),get(a,'custom'),typeof get('ab','flags')];}").unwrap();
+    std::fs::write(tmp.path().join("spacepress.config.ts"), "import {defineConfig, mutation} from 'spacepress';import {probe} from './sp/helper.js';const __probe = mutation({}, ()=>probe()); export { __probe as probe }; export default defineConfig({ name:'nativeproperties' });").unwrap();
     let content = build_wp(tmp.path());
     let result = php(
-        r#"require $argv[1];$s=require $argv[2].'/schema.php';require $argv[2].'/functions.php';$fn='\\TypedPressApp\\'.$s['actions']['probe']['handler'];echo \TypedPress\Js::jsonStringify($fn(new \TypedPress\JsObject(), \TypedPress\Seam::ctx(['user'=>null])));"#,
+        r#"require $argv[1];$s=require $argv[2].'/schema.php';require $argv[2].'/functions.php';$fn='\\SpacePressApp\\'.$s['actions']['probe']['handler'];echo \SpacePress\Js::jsonStringify($fn(new \SpacePress\JsObject(), \SpacePress\Seam::ctx(['user'=>null])));"#,
         &[
-            &content.join("plugins/typedpress-runtime/tp/bootstrap.php"),
-            &content.join("plugins/typedpress-app-nativeproperties/tp/app"),
+            &content.join("plugins/spacepress-runtime/sp/bootstrap.php"),
+            &content.join("plugins/spacepress-app-nativeproperties/sp/app"),
         ],
     );
     assert_eq!(
@@ -3096,8 +3096,8 @@ fn unsupported_native_properties_are_not_fabricated_as_undefined() {
 #[test]
 fn typed_data_reads_refuse_unmodeled_inherited_values() {
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::write(tmp.path().join("typedpress.config.ts"), r#"
-import {defineConfig, mutation} from 'typedpress';
+    std::fs::write(tmp.path().join("spacepress.config.ts"), r#"
+import {defineConfig, mutation} from 'spacepress';
 const __probe = mutation({}, ()=>{
   const o:Record<string,undefined>={};
   const key='to'+'String';
@@ -3108,10 +3108,10 @@ const __probe = mutation({}, ()=>{
 "#).unwrap();
     let content = build_wp(tmp.path());
     let result = php(
-        r#"require $argv[1];$s=require $argv[2].'/schema.php';require $argv[2].'/functions.php';$fn='\\TypedPressApp\\'.$s['actions']['probe']['handler'];echo \TypedPress\Js::jsonStringify($fn(new \TypedPress\JsObject(), \TypedPress\Seam::ctx(['user'=>null])));"#,
+        r#"require $argv[1];$s=require $argv[2].'/schema.php';require $argv[2].'/functions.php';$fn='\\SpacePressApp\\'.$s['actions']['probe']['handler'];echo \SpacePress\Js::jsonStringify($fn(new \SpacePress\JsObject(), \SpacePress\Seam::ctx(['user'=>null])));"#,
         &[
-            &content.join("plugins/typedpress-runtime/tp/bootstrap.php"),
-            &content.join("plugins/typedpress-app-typeddatareads/tp/app"),
+            &content.join("plugins/spacepress-runtime/sp/bootstrap.php"),
+            &content.join("plugins/spacepress-app-typeddatareads/sp/app"),
         ],
     );
     assert_eq!(
@@ -3138,7 +3138,7 @@ process.stdout.write(JSON.stringify(methods));
     assert!(methods.len() > 100, "unexpected native inventory: {}", methods.len());
     for (surface, name) in methods {
         assert!(
-            typedpress::builtins::contract(&surface, &name).is_some(),
+            spacepress::builtins::contract(&surface, &name).is_some(),
             "native {surface}.{name} needs an accepted or explicitly refused shared contract"
         );
     }
@@ -3159,19 +3159,19 @@ fn parameter_default_scope_limits_are_located_refusals() {
             let tmp = tempfile::tempdir().unwrap();
             let body = if javascript {
                 write_app(
-                    tmp.path().join("tp/helper.js"),
+                    tmp.path().join("sp/helper.js"),
                     format!("export function probe(){{{source}return 0;}}"),
                 )
                 .unwrap();
-                "import {probe} from './tp/helper.js';const __probe = mutation({}, ()=>probe()); export { __probe as probe }; export default defineConfig({});".to_string()
+                "import {probe} from './sp/helper.js';const __probe = mutation({}, ()=>probe()); export { __probe as probe }; export default defineConfig({});".to_string()
             } else {
                 format!(
                     "{source}const __probe = mutation({{}}, ()=>0); export {{ __probe as probe }}; export default defineConfig({{}});"
                 )
             };
             std::fs::write(
-                tmp.path().join("typedpress.config.ts"),
-                format!("import {{defineConfig}} from 'typedpress';{body}"),
+                tmp.path().join("spacepress.config.ts"),
+                format!("import {{defineConfig}} from 'spacepress';{body}"),
             )
             .unwrap();
             let (out, report) = checked(tmp.path());
@@ -3198,7 +3198,7 @@ fn missing_string_compound_reads_do_not_fabricate_a_string_result_type() {
         ("const o:string[]=[];", "o[0]"),
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("typedpress.config.ts"),format!("import {{defineConfig, mutation}} from 'typedpress';const __probe = mutation({{}}, ()=>{{{declaration}const v=({access}+=1);return [String(v),`${{v}}`];}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
+        std::fs::write(tmp.path().join("spacepress.config.ts"),format!("import {{defineConfig, mutation}} from 'spacepress';const __probe = mutation({{}}, ()=>{{{declaration}const v=({access}+=1);return [String(v),`${{v}}`];}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         let diagnostic = &report["diagnostics"][0];
@@ -3224,32 +3224,32 @@ fn undefined_bindings_are_located_refusals_in_all_runtime_binding_forms() {
         "for(const undefined of [3]){String(undefined);}",
         "function undefined(){return 3;}undefined();",
         "class undefined{};new undefined();",
-        "import {n as undefined} from './tp/binding-helper.js';String(undefined);",
-        "import undefined from './tp/binding-helper.js';String(undefined);",
-        "import * as undefined from './tp/binding-helper.js';String(undefined);",
+        "import {n as undefined} from './sp/binding-helper.js';String(undefined);",
+        "import undefined from './sp/binding-helper.js';String(undefined);",
+        "import * as undefined from './sp/binding-helper.js';String(undefined);",
     ] {
         for javascript in [false, true] {
             let tmp = tempfile::tempdir().unwrap();
             write_app(
-                tmp.path().join("tp/binding-helper.js"),
+                tmp.path().join("sp/binding-helper.js"),
                 "export const n=3;export default 3;",
             )
             .unwrap();
             let body = if javascript {
                 write_app(
-                    tmp.path().join("tp/binding-probe.js"),
+                    tmp.path().join("sp/binding-probe.js"),
                     format!("{source}export function probe(){{return 0;}}"),
                 )
                 .unwrap();
-                "import {probe} from './tp/binding-probe.js';const __probe = mutation({}, ()=>probe()); export { __probe as probe }; export default defineConfig({});".to_string()
+                "import {probe} from './sp/binding-probe.js';const __probe = mutation({}, ()=>probe()); export { __probe as probe }; export default defineConfig({});".to_string()
             } else {
                 format!(
                     "{source}const __probe = mutation({{}}, ()=>0); export {{ __probe as probe }}; export default defineConfig({{}});"
                 )
             };
             std::fs::write(
-                tmp.path().join("typedpress.config.ts"),
-                format!("import {{defineConfig}} from 'typedpress';{body}"),
+                tmp.path().join("spacepress.config.ts"),
+                format!("import {{defineConfig}} from 'spacepress';{body}"),
             )
             .unwrap();
             let (out, report) = checked(tmp.path());
@@ -3295,7 +3295,7 @@ fn deferred_lexical_captures_and_missing_required_callback_slots_are_located_ref
         ),
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("typedpress.config.ts"),format!("import {{defineConfig, mutation}} from 'typedpress';const __probe = mutation({{}}, ()=>{{{source}}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
+        std::fs::write(tmp.path().join("spacepress.config.ts"),format!("import {{defineConfig, mutation}} from 'spacepress';const __probe = mutation({{}}, ()=>{{{source}}}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         let diagnostic = &report["diagnostics"][0];
@@ -3329,7 +3329,7 @@ fn lexical_initialization_refusals_cover_loop_sources_reads_and_assignments() {
             } else {
                 (format!("const folded=(()=>{{{body}}})();"), "folded".into())
             };
-            std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{defineConfig, mutation}} from 'typedpress';{declaration}const __probe = mutation({{}}, ()=>{result}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
+            std::fs::write(tmp.path().join("spacepress.config.ts"), format!("import {{defineConfig, mutation}} from 'spacepress';{declaration}const __probe = mutation({{}}, ()=>{result}); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
             let (out, report) = checked(tmp.path());
             assert_eq!(out.status.code(), Some(1), "{body}, handler={handler}: {report}");
             let diagnostic = &report["diagnostics"][0];
@@ -3351,17 +3351,17 @@ fn lexical_initialization_refusals_cover_loop_sources_reads_and_assignments() {
 #[test]
 fn error_options_refuse_inherited_causes_in_typed_and_checked_javascript() {
     let tmp = tempfile::tempdir().unwrap();
-    write_app(tmp.path().join("tp/helper.js"), "class Base {cause(){}} class Options extends Base {} export function read(){try{return Object.hasOwn(new Error('x',new Options()),'cause');}catch(e){return [e.name,e.message];}}").unwrap();
-    std::fs::write(tmp.path().join("typedpress.config.ts"), "import {defineConfig, mutation} from 'typedpress';import {read} from './tp/helper.js';class Base {cause(){}} class Options extends Base {} const __test = mutation({}, ()=>{let typed:string[]=[];try{Object.hasOwn(new Error('x',new Options()),'cause');}catch(e){typed=[e.name,e.message];}return [typed,read()];}); export { __test as test }; export default defineConfig({ name:'errorcause' });").unwrap();
+    write_app(tmp.path().join("sp/helper.js"), "class Base {cause(){}} class Options extends Base {} export function read(){try{return Object.hasOwn(new Error('x',new Options()),'cause');}catch(e){return [e.name,e.message];}}").unwrap();
+    std::fs::write(tmp.path().join("spacepress.config.ts"), "import {defineConfig, mutation} from 'spacepress';import {read} from './sp/helper.js';class Base {cause(){}} class Options extends Base {} const __test = mutation({}, ()=>{let typed:string[]=[];try{Object.hasOwn(new Error('x',new Options()),'cause');}catch(e){typed=[e.name,e.message];}return [typed,read()];}); export { __test as test }; export default defineConfig({ name:'errorcause' });").unwrap();
     let content = build_wp(tmp.path());
-    let app = content.join("plugins/typedpress-app-errorcause/tp/app");
+    let app = content.join("plugins/spacepress-app-errorcause/sp/app");
     let actual = php(
         r#"
         require $argv[1];
         require $argv[2] . '/functions.php';
-        echo \TypedPress\Js::jsonStringify(\TypedPressApp\action__test());
+        echo \SpacePress\Js::jsonStringify(\SpacePressApp\action__test());
     "#,
-        &[&content.join("plugins/typedpress-runtime/tp/bootstrap.php"), &app],
+        &[&content.join("plugins/spacepress-runtime/sp/bootstrap.php"), &app],
     );
     assert_eq!(
         actual,
@@ -3376,29 +3376,29 @@ fn error_options_refuse_inherited_causes_in_typed_and_checked_javascript() {
 fn writes_to_named_exports_refuse_before_importers_can_go_stale() {
     for (file, source, import) in [
         (
-            "tp/counter.js",
+            "sp/counter.js",
             "export let value=0;export function inc(){value++;}",
-            "import {value,inc} from './tp/counter.js';",
+            "import {value,inc} from './sp/counter.js';",
         ),
         (
-            "tp/counter.ts",
+            "sp/counter.ts",
             "let counter=0;export {counter as value};export function inc(){counter++;}",
-            "import {value,inc} from './tp/counter.ts';",
+            "import {value,inc} from './sp/counter.ts';",
         ),
         (
-            "tp/counter.js",
+            "sp/counter.js",
             "export var value=0;export function inc(){value++;}",
-            "import * as counter from './tp/counter.js';const {value,inc}=counter;",
+            "import * as counter from './sp/counter.js';const {value,inc}=counter;",
         ),
         (
-            "tp/counter.js",
+            "sp/counter.js",
             "let value=0;export {value as default};export function inc(){value++;}",
-            "import value,{inc} from './tp/counter.js';",
+            "import value,{inc} from './sp/counter.js';",
         ),
     ] {
         let tmp = tempfile::tempdir().unwrap();
         write_app(tmp.path().join(file), source).unwrap();
-        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{defineConfig, mutation}} from 'typedpress';{import}inc();const folded=value;const __probe = mutation({{}}, ()=>folded); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
+        std::fs::write(tmp.path().join("spacepress.config.ts"), format!("import {{defineConfig, mutation}} from 'spacepress';{import}inc();const folded=value;const __probe = mutation({{}}, ()=>folded); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         let diagnostic = &report["diagnostics"][0];
@@ -3418,20 +3418,20 @@ fn writes_to_named_exports_refuse_before_importers_can_go_stale() {
 fn typed_array_calls_refuse_own_overrides_installed_by_javascript() {
     let tmp = tempfile::tempdir().unwrap();
     write_app(
-        tmp.path().join("tp/array-overrides.js"),
+        tmp.path().join("sp/array-overrides.js"),
         "export function installArrayOverrides(a,b){a.map=()=>[99];b.join=()=>'own';}",
     )
     .unwrap();
-    std::fs::write(tmp.path().join("typedpress.config.ts"), "import {defineConfig, mutation} from 'typedpress';import {installArrayOverrides} from './tp/array-overrides.js';const __test = mutation({}, ()=>{const a=[1,2],b=[1,2];installArrayOverrides(a,b);let mapped:string[]=[];let joined:string[]=[];try{a.map(x=>x+1);}catch(e){mapped=[e.name,e.message];}try{b.join('-');}catch(e){joined=[e.name,e.message];}return [mapped,joined];}); export { __test as test }; export default defineConfig({ name:'arraynative' });").unwrap();
+    std::fs::write(tmp.path().join("spacepress.config.ts"), "import {defineConfig, mutation} from 'spacepress';import {installArrayOverrides} from './sp/array-overrides.js';const __test = mutation({}, ()=>{const a=[1,2],b=[1,2];installArrayOverrides(a,b);let mapped:string[]=[];let joined:string[]=[];try{a.map(x=>x+1);}catch(e){mapped=[e.name,e.message];}try{b.join('-');}catch(e){joined=[e.name,e.message];}return [mapped,joined];}); export { __test as test }; export default defineConfig({ name:'arraynative' });").unwrap();
     let content = build_wp(tmp.path());
-    let app = content.join("plugins/typedpress-app-arraynative/tp/app");
+    let app = content.join("plugins/spacepress-app-arraynative/sp/app");
     let actual = php(
         r#"
         require $argv[1];
         require $argv[2] . '/functions.php';
-        echo \TypedPress\Js::jsonStringify(\TypedPressApp\action__test());
+        echo \SpacePress\Js::jsonStringify(\SpacePressApp\action__test());
     "#,
-        &[&content.join("plugins/typedpress-runtime/tp/bootstrap.php"), &app],
+        &[&content.join("plugins/spacepress-runtime/sp/bootstrap.php"), &app],
     );
     assert_eq!(
         actual,
@@ -3451,7 +3451,7 @@ fn typed_array_calls_refuse_own_overrides_installed_by_javascript() {
 #[test]
 fn configuration_evaluation_refuses_destructured_var_loops_like_handlers() {
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::write(tmp.path().join("typedpress.config.ts"), "import {defineConfig, mutation} from 'typedpress';const folded=(()=>{for(var [x] of [[1]])return x;return 0;})();const __probe = mutation({}, ()=>folded); export { __probe as probe }; export default defineConfig({});").unwrap();
+    std::fs::write(tmp.path().join("spacepress.config.ts"), "import {defineConfig, mutation} from 'spacepress';const folded=(()=>{for(var [x] of [[1]])return x;return 0;})();const __probe = mutation({}, ()=>folded); export { __probe as probe }; export default defineConfig({});").unwrap();
     let (out, report) = checked(tmp.path());
     assert_eq!(out.status.code(), Some(1), "{report}");
     let diagnostic = &report["diagnostics"][0];
@@ -3459,7 +3459,7 @@ fn configuration_evaluation_refuses_destructured_var_loops_like_handlers() {
         diagnostic["message"], "destructured var loops aren't supported yet",
         "{report}"
     );
-    assert_eq!(diagnostic["location"]["file"], "typedpress.config.ts", "{report}");
+    assert_eq!(diagnostic["location"]["file"], "spacepress.config.ts", "{report}");
     assert_eq!(
         diagnostic["help"], "use const or let for loop destructuring",
         "{report}"
@@ -3474,13 +3474,13 @@ fn named_function_expressions_bind_their_name_inside_themselves() {
         "const x=7;const folded=()=> (function x(){return typeof x;})();",
     ] {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{defineConfig, mutation}} from 'typedpress';{declaration}const __probe = mutation({{}}, ()=>folded); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
+        std::fs::write(tmp.path().join("spacepress.config.ts"), format!("import {{defineConfig, mutation}} from 'spacepress';{declaration}const __probe = mutation({{}}, ()=>folded); export {{ __probe as probe }}; export default defineConfig({{}});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(0), "{declaration}: {report}");
     }
     // Strict JavaScript throws on a write to the name, so it is refused where it is written.
     let tmp = tempfile::tempdir().unwrap();
-    std::fs::write(tmp.path().join("typedpress.config.ts"), "import {defineConfig, mutation} from 'typedpress';\nconst f=function g(){ g = () => 1; return 1; };\nconst __probe = mutation({}, ()=>f()); export { __probe as probe }; export default defineConfig({});").unwrap();
+    std::fs::write(tmp.path().join("spacepress.config.ts"), "import {defineConfig, mutation} from 'spacepress';\nconst f=function g(){ g = () => 1; return 1; };\nconst __probe = mutation({}, ()=>f()); export { __probe as probe }; export default defineConfig({});").unwrap();
     let (out, report) = checked(tmp.path());
     assert_eq!(out.status.code(), Some(1), "{report}");
     let diagnostic = &report["diagnostics"][0];
@@ -3499,11 +3499,11 @@ fn named_function_expressions_bind_their_name_inside_themselves() {
     // A parameter default runs where the name is still the function, so writing it is refused too.
     let tmp = tempfile::tempdir().unwrap();
     write_app(
-        tmp.path().join("tp/h.mjs"),
+        tmp.path().join("sp/h.mjs"),
         "export const run = () => { const fn = function f(x = (f = () => 1)) { return x; }; return fn(); };\n",
     )
     .unwrap();
-    std::fs::write(tmp.path().join("typedpress.config.ts"), "import {defineConfig, mutation} from 'typedpress';\nimport { run } from './tp/h.mjs';\nconst __probe = mutation({}, ()=>run()); export { __probe as probe }; export default defineConfig({});").unwrap();
+    std::fs::write(tmp.path().join("spacepress.config.ts"), "import {defineConfig, mutation} from 'spacepress';\nimport { run } from './sp/h.mjs';\nconst __probe = mutation({}, ()=>run()); export { __probe as probe }; export default defineConfig({});").unwrap();
     let (out, report) = checked(tmp.path());
     assert_eq!(out.status.code(), Some(1), "{report}");
     assert!(
@@ -3516,7 +3516,7 @@ fn named_function_expressions_bind_their_name_inside_themselves() {
 }
 
 /// `abilities.call` from "php/wordpress": a locked ability and the app's own action are typed for the
-/// compiler and for tsc (tp/_generated/db.d.ts), and the compiled handler calls `Call::run` with the input as
+/// compiler and for tsc (sp/_generated/db.d.ts), and the compiled handler calls `Call::run` with the input as
 /// a JS value, using the typed result. `Call::run` itself runs on WordPress in tests/php/abilities_test.php.
 #[test]
 fn wordpress_abilities_are_typed_from_the_lock_and_the_schema() {
@@ -3524,18 +3524,18 @@ fn wordpress_abilities_are_typed_from_the_lock_and_the_schema() {
     let project = tmp.path().join("calls");
     copy_dir(&root().join("tests/fixtures/abilities-call"), &project);
     let content = build_wp(&project);
-    let plugin = content.join("plugins/typedpress-app-calls/tp/app/functions.php");
+    let plugin = content.join("plugins/spacepress-app-calls/sp/app/functions.php");
     // Stand in for WordPress: record each call and answer as the ability would.
     let stub = tmp.path().join("call.php");
     std::fs::write(
         &stub,
         r#"<?php
-        namespace TypedPress\Wp\Abilities;
+        namespace SpacePress\Wp\Abilities;
         final class Call {
             public static array $seen = [];
             public static function run(string $name, mixed $input): mixed {
-                self::$seen[] = [$name, \TypedPress\Js::jsonStringify($input)];
-                return $name === 'acme/site-info' ? new \TypedPress\JsObject(['value' => 'first site']) : 'hi ada';
+                self::$seen[] = [$name, \SpacePress\Js::jsonStringify($input)];
+                return $name === 'acme/site-info' ? new \SpacePress\JsObject(['value' => 'first site']) : 'hi ada';
             }
         }"#,
     )
@@ -3543,11 +3543,11 @@ fn wordpress_abilities_are_typed_from_the_lock_and_the_schema() {
     let got = php(
         r#"
         require $argv[1]; require $argv[2]; require $argv[3];
-        $out = \TypedPressApp\action__relay(new \TypedPress\JsObject(['who' => 'ada']), null);
-        echo json_encode(['out' => \TypedPress\Js::jsonTree($out), 'seen' => \TypedPress\Wp\Abilities\Call::$seen]);
+        $out = \SpacePressApp\action__relay(new \SpacePress\JsObject(['who' => 'ada']), null);
+        echo json_encode(['out' => \SpacePress\Js::jsonTree($out), 'seen' => \SpacePress\Wp\Abilities\Call::$seen]);
     "#,
         &[
-            &content.join("plugins/typedpress-runtime/tp/bootstrap.php"),
+            &content.join("plugins/spacepress-runtime/sp/bootstrap.php"),
             &stub,
             &plugin,
         ],
@@ -3562,9 +3562,9 @@ fn wordpress_abilities_are_typed_from_the_lock_and_the_schema() {
         serde_json::to_vec(&json!({
             "compilerOptions": {
                 "strict": true, "noEmit": true, "target": "ES2022", "module": "ESNext", "moduleResolution": "bundler", "types": [],
-                "paths": { "typedpress": [root().join("types/typedpress/index.d.ts")], "php/wordpress": [root().join("types/typedpress/wordpress.d.ts")] }
+                "paths": { "spacepress": [root().join("types/spacepress/index.d.ts")], "php/wordpress": [root().join("types/spacepress/wordpress.d.ts")] }
             },
-            "files": ["typedpress.config.ts", "tp/_generated/db.d.ts"]
+            "files": ["spacepress.config.ts", "sp/_generated/db.d.ts"]
         }))
         .unwrap(),
     )
@@ -3579,9 +3579,9 @@ fn wordpress_abilities_are_typed_from_the_lock_and_the_schema() {
     let out = tsc();
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
     // tsc refuses the same wrong input the compiler refuses.
-    let config = std::fs::read_to_string(project.join("typedpress.config.ts")).unwrap();
+    let config = std::fs::read_to_string(project.join("spacepress.config.ts")).unwrap();
     std::fs::write(
-        project.join("typedpress.config.ts"),
+        project.join("spacepress.config.ts"),
         config.replace("field: \"name\"", "field: \"title\""),
     )
     .unwrap();
@@ -3605,7 +3605,7 @@ fn copy_dir(from: &Path, to: &Path) {
 }
 
 /// An app with no registries in `defineConfig` (docs/spec/spec.md §1.1): `notes` and `like` register
-/// from their exports under `tp/`, `like` reaches `notes` through `"typedpress:db"`, and on an
+/// from their exports under `sp/`, `like` reaches `notes` through `"spacepress:db"`, and on an
 /// in-process WordPress the action's write lands in the table the export declared.
 #[test]
 fn exported_kinds_and_actions_register_by_name_and_run() {
@@ -3620,7 +3620,7 @@ fn exported_kinds_and_actions_register_by_name_and_run() {
         .arg(&content)
         .arg(
             r#"
-            $row = $app->db->insert('notes', ['title' => 'TypedPress'], true)[0];
+            $row = $app->db->insert('notes', ['title' => 'SpacePress'], true)[0];
             $first = $wp->call('POST', '/actions/like', ['id' => $row['id']]);
             $second = $wp->call('POST', '/actions/like', ['id' => $row['id']]);
             $stored = $app->db->findFirst('notes', ['where' => ['id' => $row['id']]]);
@@ -3657,7 +3657,7 @@ fn wp_hooks_register_in_file_order_with_their_priorities() {
         .arg(&content)
         .arg(
             r#"
-            $log = tempnam(sys_get_temp_dir(), 'typedpress-hooks');
+            $log = tempnam(sys_get_temp_dir(), 'spacepress-hooks');
             ini_set('error_log', $log);
             $content = apply_filters('the_content', "  body  ");
             $title = apply_filters('the_title', 'Kept', 7);
@@ -3685,8 +3685,8 @@ fn wp_hooks_register_in_file_order_with_their_priorities() {
             "title": "Kept",
             "saved": true,
             "errors": [
-                "[typedpress] tp/wp-hooks/the_title: TypedPress\\JsError: broken title filter",
-                "[typedpress] tp/wp-hooks/save_post: TypedPress\\JsError: saw Draft one #true",
+                "[spacepress] sp/wp-hooks/the_title: SpacePress\\JsError: broken title filter",
+                "[spacepress] sp/wp-hooks/save_post: SpacePress\\JsError: saw Draft one #true",
             ],
         })
     );
@@ -3749,22 +3749,22 @@ fn wordpress_functions_run_as_the_signed_in_user() {
 
 /// The compiler's own-app ability types and the runtime's registered abilities come from the same
 /// schema; this runs both and compares names, input properties and required inputs, so a new
-/// operation in runtime/TypedPress/Wp/Abilities/Register.php can't go untyped.
+/// operation in runtime/SpacePress/Wp/Abilities/Register.php can't go untyped.
 #[test]
 fn wordpress_own_abilities_match_the_registered_ones() {
     let tmp = tempfile::tempdir().unwrap();
     let project = tmp.path().join("own");
     copy_dir(&root().join("tests/fixtures/abilities-own"), &project);
     let content = build_wp(&project);
-    let program = typedpress::loader::load(&project.join("typedpress.config.ts")).unwrap();
-    let built = typedpress::pipeline::build(
+    let program = spacepress::loader::load(&project.join("spacepress.config.ts")).unwrap();
+    let built = spacepress::pipeline::build(
         &project,
         &program,
-        || Ok(typedpress::pipeline::Previous::none()),
+        || Ok(spacepress::pipeline::Previous::none()),
         |_| None,
     )
     .unwrap();
-    let compiled: Value = serde_json::to_value(typedpress::wordpress::abilities::own_inputs(&built.schema)).unwrap();
+    let compiled: Value = serde_json::to_value(spacepress::wordpress::abilities::own_inputs(&built.schema)).unwrap();
     let out = Command::new("php")
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/wp.php"))
@@ -3773,7 +3773,7 @@ fn wordpress_own_abilities_match_the_registered_ones() {
         .arg(
             r#"
             $out = [];
-            foreach (\TypedPress\Wp\Abilities\Register::operations() as $op) {
+            foreach (\SpacePress\Wp\Abilities\Register::operations() as $op) {
                 $keys = array_map('strval', array_keys($op['input']['properties'] ?? []));
                 $required = array_map('strval', $op['input']['required'] ?? []);
                 sort($keys);
@@ -3805,7 +3805,7 @@ fn wordpress_own_abilities_match_the_registered_ones() {
 /// Language constructs live Zero 0.8 apps use (first#138). Each `tests/differential/language/*.ts`
 /// is an app whose every action gives byte-identical JSON under Node and as compiled PHP. Files
 /// beside it (untyped `.mjs` helpers) are copied with it.
-/// A helper, class, namespace receiver or captured collection that TypedPress refuses is reported
+/// A helper, class, namespace receiver or captured collection that SpacePress refuses is reported
 /// wherever it is first compiled: in a sibling method that reads `this`, in an `if`, a ternary or
 /// a `for await` array, or behind an `instanceof` check. The checks that type a branch never leave
 /// it registered without code, so the build never calls a function PHP never got.
@@ -3882,8 +3882,8 @@ fn a_refusal_inside_a_helper_or_class_is_reported_wherever_it_is_first_compiled(
     ] {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(
-            tmp.path().join("typedpress.config.ts"),
-            format!("import {{ defineConfig, mutation }} from 'typedpress';\n{declarations}\nconst __probe = mutation({{}}, {handler}); export {{ __probe as probe }}; export default defineConfig({{}});\n"),
+            tmp.path().join("spacepress.config.ts"),
+            format!("import {{ defineConfig, mutation }} from 'spacepress';\n{declarations}\nconst __probe = mutation({{}}, {handler}); export {{ __probe as probe }}; export default defineConfig({{}});\n"),
         )
         .unwrap();
         let (out, report) = checked(tmp.path());
@@ -3906,8 +3906,8 @@ fn a_method_replaced_by_a_later_property_is_not_callable() {
     ] {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(
-            tmp.path().join("typedpress.config.ts"),
-            format!("import {{ defineConfig, mutation }} from 'typedpress';\nconst __probe = mutation({{}}, () => {body}); export {{ __probe as probe }}; export default defineConfig({{}});\n"),
+            tmp.path().join("spacepress.config.ts"),
+            format!("import {{ defineConfig, mutation }} from 'spacepress';\nconst __probe = mutation({{}}, () => {body}); export {{ __probe as probe }}; export default defineConfig({{}});\n"),
         )
         .unwrap();
         let (out, report) = checked(tmp.path());
@@ -3944,7 +3944,7 @@ fn compiler_followups_preserve_spread_receivers_and_class_narrowing_in_php() {
         ),
     ];
     let project = tempfile::tempdir().unwrap();
-    let mut source = String::from("import { defineConfig, mutation } from 'typedpress';\n");
+    let mut source = String::from("import { defineConfig, mutation } from 'spacepress';\n");
     let mut expected = serde_json::Map::new();
     for (i, (declarations, body, result)) in cases.into_iter().enumerate() {
         source.push_str(&format!(
@@ -3973,7 +3973,7 @@ fn compiler_followups_preserve_spread_receivers_and_class_narrowing_in_php() {
         expected.insert(format!("receiver{i}"), json!([result, result]));
     }
     source.push_str("export default defineConfig({ name: 'compiler-followups' });\n");
-    std::fs::write(project.path().join("typedpress.config.ts"), source).unwrap();
+    std::fs::write(project.path().join("spacepress.config.ts"), source).unwrap();
     let content = build_wp(project.path());
     let actual = php(
         r#"
@@ -3982,14 +3982,14 @@ fn compiler_followups_preserve_spread_receivers_and_class_narrowing_in_php() {
         require $argv[2] . '/functions.php';
         $out = [];
         foreach ($schema['actions'] as $name => $action) {
-            $fn = '\\TypedPressApp\\' . $action['handler'];
-            $out[$name] = $fn(new \TypedPress\JsObject(), \TypedPress\Seam::ctx(['user' => null]));
+            $fn = '\\SpacePressApp\\' . $action['handler'];
+            $out[$name] = $fn(new \SpacePress\JsObject(), \SpacePress\Seam::ctx(['user' => null]));
         }
-        echo \TypedPress\Js::jsonStringify(new \TypedPress\JsObject($out));
+        echo \SpacePress\Js::jsonStringify(new \SpacePress\JsObject($out));
         "#,
         &[
-            &content.join("plugins/typedpress-runtime/tp/bootstrap.php"),
-            &content.join("plugins/typedpress-app-compiler-followups/tp/app"),
+            &content.join("plugins/spacepress-runtime/sp/bootstrap.php"),
+            &content.join("plugins/spacepress-app-compiler-followups/sp/app"),
         ],
     );
     assert_eq!(actual, Value::Object(expected));
@@ -3999,13 +3999,13 @@ fn compiler_followups_preserve_spread_receivers_and_class_narrowing_in_php() {
 fn commonjs_whole_receiver_refusal_uses_the_source_name() {
     let project = tempfile::tempdir().unwrap();
     write_app(
-        project.path().join("tp/api.cjs"),
+        project.path().join("sp/api.cjs"),
         "exports.v = 1; exports.get = () => this;",
     )
     .unwrap();
     std::fs::write(
-        project.path().join("typedpress.config.ts"),
-        "import { defineConfig, mutation } from 'typedpress'; import api from './tp/api.cjs'; export const probe = mutation({}, () => api.get()); export default defineConfig({});",
+        project.path().join("spacepress.config.ts"),
+        "import { defineConfig, mutation } from 'spacepress'; import api from './sp/api.cjs'; export const probe = mutation({}, () => api.get()); export default defineConfig({});",
     )
     .unwrap();
     let (out, report) = checked(project.path());
@@ -4038,7 +4038,7 @@ fn language_constructs_match_node_through_generated_php() {
     for config in apps {
         let name = config.file_stem().unwrap().to_str().unwrap();
         let tmp = tempfile::tempdir().unwrap();
-        // The helper modules beside it, not the other cases: every module under tp/ registers
+        // The helper modules beside it, not the other cases: every module under sp/ registers
         // its exported actions (spec §1.1), so another case's file would add its actions here.
         let siblings: Vec<PathBuf> = std::fs::read_dir(&dir)
             .unwrap()
@@ -4069,8 +4069,8 @@ fn language_constructs_match_node_through_generated_php() {
             "{name}: {expected}"
         );
         let content = build_wp(tmp.path());
-        let runtime = content.join("plugins/typedpress-runtime/tp/bootstrap.php");
-        let app = content.join(format!("plugins/typedpress-app-language-{name}/tp/app"));
+        let runtime = content.join("plugins/spacepress-runtime/sp/bootstrap.php");
+        let app = content.join(format!("plugins/spacepress-app-language-{name}/sp/app"));
         let out = Command::new("php")
             .arg("-r")
             .arg(
@@ -4080,13 +4080,13 @@ fn language_constructs_match_node_through_generated_php() {
             require $argv[2] . '/functions.php';
             $out = [];
             foreach ($schema['actions'] as $name => $action) {
-                $fn = '\\TypedPressApp\\' . $action['handler'];
-                try { $out[$name] = ['data' => \TypedPress\Seam::toWire($fn(new \TypedPress\JsObject()))]; }
+                $fn = '\\SpacePressApp\\' . $action['handler'];
+                try { $out[$name] = ['data' => \SpacePress\Seam::toWire($fn(new \SpacePress\JsObject()))]; }
                 catch (\Throwable $e) { $out[$name] = ['error' => $e->getMessage()]; }
             }
             // Node lists a module's exports in name order (run-node.mjs reads them from the module).
             ksort($out, SORT_STRING);
-            echo \TypedPress\Js::jsonStringify(['schema' => 'typedpress-differential', 'version' => 1, 'complete' => true, 'cases' => $out]);
+            echo \SpacePress\Js::jsonStringify(['schema' => 'spacepress-differential', 'version' => 1, 'complete' => true, 'cases' => $out]);
         "#,
             )
             .arg(&runtime)
@@ -4113,7 +4113,7 @@ fn language_constructs_match_node_through_generated_php() {
 
 /// `process.platform` and `navigator.platform` are read when PHP runs, never decided on the build
 /// machine: two builds of tests/differential/language/host-platform.ts emit the same PHP, and that
-/// PHP answers with whatever `TypedPress\Host` reports on the server. A stand-in `TypedPress\Host` for a
+/// PHP answers with whatever `SpacePress\Host` reports on the server. A stand-in `SpacePress\Host` for a
 /// Windows and a macOS server makes picomatch's `isWindows` flip without rebuilding.
 #[test]
 fn host_platform_is_read_on_the_server_not_the_build_machine() {
@@ -4125,16 +4125,16 @@ fn host_platform_is_read_on_the_server_not_the_build_machine() {
             let tmp = tempfile::tempdir().unwrap();
             project_from(tmp.path(), &config, &[helpers.as_path()]);
             let content = build_wp(tmp.path());
-            let app = content.join("plugins/typedpress-app-language-host-platform/tp/app");
+            let app = content.join("plugins/spacepress-app-language-host-platform/sp/app");
             let functions = std::fs::read(app.join("functions.php")).unwrap();
             (tmp, content, app, functions)
         })
         .collect();
     assert_eq!(builds[0].3, builds[1].3, "two builds emitted different PHP");
     let (_, content, app, _) = &builds[0];
-    let runtime = content.join("plugins/typedpress-runtime/tp/bootstrap.php");
+    let runtime = content.join("plugins/spacepress-runtime/sp/bootstrap.php");
     let script = r#"
-        namespace TypedPress { final class Host {
+        namespace SpacePress { final class Host {
             public static function platform(): string { return getenv('FAKE_PLATFORM'); }
             public static function navigatorPlatform(): string { return getenv('FAKE_NAVIGATOR'); }
         } }
@@ -4144,8 +4144,8 @@ fn host_platform_is_read_on_the_server_not_the_build_machine() {
             require $argv[2] . '/functions.php';
             $out = [];
             foreach (['picomatch', 'platforms', 'typedPlatforms'] as $name) {
-                $fn = '\\TypedPressApp\\' . $schema['actions'][$name]['handler'];
-                $out[$name] = \TypedPress\Seam::toWire($fn(new \TypedPress\JsObject()));
+                $fn = '\\SpacePressApp\\' . $schema['actions'][$name]['handler'];
+                $out[$name] = \SpacePress\Seam::toWire($fn(new \SpacePress\JsObject()));
             }
             echo json_encode($out);
         }
@@ -4179,7 +4179,7 @@ fn host_platform_is_read_on_the_server_not_the_build_machine() {
 /// widening check could see it: on this program the previous solver took more than 90 s and
 /// 2.9 GB in a debug build. The solver now numbers each place once and widens a binding whose group
 /// runs away inside a pass (docs/decisions/2026-11-12-effects-event-scale.md). Debug builds count
-/// path projections (`TP_DEBUG_EFFECTS_WORK`); the solve must stay a small multiple of its
+/// path projections (`SP_DEBUG_EFFECTS_WORK`); the solve must stay a small multiple of its
 /// result, widen the same bindings on every run, and the PHP must compute what Node computes.
 #[test]
 fn effects_on_an_object_graph_stay_bounded_and_keep_php_equal_to_node() {
@@ -4207,13 +4207,13 @@ fn effects_on_an_object_graph_stay_bounded_and_keep_php_equal_to_node() {
 }
 ",
     );
-    std::fs::create_dir(tmp.path().join("tp")).unwrap();
-    std::fs::write(tmp.path().join("tp/run.mjs"), body).unwrap();
+    std::fs::create_dir(tmp.path().join("sp")).unwrap();
+    std::fs::write(tmp.path().join("sp/run.mjs"), body).unwrap();
     std::fs::write(tmp.path().join("package.json"), r#"{"type":"module"}"#).unwrap();
     std::fs::write(
-        tmp.path().join("typedpress.config.ts"),
-        r#"import { defineConfig, text, mutation } from "typedpress";
-import { run } from "./tp/run.mjs";
+        tmp.path().join("spacepress.config.ts"),
+        r#"import { defineConfig, text, mutation } from "spacepress";
+import { run } from "./sp/run.mjs";
 const __a = mutation({ access: "anyone" }, async (input: { s: string }) => { return { v: run(input.s) }; }); export { __a as a }; export default defineConfig({ name: "graph" });
 "#,
     )
@@ -4226,8 +4226,8 @@ const __a = mutation({ access: "anyone" }, async (input: { s: string }) => { ret
             let out = first()
                 .args(["check", "--json"])
                 .arg(tmp.path())
-                .env("TP_DEBUG_EFFECTS", &dump)
-                .env("TP_DEBUG_EFFECTS_WORK", &work)
+                .env("SP_DEBUG_EFFECTS", &dump)
+                .env("SP_DEBUG_EFFECTS_WORK", &work)
                 .output()
                 .unwrap();
             assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
@@ -4262,7 +4262,7 @@ const __a = mutation({ access: "anyone" }, async (input: { s: string }) => { ret
         .current_dir(tmp.path())
         .args(["--input-type=module", "-e"])
         .arg(format!(
-            "import {{ run }} from './tp/run.mjs'; process.stdout.write(JSON.stringify({}.map(s => ({{ v: run(s) }}))));",
+            "import {{ run }} from './sp/run.mjs'; process.stdout.write(JSON.stringify({}.map(s => ({{ v: run(s) }}))));",
             serde_json::to_string(&inputs).unwrap()
         ))
         .output()
@@ -4276,20 +4276,20 @@ const __a = mutation({ access: "anyone" }, async (input: { s: string }) => { ret
 require $argv[1];
 $schema = require $argv[2] . '/schema.php';
 require $argv[2] . '/functions.php';
-$fn = '\\TypedPressApp\\' . $schema['actions']['a']['handler'];
+$fn = '\\SpacePressApp\\' . $schema['actions']['a']['handler'];
 $out = [];
 foreach (json_decode('{}') as $s) {{
-    $input = new \TypedPress\JsObject();
+    $input = new \SpacePress\JsObject();
     $input->p['s'] = $s;
-    $out[] = json_decode(\TypedPress\Js::jsonStringify($fn($input, new \TypedPress\JsObject())));
+    $out[] = json_decode(\SpacePress\Js::jsonStringify($fn($input, new \SpacePress\JsObject())));
 }}
 echo json_encode($out);
 "#,
             serde_json::to_string(&inputs).unwrap()
         ),
         &[
-            &content.join("plugins/typedpress-runtime/tp/bootstrap.php"),
-            &content.join("plugins/typedpress-app-graph/tp/app"),
+            &content.join("plugins/spacepress-runtime/sp/bootstrap.php"),
+            &content.join("plugins/spacepress-app-graph/sp/app"),
         ],
     );
     assert_eq!(actual, expected);
@@ -4299,7 +4299,7 @@ echo json_encode($out);
 /// `prev.prev` and `prev.prev.prev`, so the effect places below those bindings multiply past
 /// the solver's widening threshold. The solve restarts with them widened
 /// (docs/decisions/2026-11-08-effects-widening.md). Debug builds name the widened bindings in
-/// the `TP_DEBUG_EFFECTS` dump, which must be the same on every run, and the generated PHP
+/// the `SP_DEBUG_EFFECTS` dump, which must be the same on every run, and the generated PHP
 /// must still compute what Node computes.
 #[test]
 fn widened_effects_are_deterministic_and_keep_php_equal_to_node() {
@@ -4336,13 +4336,13 @@ fn widened_effects_are_deterministic_and_keep_php_equal_to_node() {
 }
 ",
     );
-    std::fs::create_dir(tmp.path().join("tp")).unwrap();
-    std::fs::write(tmp.path().join("tp/run.mjs"), body).unwrap();
+    std::fs::create_dir(tmp.path().join("sp")).unwrap();
+    std::fs::write(tmp.path().join("sp/run.mjs"), body).unwrap();
     std::fs::write(tmp.path().join("package.json"), r#"{"type":"module"}"#).unwrap();
     std::fs::write(
-        tmp.path().join("typedpress.config.ts"),
-        r#"import { defineConfig, text, mutation } from "typedpress";
-import { run } from "./tp/run.mjs";
+        tmp.path().join("spacepress.config.ts"),
+        r#"import { defineConfig, text, mutation } from "spacepress";
+import { run } from "./sp/run.mjs";
 const __a = mutation({ access: "anyone" }, async (input: { s: string }) => { return { v: run(input.s) }; }); export { __a as a }; export default defineConfig({ name: "tokens" });
 "#,
     )
@@ -4354,7 +4354,7 @@ const __a = mutation({ access: "anyone" }, async (input: { s: string }) => { ret
             let out = first()
                 .args(["check", "--json"])
                 .arg(tmp.path())
-                .env("TP_DEBUG_EFFECTS", &file)
+                .env("SP_DEBUG_EFFECTS", &file)
                 .output()
                 .unwrap();
             assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
@@ -4379,7 +4379,7 @@ const __a = mutation({ access: "anyone" }, async (input: { s: string }) => { ret
         .current_dir(tmp.path())
         .args(["--input-type=module", "-e"])
         .arg(format!(
-            "import {{ run }} from './tp/run.mjs'; process.stdout.write(JSON.stringify({}.map(s => ({{ v: run(s) }}))));",
+            "import {{ run }} from './sp/run.mjs'; process.stdout.write(JSON.stringify({}.map(s => ({{ v: run(s) }}))));",
             serde_json::to_string(&inputs).unwrap()
         ))
         .output()
@@ -4393,20 +4393,20 @@ const __a = mutation({ access: "anyone" }, async (input: { s: string }) => { ret
 require $argv[1];
 $schema = require $argv[2] . '/schema.php';
 require $argv[2] . '/functions.php';
-$fn = '\\TypedPressApp\\' . $schema['actions']['a']['handler'];
+$fn = '\\SpacePressApp\\' . $schema['actions']['a']['handler'];
 $out = [];
 foreach (json_decode('{}') as $s) {{
-    $input = new \TypedPress\JsObject();
+    $input = new \SpacePress\JsObject();
     $input->p['s'] = $s;
-    $out[] = json_decode(\TypedPress\Js::jsonStringify($fn($input, new \TypedPress\JsObject())));
+    $out[] = json_decode(\SpacePress\Js::jsonStringify($fn($input, new \SpacePress\JsObject())));
 }}
 echo json_encode($out);
 "#,
             serde_json::to_string(&inputs).unwrap()
         ),
         &[
-            &content.join("plugins/typedpress-runtime/tp/bootstrap.php"),
-            &content.join("plugins/typedpress-app-tokens/tp/app"),
+            &content.join("plugins/spacepress-runtime/sp/bootstrap.php"),
+            &content.join("plugins/spacepress-app-tokens/sp/app"),
         ],
     );
     assert_eq!(actual, expected);
@@ -4456,8 +4456,8 @@ fn language_construct_type_rules() {
     for (declarations, handler, refusal) in cases {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(
-            tmp.path().join("typedpress.config.ts"),
-            format!("import {{ defineConfig, mutation }} from 'typedpress';\n{declarations}\nconst __probe = mutation({{}}, () => {handler}); export {{ __probe as probe }}; export default defineConfig({{ name: 'rules' }});"),
+            tmp.path().join("spacepress.config.ts"),
+            format!("import {{ defineConfig, mutation }} from 'spacepress';\n{declarations}\nconst __probe = mutation({{}}, () => {handler}); export {{ __probe as probe }}; export default defineConfig({{ name: 'rules' }});"),
         )
         .unwrap();
         let (out, report) = checked(tmp.path());
@@ -4480,7 +4480,7 @@ fn build_time_namespaces_resolve_members_and_refuse_whole_values() {
     // object, and helper objects called as `utils.f(x)` from another module.
     let tmp = tempfile::tempdir().unwrap();
     write_app(
-        tmp.path().join("tp/utils.mjs"),
+        tmp.path().join("sp/utils.mjs"),
         r#"
 export const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 export const constants = { REGEX_SLASH: /\//g, DEFAULT: { depth: 1 } };
@@ -4502,19 +4502,19 @@ export default main;
         .args([
             "--input-type=module",
             "-e",
-            &format!("import match from './tp/utils.mjs'; import * as utils from './tp/utils.mjs'; process.stdout.write(JSON.stringify({expression}));"),
+            &format!("import match from './sp/utils.mjs'; import * as utils from './sp/utils.mjs'; process.stdout.write(JSON.stringify({expression}));"),
         ])
         .output()
         .unwrap();
     assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
     let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
     std::fs::write(
-        tmp.path().join("typedpress.config.ts"),
+        tmp.path().join("spacepress.config.ts"),
         format!(
             r#"
-import {{ defineConfig, mutation }} from 'typedpress';
-import match from './tp/utils.mjs';
-import * as utils from './tp/utils.mjs';
+import {{ defineConfig, mutation }} from 'spacepress';
+import match from './sp/utils.mjs';
+import * as utils from './sp/utils.mjs';
 const __probe = mutation({{}}, () => {expression}); export {{ __probe as probe }}; export default defineConfig({{ name: 'namespaces' }});
 "#
         ),
@@ -4526,18 +4526,18 @@ const __probe = mutation({{}}, () => {expression}); export {{ __probe as probe }
 require $argv[1];
 $schema = require $argv[2] . '/schema.php';
 require $argv[2] . '/functions.php';
-$fn = '\\TypedPressApp\\' . $schema['actions']['probe']['handler'];
-echo \TypedPress\Js::jsonStringify($fn(new \TypedPress\JsObject(), new \TypedPress\JsObject()));
+$fn = '\\SpacePressApp\\' . $schema['actions']['probe']['handler'];
+echo \SpacePress\Js::jsonStringify($fn(new \SpacePress\JsObject(), new \SpacePress\JsObject()));
 "#,
         &[
-            &content.join("plugins/typedpress-runtime/tp/bootstrap.php"),
-            &content.join("plugins/typedpress-app-namespaces/tp/app"),
+            &content.join("plugins/spacepress-runtime/sp/bootstrap.php"),
+            &content.join("plugins/spacepress-app-namespaces/sp/app"),
         ],
     );
     assert_eq!(actual, expected);
     // The namespace object and the function with properties are never built in PHP.
     let functions =
-        std::fs::read_to_string(content.join("plugins/typedpress-app-namespaces/tp/app/functions.php")).unwrap();
+        std::fs::read_to_string(content.join("plugins/spacepress-app-namespaces/sp/app/functions.php")).unwrap();
     assert!(!functions.contains("'version'"), "{functions}");
 
     for (declarations, handler, message, help) in [
@@ -4602,7 +4602,7 @@ echo \TypedPress\Js::jsonStringify($fn(new \TypedPress\JsObject(), new \TypedPre
             "build time only",
         ),
     ] {
-        std::fs::write(tmp.path().join("typedpress.config.ts"), format!("import {{defineConfig, mutation}} from 'typedpress';\n{declarations}\nconst __probe = mutation({{}}, ()=>{handler}); export {{ __probe as probe }}; export default defineConfig({{ name:'namespaces' }});")).unwrap();
+        std::fs::write(tmp.path().join("spacepress.config.ts"), format!("import {{defineConfig, mutation}} from 'spacepress';\n{declarations}\nconst __probe = mutation({{}}, ()=>{handler}); export {{ __probe as probe }}; export default defineConfig({{ name:'namespaces' }});")).unwrap();
         let (out, report) = checked(tmp.path());
         assert_eq!(out.status.code(), Some(1), "{report}");
         let d = &report["diagnostics"][0];
@@ -4612,7 +4612,7 @@ echo \TypedPress\Js::jsonStringify($fn(new \TypedPress\JsObject(), new \TypedPre
     }
 }
 
-/// Authored TypeScript runs `for await` only over sync iterables of settled values (TypedPress's own
+/// Authored TypeScript runs `for await` only over sync iterables of settled values (SpacePress's own
 /// promises or plain values). Values from imported JavaScript and async generators need the job
 /// queue, which only imported JavaScript has, so they keep a located refusal.
 #[test]
@@ -4646,13 +4646,13 @@ fn typed_for_await_accepts_only_settled_sync_iterables() {
     ] {
         let tmp = tempfile::tempdir().unwrap();
         write_app(
-            tmp.path().join("tp/h.mjs"),
+            tmp.path().join("sp/h.mjs"),
             "export function untyped() { return [1, 2]; }\n",
         )
         .unwrap();
         std::fs::write(
-            tmp.path().join("typedpress.config.ts"),
-            format!("import {{ defineConfig, mutation }} from 'typedpress';\nimport {{ untyped }} from './tp/h.mjs';\nconst __probe = mutation({{}}, async () => {{ {source} }}); export {{ __probe as probe }}; export default defineConfig({{ name: 'awaits' }});"),
+            tmp.path().join("spacepress.config.ts"),
+            format!("import {{ defineConfig, mutation }} from 'spacepress';\nimport {{ untyped }} from './sp/h.mjs';\nconst __probe = mutation({{}}, async () => {{ {source} }}); export {{ __probe as probe }}; export default defineConfig({{ name: 'awaits' }});"),
         )
         .unwrap();
         let (out, report) = checked(tmp.path());
@@ -4670,7 +4670,7 @@ fn typed_for_await_accepts_only_settled_sync_iterables() {
 }
 
 /// Every refusal names what to write instead, so an author (often an agent) can act on it. Each
-/// source here hits one `TypedPress code doesn't support ...` refusal; the diagnostic must carry a
+/// source here hits one `SpacePress code doesn't support ...` refusal; the diagnostic must carry a
 /// location and non-empty help. Add a case whenever a refusal is added.
 #[test]
 fn language_refusals_carry_a_location_and_a_fix() {
@@ -4758,14 +4758,14 @@ fn language_refusals_carry_a_location_and_a_fix() {
         ),
         (
             "this through a module namespace",
-            "import * as ns from './tp/ns.mjs';",
+            "import * as ns from './sp/ns.mjs';",
             "ns.nsThis()",
             "through the module namespace `ns`",
             "",
         ),
         (
             "function with properties in a this receiver",
-            "import { withHelper } from './tp/ns.mjs';",
+            "import { withHelper } from './sp/ns.mjs';",
             "withHelper.read()",
             "a function with properties (`withHelper.helper`)",
             "",
@@ -4864,13 +4864,13 @@ fn language_refusals_carry_a_location_and_a_fix() {
     ];
     for (name, declarations, handler, message, fix) in cases {
         let tmp = tempfile::tempdir().unwrap();
-        write_app(tmp.path().join("tp/ns.mjs"),
+        write_app(tmp.path().join("sp/ns.mjs"),
             "export function nsThis() { return typeof this; }\nfunction helper() { return 1; }\nhelper.x = 42;\nexport const withHelper = { helper, read() { return this.helper.x; } };\n",
         )
         .unwrap();
         std::fs::write(
-            tmp.path().join("typedpress.config.ts"),
-            format!("import {{ defineConfig, mutation }} from 'typedpress';\n{declarations}\nconst __probe = mutation({{}}, () => {handler}); export {{ __probe as probe }}; export default defineConfig({{}});\n"),
+            tmp.path().join("spacepress.config.ts"),
+            format!("import {{ defineConfig, mutation }} from 'spacepress';\n{declarations}\nconst __probe = mutation({{}}, () => {handler}); export {{ __probe as probe }}; export default defineConfig({{}});\n"),
         )
         .unwrap();
         let (out, report) = checked(tmp.path());
@@ -4895,19 +4895,19 @@ fn language_refusals_carry_a_location_and_a_fix() {
 #[test]
 fn was_renames_only_what_a_table_stores() {
     let tmp = tempfile::tempdir().unwrap();
-    let build = |config: &str, entries: Vec<(String, Value)>| -> Result<typedpress::pipeline::Built, String> {
-        std::fs::write(tmp.path().join("typedpress.config.ts"), config).unwrap();
-        let program = typedpress::loader::load(&tmp.path().join("typedpress.config.ts")).map_err(|d| d.message)?;
-        typedpress::pipeline::build(
+    let build = |config: &str, entries: Vec<(String, Value)>| -> Result<spacepress::pipeline::Built, String> {
+        std::fs::write(tmp.path().join("spacepress.config.ts"), config).unwrap();
+        let program = spacepress::loader::load(&tmp.path().join("spacepress.config.ts")).map_err(|d| d.message)?;
+        spacepress::pipeline::build(
             tmp.path(),
             &program,
-            || typedpress::pipeline::Previous::from_entries(entries.clone()),
+            || spacepress::pipeline::Previous::from_entries(entries.clone()),
             |_| None,
         )
         .map_err(|d| d.message)
     };
     let refused = |config: &str| build(config, vec![]).err().unwrap_or_default();
-    let head = "import { defineConfig, collection, table, text, group } from 'typedpress';";
+    let head = "import { defineConfig, collection, table, text, group } from 'spacepress';";
     assert!(
         refused(&format!("{head} const posts = collection({{ title: text(), body: text().was('copy').optional() }}, {{ title: 'title' }}); export {{ posts }}; export default defineConfig({{}});"))
             .contains("`.was()`"),
@@ -4951,7 +4951,7 @@ fn was_renames_only_what_a_table_stores() {
     );
 }
 
-/// For each collection, global and action of an app, the schema in `tp/_generated/openapi.json` is the one the registered
+/// For each collection, global and action of an app, the schema in `sp/_generated/openapi.json` is the one the registered
 /// Ability publishes (a row is the `-get` output, a create input the `-create` input, a patch the
 /// `-update` input's `patch`). The apps cover every field type, a users kind, localized kinds and
 /// relations.
@@ -4961,13 +4961,13 @@ fn openapi_schemas_are_the_registered_ability_schemas() {
         let tmp = tempfile::tempdir().unwrap();
         let project = tmp.path().join("app");
         copy_dir(&root().join(source), &project);
-        let _ = std::fs::remove_dir_all(project.join(".tp"));
+        let _ = std::fs::remove_dir_all(project.join(".sp"));
         let content = build_wp(&project);
-        let program = typedpress::loader::load(&project.join("typedpress.config.ts")).unwrap();
-        let built = typedpress::pipeline::build(
+        let program = spacepress::loader::load(&project.join("spacepress.config.ts")).unwrap();
+        let built = spacepress::pipeline::build(
             &project,
             &program,
-            || Ok(typedpress::pipeline::Previous::none()),
+            || Ok(spacepress::pipeline::Previous::none()),
             |_| None,
         )
         .unwrap();
@@ -4979,7 +4979,7 @@ fn openapi_schemas_are_the_registered_ability_schemas() {
             .arg(
                 r#"
                 $out = [];
-                foreach (\TypedPress\Wp\Abilities\Register::operations() as $op) {
+                foreach (\SpacePress\Wp\Abilities\Register::operations() as $op) {
                     $out[$op['name']] = ['input' => $op['input'], 'output' => $op['output']];
                 }
                 echo json_encode($out), "\n";
@@ -5005,28 +5005,28 @@ fn openapi_schemas_are_the_registered_ability_schemas() {
         };
         let schema = &built.schema;
         let components = &built.openapi["components"]["schemas"];
-        let app = typedpress::wordpress::abilities::kebab(&schema.name);
-        let kebab = typedpress::wordpress::abilities::kebab;
+        let app = spacepress::wordpress::abilities::kebab(&schema.name);
+        let kebab = spacepress::wordpress::abilities::kebab;
         let mut compared = 0;
         for c in schema.collections.values() {
             let k = kebab(&c.table);
-            let name = typedpress::client::type_name(&c.key);
+            let name = spacepress::client::type_name(&c.key);
             if c.api.get {
                 assert_eq!(
-                    typedpress::json_schema::row(c),
+                    spacepress::json_schema::row(c),
                     registered[format!("{app}/{k}-get")]["output"],
                     "{source}: the row of {}",
                     c.table
                 );
                 // The document's row is that schema; it only adds notes and the `with` relations.
-                for (field, published) in typedpress::json_schema::row(c)["properties"].as_object().unwrap() {
+                for (field, published) in spacepress::json_schema::row(c)["properties"].as_object().unwrap() {
                     let mut documented = components[&name]["properties"][field].clone();
                     if c.relations.contains_key(field) {
                         documented = documented["anyOf"][0].clone();
                     }
                     let documented = documented.as_object_mut().unwrap();
                     documented.remove("description");
-                    documented.remove("x-typedpress-access");
+                    documented.remove("x-spacepress-access");
                     assert_eq!(
                         &Value::Object(documented.clone()),
                         published,

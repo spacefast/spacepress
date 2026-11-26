@@ -2,7 +2,7 @@
 //! TimSort, ported from CPython's listsort. This is the same algorithm step for step, so a
 //! comparator is called with the same pairs in the same order as under Node. An inconsistent or
 //! effectful comparator therefore gives Node's result too, not just a valid stable order.
-//! runtime/TypedPress/Js.php carries the same port for compiled code; keep the two in step.
+//! runtime/SpacePress/Js.php carries the same port for compiled code; keep the two in step.
 //!
 //! `less(x, y)` is `ToNumber(compare(x, y)) < 0`, with NaN counting as 0. The caller removes
 //! undefined elements first and appends them afterwards, as the specification requires.

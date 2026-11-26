@@ -1,4 +1,4 @@
-//! `tp/_generated/openapi.json`: the app's HTTP API (`/wp-json/typedpress/v1`, docs/spec/spec.md §3a) as an
+//! `sp/_generated/openapi.json`: the app's HTTP API (`/wp-json/spacepress/v1`, docs/spec/spec.md §3a) as an
 //! OpenAPI 3.1 document. It is built from the evaluated [`Schema`], the data that also produces
 //! schema.php (which the runtime turns into Ability schemas) and the typed client:
 //!
@@ -10,7 +10,7 @@
 //! - an operation exists exactly when the facade serves it: a kind's `api` flags, `revisions`,
 //!   `sync`, a `readonly` action's `GET`.
 //!
-//! The running site serves the document at `/wp-json/typedpress/v1/openapi.json` (`TypedPress\OpenApi`).
+//! The running site serves the document at `/wp-json/spacepress/v1/openapi.json` (`SpacePress\OpenApi`).
 
 use crate::json_schema as js;
 use crate::schema::{Access, Action, ColType, Collection, Column, FileBucket, Global, RelKind, Schema};
@@ -19,7 +19,7 @@ use serde_json::{Map, Value, json};
 use std::collections::HashSet;
 
 /// Where the facade serves the API, below the site's home URL.
-pub const PREFIX: &str = "/wp-json/typedpress/v1";
+pub const PREFIX: &str = "/wp-json/spacepress/v1";
 /// The document's path below [`PREFIX`].
 pub const ROUTE: &str = "/openapi.json";
 /// A list's default and largest page (`Wp\Facade::LIMIT`, `MAX_LIMIT`).
@@ -248,7 +248,7 @@ impl Op {
             Some(rule) => {
                 let (name, sentence) = access(rule);
                 description.push(format!("Access: {sentence}"));
-                out["x-typedpress-access"] = name;
+                out["x-spacepress-access"] = name;
                 if !matches!(rule, Access::Allow(true)) && !matches!(rule, Access::Role(r) if r == "anyone") {
                     statuses.extend([401, 403]);
                 }
@@ -474,7 +474,7 @@ impl Builder<'_> {
                     .iter()
                     .map(|(op, rule)| (op.clone(), access(rule).0))
                     .collect();
-                property["x-typedpress-access"] = Value::Object(notes);
+                property["x-spacepress-access"] = Value::Object(notes);
             }
             if let Some(rule) = col.access.get("read")
                 && !matches!(rule, Access::Allow(true))
@@ -782,7 +782,7 @@ impl Builder<'_> {
             if c.auth {
                 op = op.note("A new user is a WordPress user, so WordPress core's rule applies as well: the caller must be allowed to create users.");
             }
-            // Only a table's create runs through TypedPress's receipts (`TableController`); a post kind's
+            // Only a table's create runs through SpacePress's receipts (`TableController`); a post kind's
             // or the users kind's create is core's insert, which takes no key.
             if !c.editor && !c.auth && c.taxonomy.is_none() {
                 op = op.params([idempotency_key(false)]);
@@ -1014,11 +1014,11 @@ impl Builder<'_> {
         }
     }
 
-    /// The routes `typedpress sync` uses to keep a kind's content files and its rows in step.
+    /// The routes `spacepress sync` uses to keep a kind's content files and its rows in step.
     fn sync(&mut self, c: &Collection, update: &Access, delete: &Access) {
         self.tag(
             "Sync",
-            "What `typedpress sync` calls to keep content files and rows in step, for kinds with `sync`.",
+            "What `spacepress sync` calls to keep content files and rows in step, for kinds with `sync`.",
         );
         let table = &c.table;
         let base = format!("/sync/{}", segment(table));
@@ -1243,7 +1243,7 @@ impl Builder<'_> {
         // name takes only the one-segment path; the item paths still reach the built-in kind.
         let has = |name: &str| self.schema.collections.contains_key(name);
         let global = |name: &str| self.schema.globals.contains_key(name);
-        let description = "WordPress's own content, in TypedPress's field names. WordPress core decides access, as it does for every other client of these routes.";
+        let description = "WordPress's own content, in SpacePress's field names. WordPress core decides access, as it does for every other client of these routes.";
         let paged = || [paging("limit"), paging("offset"), paging("cursor")];
         let search = || {
             query(
@@ -1644,7 +1644,7 @@ impl Builder<'_> {
             .errors(&[400]));
     }
 
-    /// Who is asking, and the sign-in routes TypedPress Identity adds.
+    /// Who is asking, and the sign-in routes SpacePress Identity adds.
     fn account(&mut self) {
         self.tag("Account", "The signed-in user and their session.");
         let role = json!({ "type": "string", "enum": crate::schema::ROLES });
@@ -1657,7 +1657,7 @@ impl Builder<'_> {
                 json!({ "anyOf": [reference(&self.names.collections[&members.table]), { "type": "null" }] });
         }
         self.define("User", user);
-        // `/me` is the caller's own row as they may read it, with `id`, `name` and TypedPress's `role`
+        // `/me` is the caller's own row as they may read it, with `id`, `name` and SpacePress's `role`
         // over it: a users kind's row, or WordPress's own fields without one.
         let mut properties = match members {
             Some(members) => js::row(members)["properties"].clone(),
@@ -1690,7 +1690,7 @@ impl Builder<'_> {
                 "Account",
                 "auth.config",
                 "Sign-in settings",
-                "Where TypedPress Identity signs users in (null without it), and whether guests are allowed.",
+                "Where SpacePress Identity signs users in (null without it), and whether guests are allowed.",
             )
             .rule(&Access::anyone())
             .ok(
@@ -1703,20 +1703,20 @@ impl Builder<'_> {
                 ),
             ),
         );
-        self.paths.add("/auth/guest", "post", Op::new("Account", "auth.guest", "Start a guest session", "Creates a guest user and signs them in. A 404 when TypedPress Identity is not installed or guests are off.")
+        self.paths.add("/auth/guest", "post", Op::new("Account", "auth.guest", "Start a guest session", "Creates a guest user and signs them in. A 404 when SpacePress Identity is not installed or guests are off.")
             .rule(&Access::anyone())
             .ok(201, envelope("The guest's tokens and user.", json!({ "type": "object", "properties": {
                 "accessToken": { "type": "string" }, "refreshToken": { "type": "string" }, "expiresIn": { "type": "integer" },
                 "clientId": { "type": "string" }, "user": self.own_ref("User"),
             }, "required": ["accessToken", "refreshToken", "expiresIn", "clientId", "user"] })))
             .errors(&[404]));
-        self.paths.add("/auth/session", "delete", Op::new("Account", "auth.signOut", "Sign out", "Ends the TypedPress Identity session the request's access token belongs to. A cookie or application password signs out through WordPress instead, and is refused here.")
+        self.paths.add("/auth/session", "delete", Op::new("Account", "auth.signOut", "Sign out", "Ends the SpacePress Identity session the request's access token belongs to. A cookie or application password signs out through WordPress instead, and is refused here.")
             .rule(&Access::Role("authenticated".into()))
             .ok(200, envelope("True.", json!({ "type": "boolean" })))
             .errors(&[404]));
     }
 
-    /// `POST /_live` (`runtime/TypedPress/Live/Module.php`): the reads a page is subscribed to, each
+    /// `POST /_live` (`runtime/SpacePress/Live/Module.php`): the reads a page is subscribed to, each
     /// answered "not modified" or with its fresh result, as the caller.
     fn live(&mut self) {
         self.tag(
@@ -1841,12 +1841,12 @@ pub fn document(schema: &Schema) -> Value {
     b.live();
     b.search();
     b.tag("Schema", "The app described to its clients.");
-    b.paths.add("/", "get", Op::new("Schema", "schema", "Describe the app", "The app's kinds with the WordPress route behind each, their fields and access rules, its globals and its actions. `typedpress sync` and `typedpress doctor` read it.")
+    b.paths.add("/", "get", Op::new("Schema", "schema", "Describe the app", "The app's kinds with the WordPress route behind each, their fields and access rules, its globals and its actions. `spacepress sync` and `spacepress doctor` read it.")
         .rule(&Access::anyone())
         .ok(200, envelope("The app's schema.", json!({ "type": "object", "properties": {
             "name": { "type": "string" },
-            "runtime": { "type": "object", "description": "The TypedPress runtime series and the WordPress, PHP, database and plugin versions under it." },
-            "site": { "type": "object", "description": "The site's id, for `typedpress sync`." },
+            "runtime": { "type": "object", "description": "The SpacePress runtime series and the WordPress, PHP, database and plugin versions under it." },
+            "site": { "type": "object", "description": "The site's id, for `spacepress sync`." },
             "locales": { "type": ["object", "null"] }, "media": { "type": "object" }, "files": { "type": "object" }, "auth": { "type": "object" },
             "kinds": { "type": "object", "description": "Each kind by name: the WordPress route behind it, its fields, relations and access rules." },
             "globals": { "type": "object" }, "actions": { "type": "object" },
@@ -1855,16 +1855,16 @@ pub fn document(schema: &Schema) -> Value {
         b.paths.add("/store", "get", Op::new("Store", "store-get", "Store information", "Currency, precision, origin and checkout URL. No shopper state.")
             .rule(&Access::anyone()).ok(200, envelope("Store information.", json!({"type":"object","properties":{"currency":{"type":"string"},"precision":{"type":"integer"},"country":{"type":"string"},"checkout":{"type":"string"},"cart":{"type":"string"}},"required":["currency","precision","country","checkout","cart"]}))));
     }
-    b.paths.add(ROUTE, "get", Op::new("Schema", "openapi", "This document", "The app's API as an OpenAPI 3.1 document: what `typedpress build` wrote to `tp/_generated/openapi.json`, with this site's address as its server.")
+    b.paths.add(ROUTE, "get", Op::new("Schema", "openapi", "This document", "The app's API as an OpenAPI 3.1 document: what `spacepress build` wrote to `sp/_generated/openapi.json`, with this site's address as its server.")
         .rule(&Access::anyone())
         .ok(200, json!({ "description": "The OpenAPI document.", "content": { "application/json": { "schema": { "type": "object" } } } })));
 
     let description = [
-                format!("The HTTP API of the `{}` app, built with TypedPress and served under `{PREFIX}` on its WordPress site.", schema.name),
+                format!("The HTTP API of the `{}` app, built with SpacePress and served under `{PREFIX}` on its WordPress site.", schema.name),
                 "Each request is dispatched to the WordPress REST route behind it, which enforces the app's access rules, field rules, validation and hooks; this API gives the requests and answers one plain shape.".into(),
                 "A successful answer is JSON with the result under `data`; a list also has `cursor`, the next page's cursor or null. An error is an RFC 9457 problem document, `application/problem+json`, with `type`, `title`, `status`, `code` and `detail`, and `pointer` when one field is at fault.".into(),
-                "Requests sign in as WordPress core accepts: the logged-in cookie with an `X-WP-Nonce` header, an application password, or a TypedPress Identity access token. Each operation says who may call it. A field the caller may not read is left out of rows, and can't be filtered or sorted on.".into(),
-                "`typedpress build` writes this document from the app's schema, with the typed client in `tp/_generated/client/` and the app's WordPress Abilities; a component here has the name of the client's type for the same value.".into(),
+                "Requests sign in as WordPress core accepts: the logged-in cookie with an `X-WP-Nonce` header, an application password, or a SpacePress Identity access token. Each operation says who may call it. A field the caller may not read is left out of rows, and can't be filtered or sorted on.".into(),
+                "`spacepress build` writes this document from the app's schema, with the typed client in `sp/_generated/client/` and the app's WordPress Abilities; a component here has the name of the client's type for the same value.".into(),
             ].join("\n\n");
     let problem_schema = b.own_ref("Problem");
     let paths: Map<String, Value> = b
@@ -1896,13 +1896,13 @@ pub fn document(schema: &Schema) -> Value {
                 "cookie": { "type": "apiKey", "in": "cookie", "name": "wordpress_logged_in_{hash}", "description": "WordPress's logged-in cookie, as a browser holds it after signing in. A request with it must also carry `X-WP-Nonce`." },
                 "nonce": { "type": "apiKey", "in": "header", "name": "X-WP-Nonce", "description": "A WordPress REST nonce (`wp_create_nonce('wp_rest')`) for the cookie's session." },
                 "applicationPassword": { "type": "http", "scheme": "basic", "description": "A WordPress user name and one of the user's application passwords." },
-                "bearer": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT", "description": "A TypedPress Identity access token." },
+                "bearer": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT", "description": "A SpacePress Identity access token." },
             },
         },
     })
 }
 
-/// The document as `typedpress build` writes it: two-space indented, with a list of plain values or a
+/// The document as `spacepress build` writes it: two-space indented, with a list of plain values or a
 /// small object of them on one line (`"type": ["string", "null"]`, `{ "$ref": "…" }`), so the
 /// committed file is short enough to read in a diff.
 pub fn render(document: &Value) -> String {
@@ -1979,21 +1979,21 @@ pub fn render(document: &Value) -> String {
 mod tests {
     use serde_json::{Value, json};
 
-    /// The document for an app written as `typedpress.config.ts` plus `tp/schema.ts`.
+    /// The document for an app written as `spacepress.config.ts` plus `sp/schema.ts`.
     fn document(schema_ts: &str) -> Value {
         let files = [
             (
-                "/app/typedpress.config.ts",
-                "import { defineConfig } from \"typedpress\";\nexport default defineConfig({ name: \"app\" });\n",
+                "/app/spacepress.config.ts",
+                "import { defineConfig } from \"spacepress\";\nexport default defineConfig({ name: \"app\" });\n",
             ),
-            ("/app/tp/schema.ts", schema_ts),
+            ("/app/sp/schema.ts", schema_ts),
         ]
         .into_iter()
         .map(|(path, source)| (std::path::PathBuf::from(path), source.to_string()))
         .collect();
         let program = crate::loader::load_from(
             std::rc::Rc::new(crate::wasm::Memory::new(files)),
-            std::path::Path::new("/app/typedpress.config.ts"),
+            std::path::Path::new("/app/spacepress.config.ts"),
         )
         .unwrap_or_else(|d| panic!("{d:?}"));
         crate::pipeline::build(
@@ -2033,7 +2033,7 @@ mod tests {
     #[test]
     fn names_shared_with_wordpress_kinds_leave_no_dangling_reference() {
         let doc = document(
-            "import { collection, global, text } from \"typedpress\";\n\
+            "import { collection, global, text } from \"spacepress\";\n\
              export const categories = collection({ title: text() }, { title: \"title\" });\n\
              export const posts = global({ motto: text().default(\"x\") });\n",
         );

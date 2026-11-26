@@ -1,4 +1,4 @@
-// Feature 5 (design §7.1) against real WordPress: every TypedPress operation is a core Ability, listed by
+// Feature 5 (design §7.1) against real WordPress: every SpacePress operation is a core Ability, listed by
 // core's /wp-abilities/v1 with schema.php-derived JSON Schemas, executed with the same answers REST
 // gives each user, hidden from REST and MCP by `agents: false`, and reachable as named tools on the
 // app's own MCP Adapter server through plain JSON-RPC over HTTP.
@@ -26,8 +26,8 @@ async function runAbility(name: string, input: unknown, who: Who, method: "GET" 
   return http(method, `${abilities}/abilities/${name}/run?${params}`, as(who));
 }
 
-/** The 2xx/4xx outcome a caller sees: TypedPress's problem code over REST, the ability's WP_Error code. */
-const outcome = (r: { status: number; json: any }) => ({ status: r.status, code: r.status < 300 ? null : String(r.json.code).replace(/^tp_/, "") });
+/** The 2xx/4xx outcome a caller sees: SpacePress's problem code over REST, the ability's WP_Error code. */
+const outcome = (r: { status: number; json: any }) => ({ status: r.status, code: r.status < 300 ? null : String(r.json.code).replace(/^sp_/, "") });
 
 let postId = 0;
 let eventId = 0;
@@ -45,15 +45,15 @@ const pinned = {
   action: ["approveComment", "publishedCount", "agentNote"],
   global: ["settings"],
 };
-const isPinned = (a: any) => Object.entries(pinned).some(([kind, names]) => names.includes(a.meta.typedpress[kind]));
+const isPinned = (a: any) => Object.entries(pinned).some(([kind, names]) => names.includes(a.meta.spacepress[kind]));
 
-test("wp typedpress abilities lists every operation of the app with schemas from schema.php (golden)", () => {
+test("wp spacepress abilities lists every operation of the app with schemas from schema.php (golden)", () => {
   const listed = first("abilities").filter(isPinned);
   const fixture = join(here, "fixtures/abilities.json");
   const text = JSON.stringify(listed, null, 2) + "\n";
-  if (process.env.TP_UPDATE_FIXTURES === "1") writeFileSync(fixture, text);
+  if (process.env.SP_UPDATE_FIXTURES === "1") writeFileSync(fixture, text);
   const byName = (rows: { name: string }[]) => Object.fromEntries(rows.map(row => [row.name, row]));
-  assert.deepEqual(byName(listed), byName(JSON.parse(readFileSync(fixture, "utf8"))), "tests/wp/fixtures/abilities.json is stale; rerun with TP_UPDATE_FIXTURES=1");
+  assert.deepEqual(byName(listed), byName(JSON.parse(readFileSync(fixture, "utf8"))), "tests/wp/fixtures/abilities.json is stale; rerun with SP_UPDATE_FIXTURES=1");
 });
 
 test("abilities convert empty input, JSON inputs and function-valued results at the wire", async () => {
@@ -79,7 +79,7 @@ test("abilities convert empty input, JSON inputs and function-valued results at 
   for (const meta of [{}, { "1": 1, "0": 2 }, { "\u0000": 1 }]) {
     const echo = await runAbility("blog/refs-echo", { meta }, "editor");
     assert.deepEqual([echo.status, echo.json], [200, { meta }]);
-    assert.deepEqual(JSON.parse(wp("typedpress", "run", "blog/refs-echo", `--input=${JSON.stringify({ meta })}`, "--user=editor")).data, { meta });
+    assert.deepEqual(JSON.parse(wp("spacepress", "run", "blog/refs-echo", `--input=${JSON.stringify({ meta })}`, "--user=editor")).data, { meta });
     const row = await runAbility("blog/events-create", { title: `Wire ${run}`, extra: meta }, "editor");
     assert.deepEqual([row.status, row.json.extra], [200, meta]);
   }
@@ -98,7 +98,7 @@ test("core /wp-abilities/v1 lists the blog abilities with their JSON Schemas and
   const golden = JSON.parse(readFileSync(join(here, "fixtures/abilities.json"), "utf8"));
   // A subscriber's update rule covers no blog row, so the staged-version abilities aren't offered to
   // them (docs/staged.md); every other ability the golden shows in REST is.
-  const staged = (a: any) => /^(stage|staged-)/.test(a.meta.typedpress.op);
+  const staged = (a: any) => /^(stage|staged-)/.test(a.meta.spacepress.op);
   assert.deepEqual(Object.keys(byName).filter((n) => golden.some((a: any) => a.name === n)).sort(),
     golden.filter((a: any) => a.meta.show_in_rest && !staged(a)).map((a: any) => a.name).sort());
 
@@ -152,7 +152,7 @@ test("executing an ability answers each user exactly as REST does", async () => 
   assert.deepEqual(seen["blog/events-update"].author, { status: 200, code: null });
 });
 
-test("list input typed by core over GET reaches TypedPress typed inside AND/OR/NOT", async () => {
+test("list input typed by core over GET reaches SpacePress typed inside AND/OR/NOT", async () => {
   // GET input is a query string; core types it from the schema, one group level included.
   const where = { AND: [{ id: postId }], NOT: { id: { in: [0] } }, OR: [{ id: postId }] };
   const viaAbility = await runAbility("blog/posts-list", { where }, "editor", "GET");
@@ -171,14 +171,14 @@ test("GET filters core can't type are refused; as JSON strings they match REST a
   ] as const;
   // A query string core can't type as a whole stays all strings, the typed parts included.
   const half = await runAbility("blog/posts-list", { where: { cover: { isNull: false } }, limit: "many" }, "editor", "GET");
-  assert.deepEqual([half.status, half.json.code, half.json.data?.pointer], [400, "tp_invalid_query", "/limit"]);
+  assert.deepEqual([half.status, half.json.code, half.json.data?.pointer], [400, "sp_invalid_query", "/limit"]);
   const sorted = await runAbility("blog/posts-list", { where: { id: postId, cover: { isNull: true } }, orderBy: "-id" }, "editor", "GET");
   assert.deepEqual([sorted.status, sorted.json.rows?.map((r: any) => r.id)], [200, [postId]]);
   for (const op of ["isNull", "isNotNull"]) {
     for (const [key, value] of shapes(op)) {
       const input = { where: { id: postId }, [key]: value };
       const refused = await runAbility("blog/posts-list", input, "editor", "GET");
-      assert.deepEqual([refused.status, refused.json.code, refused.json.data?.pointer], [400, "tp_invalid_query", `/${key}`], JSON.stringify(input));
+      assert.deepEqual([refused.status, refused.json.code, refused.json.data?.pointer], [400, "sp_invalid_query", `/${key}`], JSON.stringify(input));
       const asJson = Object.fromEntries(Object.entries(input).map(([k, v]) => [k, JSON.stringify(v)]));
       const viaAbility = await runAbility("blog/posts-list", asJson, "editor", "GET");
       const viaRest = await ok("GET", `/posts?${new URLSearchParams(asJson)}`, { as: "editor" });
@@ -197,13 +197,13 @@ test("an ability create runs the pipeline and is visible through the API", async
 });
 
 test("invalid ability input is REST's 422 problem, untouched by core's coercion", async () => {
-  // TypedPress validates, so the agent sees REST's code and pointer: unknown keys, wrong types and
-  // numeric/boolean strings that core would otherwise coerce before TypedPress saw them.
+  // SpacePress validates, so the agent sees REST's code and pointer: unknown keys, wrong types and
+  // numeric/boolean strings that core would otherwise coerce before SpacePress saw them.
   for (const input of [{ title: "x".repeat(121) }, { title: "ok", nope: 1 }, { title: 5 }, { title: "ok", authorId: "5" }, { title: "ok", seo: { noindex: "true" } }]) {
     const viaAbility = await runAbility("blog/posts-create", input, "author");
     const viaRest = await http("POST", `${api}/posts`, { as: "author", body: input });
     assert.equal(viaRest.status, 422, JSON.stringify(input));
-    assert.deepEqual([viaAbility.status, viaAbility.json.code, viaAbility.json.data?.pointer], [422, "tp_invalid_input", viaRest.json.pointer], JSON.stringify(input));
+    assert.deepEqual([viaAbility.status, viaAbility.json.code, viaAbility.json.data?.pointer], [422, "sp_invalid_input", viaRest.json.pointer], JSON.stringify(input));
   }
 });
 
@@ -214,15 +214,18 @@ test("ability-only input keys are validated: the update patch and list sort dire
   assert.deepEqual([badOrder.status, badOrder.json.data?.pointer], [400, "/orderBy/title"]);
 });
 
-test("agents: false hides an ability from core REST and MCP while wp typedpress run still executes it", async () => {
+test("agents: false hides discovery and MCP while a named run still checks permissions", async () => {
   const note = first("abilities").find((a: any) => a.name === "blog/agent-note");
   assert.deepEqual([note.meta.show_in_rest, note.meta.mcp.public], [false, false]);
   assert.equal((await http("GET", `${abilities}/abilities/blog/agent-note`, { as: "admin" })).status, 404);
-  assert.equal((await runAbility("blog/agent-note", { note: "x" }, "admin")).status, 404);
+  const input = { note: `hidden ${run}` };
+  const direct = await runAbility("blog/agent-note", input, "editor");
+  assert.deepEqual([direct.status, direct.json], [200, { ...input, seen: 0 }]);
+  assert.deepEqual(outcome(await runAbility("blog/agent-note", input, "subscriber")), { status: 403, code: "forbidden" });
 
-  const ran = JSON.parse(wp("typedpress", "run", "blog/agent-note", `--input=${JSON.stringify({ note: `hidden ${run}` })}`, "--user=editor")).data;
+  const ran = JSON.parse(wp("spacepress", "run", "blog/agent-note", `--input=${JSON.stringify({ note: `hidden ${run}` })}`, "--user=editor")).data;
   assert.deepEqual(ran, { note: `hidden ${run}`, seen: 0 });
-  const denied = JSON.parse(wpTry("typedpress", "run", "blog/agent-note", `--input=${JSON.stringify({ note: "no" })}`, "--user=subscriber"));
+  const denied = JSON.parse(wpTry("spacepress", "run", "blog/agent-note", `--input=${JSON.stringify({ note: "no" })}`, "--user=subscriber"));
   assert.deepEqual([denied.error.status, denied.error.code], [403, "forbidden"]);
 
   const mcp = await McpClient.connect("editor");
@@ -258,13 +261,13 @@ class McpClient {
     this.headers = headers;
     this.server = server;
   }
-  static readonly url = `${harness.url}/wp-json/mcp/typedpress-blog`;
+  static readonly url = `${harness.url}/wp-json/mcp/spacepress-blog`;
 
   static async connect(who: Role): Promise<McpClient> {
     const headers = { ...auth(who), "content-type": "application/json", accept: "application/json, text/event-stream" };
     const res = await fetch(McpClient.url, { method: "POST", headers, body: JSON.stringify({
       jsonrpc: "2.0", id: 0, method: "initialize",
-      params: { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "typedpress-tests", version: "1" } },
+      params: { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "spacepress-tests", version: "1" } },
     }) });
     const body = await res.json();
     assert.equal(res.status, 200, JSON.stringify(body));
@@ -326,7 +329,7 @@ test("core's run route serves actions by their annotations: GET for readonly, DE
   assert.deepEqual([inf.status, inf.json.ratio, inf.json.huge], [200, 1, null], JSON.stringify(inf.json));
   const schema = (await http("GET", `${abilities}/abilities/blog/refs-ratio`, { as: "admin" })).json.output_schema;
   assert.deepEqual(schema.properties.big, { type: "number", enum: [1e20] });
-  // Errors are core's WP_Error JSON with TypedPress's code, status and pointer.
+  // Errors are core's WP_Error JSON with SpacePress's code, status and pointer.
   const bad = await runAbility("blog/refs-count", {}, "anonymous", "GET");
-  assert.deepEqual([bad.status, bad.json.code, bad.json.data?.pointer], [422, "tp_invalid_input", "/body"]);
+  assert.deepEqual([bad.status, bad.json.code, bad.json.data?.pointer], [422, "sp_invalid_input", "/body"]);
 });

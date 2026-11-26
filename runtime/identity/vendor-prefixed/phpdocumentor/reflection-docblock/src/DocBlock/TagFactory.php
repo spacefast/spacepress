@@ -11,10 +11,10 @@ declare(strict_types=1);
  * @link http://phpdoc.org
  */
 
-namespace TypedPress\Identity\Vendor\phpDocumentor\Reflection\DocBlock;
+namespace SpacePress\Identity\Vendor\phpDocumentor\Reflection\DocBlock;
 
 use InvalidArgumentException;
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\Factory\Factory;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\Factory\Factory;
 
 interface TagFactory extends Factory
 {

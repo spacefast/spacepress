@@ -4,7 +4,7 @@
 declare(strict_types=1);
 
 global $wpdb;
-$site = json_decode((string) file_get_contents($args[0] ?? '/tmp/typedpress-legacy-site.json'), true, 512, JSON_THROW_ON_ERROR);
+$site = json_decode((string) file_get_contents($args[0] ?? '/tmp/spacepress-legacy-site.json'), true, 512, JSON_THROW_ON_ERROR);
 $wpdb->query('START TRANSACTION');
 $insert = static function (string $table, array $row) use ($wpdb): void {
     if ($wpdb->insert($table, $row) === false) {

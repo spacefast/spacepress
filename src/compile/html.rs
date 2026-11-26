@@ -1,6 +1,6 @@
-//! Static JSX at build time: the markup `\TypedPress\Html::element` renders for an intrinsic element
+//! Static JSX at build time: the markup `\SpacePress\Html::element` renders for an intrinsic element
 //! whose tag and attributes are all literal strings or booleans, so the compiler can emit it as one
-//! string (`Compiler::jsx_element`). This follows runtime/TypedPress/Html.php byte for byte; an element
+//! string (`Compiler::jsx_element`). This follows runtime/SpacePress/Html.php byte for byte; an element
 //! it can't reproduce exactly (`None`) stays on the runtime path. The tables are copies of
 //! Html.php's, and a test checks they still are.
 
@@ -323,7 +323,7 @@ mod tests {
     /// The tables are Html.php's, entry for entry and in order.
     #[test]
     fn tables_match_the_runtime() {
-        let php = include_str!("../../runtime/TypedPress/Html.php");
+        let php = include_str!("../../runtime/SpacePress/Html.php");
         let body = |name: &str| {
             let start = php.find(&format!("private const {name} = [")).expect(name);
             let rest = &php[start..];
@@ -351,7 +351,7 @@ mod tests {
     }
 
     /// Every tag, attribute name and literal value below, alone and in pairs, rendered here and by
-    /// `\\TypedPress\\Html::element` in PHP: the same bytes, or `None` here.
+    /// `\\SpacePress\\Html::element` in PHP: the same bytes, or `None` here.
     #[test]
     fn open_tag_matches_html_element_in_php() {
         if std::process::Command::new("php").arg("-v").output().is_err() {
@@ -481,11 +481,11 @@ mod tests {
                 attrs.join(", ")
             ));
         }
-        php.push_str("];\nforeach ($cases as [$tag, $attrs]) { echo json_encode(\\TypedPress\\Html::element($tag, $attrs)->html()), \"\\n\"; }\n");
+        php.push_str("];\nforeach ($cases as [$tag, $attrs]) { echo json_encode(\\SpacePress\\Html::element($tag, $attrs)->html()), \"\\n\"; }\n");
         let dir = tempfile::tempdir().unwrap();
         let script = dir.path().join("cases.php");
         std::fs::write(&script, php).unwrap();
-        let runtime = concat!(env!("CARGO_MANIFEST_DIR"), "/runtime/TypedPress/bootstrap.php");
+        let runtime = concat!(env!("CARGO_MANIFEST_DIR"), "/runtime/SpacePress/bootstrap.php");
         let out = std::process::Command::new("php")
             .arg(&script)
             .arg(runtime)

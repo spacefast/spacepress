@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Wp\Legacy;
+namespace SpacePress\Wp\Legacy;
 
-use TypedPress\HttpError;
-use TypedPress\Schema;
+use SpacePress\HttpError;
+use SpacePress\Schema;
 
 /**
  * The original Zero (0.8) content model a site was built with, mapped onto the new app's schema.
@@ -16,7 +16,7 @@ use TypedPress\Schema;
  * `post_title`, and a reference as the target's post id. Its compiled release (`content-model.php`,
  * format `spacefast.wordpress-content-model.php` v1) names every resource and field.
  *
- * Collections map by authored key and fields by name, as `typedpress migrate config --from zero` emits them: a
+ * Collections map by authored key and fields by name, as `spacepress migrate config --from zero` emits them: a
  * reference field `project` becomes the column `projectId`. Anything the new schema can't hold
  * refuses the whole plan with an RFC 6901 pointer into the release.
  */

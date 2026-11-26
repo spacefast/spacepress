@@ -1,6 +1,6 @@
 <?php declare(strict_types = 1);
 
-namespace TypedPress\Identity\Vendor\PHPStan\PhpDocParser\Printer;
+namespace SpacePress\Identity\Vendor\PHPStan\PhpDocParser\Printer;
 
 use Exception;
 use function array_reverse;

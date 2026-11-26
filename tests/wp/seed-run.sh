@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-# Compiled synced Markdown -> typedpress-publish seed -> republish -> CLI sync on real WordPress/MariaDB.
+# Compiled synced Markdown -> spacepress-publish seed -> republish -> CLI sync on real WordPress/MariaDB.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 repo="$(cd "$here/../.." && pwd)"
 target="${CARGO_TARGET_DIR:-$repo/target}"
 [[ $target == /* ]] || target="$repo/$target"
-export TP_WP_PROJECT="${TP_WP_PROJECT:-typedpress-wp-seed}"
-export TP_WP_PORT="${TP_WP_PORT:-8897}"
+export SP_WP_PROJECT="${SP_WP_PROJECT:-spacepress-wp-seed}"
+export SP_WP_PORT="${SP_WP_PORT:-8897}"
 app="$(mktemp -d)"
 cleanup() { "$here/harness.sh" down; rm -rf "$app"; }
 trap cleanup EXIT
 mkdir -p "$app/project/content/posts" "$app/project/content/locked" "$app/content/plugins"
-cat > "$app/project/typedpress.config.ts" <<'TS'
-import { defineConfig, collection, table, text, richText, slug } from 'typedpress';
+cat > "$app/project/spacepress.config.ts" <<'TS'
+import { defineConfig, collection, table, text, richText, slug } from 'spacepress';
 export const posts = collection({ title: text(), body: richText().optional(), slug: slug({ source: 'title' }).optional() }, {
   title: 'title', content: 'body', drafts: true, sync: 'content/posts/*.md',
   access: { read: 'anyone', create: 'editor', update: 'editor', delete: 'editor' },
@@ -37,15 +37,15 @@ title: Locked
 ---
 Original locked body.
 MD
-"$target/debug/typedpress" sources "$app/project" --out "$app/source-1"
-"$target/debug/typedpress" compile-sources "$app/source-1" "$app/compiled-1" "$app/source-1"
+"$target/debug/spacepress" sources "$app/project" --out "$app/source-1"
+"$target/debug/spacepress" compile-sources "$app/source-1" "$app/compiled-1" "$app/source-1"
 # The native build supplies the platform manifest. Install only the hosted build's plugins.
-"$target/debug/typedpress" build "$app/project" --quiet >/dev/null
-cp "$app/project/tp/dist/wp-content/typedpress-manifest.json" "$app/content/"
+"$target/debug/spacepress" build "$app/project" --quiet >/dev/null
+cp "$app/project/sp/dist/wp-content/spacepress-manifest.json" "$app/content/"
 rsync -a "$app/compiled-1/plugins/" "$app/content/plugins/"
 "$here/harness.sh" up --wp-content "$app/content" > "$app/harness.json"
-"$here/harness.sh" wp typedpress migrate > /dev/null
+"$here/harness.sh" wp spacepress migrate > /dev/null
 # Recompile the same version through the publish pipeline, retaining the host-owned baseline.
-"$target/debug/typedpress" sources "$app/project" --out "$app/source-2"
-"$target/debug/typedpress" compile-sources "$app/source-2" "$app/compiled-2" "$app/source-2" "$app/compiled-1"
-python3 "$here/seed-proof.py" "$app" "$target/debug/typedpress" "$here/harness.sh"
+"$target/debug/spacepress" sources "$app/project" --out "$app/source-2"
+"$target/debug/spacepress" compile-sources "$app/source-2" "$app/compiled-2" "$app/source-2" "$app/compiled-1"
+python3 "$here/seed-proof.py" "$app" "$target/debug/spacepress" "$here/harness.sh"

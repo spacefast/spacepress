@@ -10,12 +10,12 @@ mod transform;
 
 use crate::config::{Entry, Failure, fail};
 use serde::Serialize;
+use spacepress::loader::Fs;
+use spacepress::{diag, loader};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::rc::Rc;
-use typedpress::loader::Fs;
-use typedpress::{diag, loader};
 
 /// What a capsule's 0.8 tables become.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -56,7 +56,7 @@ pub struct Report {
     connector_roles: serde_json::Value,
 }
 
-const USAGE: &str = "usage: typedpress-migrate --from zero app [--manifest <finalize.json>] [<capsule-dir>] --out <new-dir> [--space <space-id> | --fresh] [--target-prefix <prefix>] [--users] [--zero-css <zero.css>] [--dry-run] [--json]";
+const USAGE: &str = "usage: spacepress-migrate --from zero app [--manifest <finalize.json>] [<capsule-dir>] --out <new-dir> [--space <space-id> | --fresh] [--target-prefix <prefix>] [--users] [--zero-css <zero.css>] [--dry-run] [--json]";
 
 struct Args {
     input: Option<PathBuf>,
@@ -290,7 +290,7 @@ pub fn migrate_manifest(
     // Convert from the verified files alone: a page, config or import the publish did not record
     // is simply absent, so nothing added after the publish can reach the candidate.
     let published = PathBuf::from("/published");
-    let memory: Rc<dyn Fs> = Rc::new(typedpress::wasm::Memory::new(
+    let memory: Rc<dyn Fs> = Rc::new(spacepress::wasm::Memory::new(
         verified
             .iter()
             .map(|(path, text)| (published.join(path), text.clone()))
@@ -424,9 +424,9 @@ fn convert(
         }
         None => BTreeMap::new(),
     };
-    if sources.contains_key(Path::new("typedpress.config.ts"))
+    if sources.contains_key(Path::new("spacepress.config.ts"))
         || sources.contains_key(Path::new("server/__z08-content.ts"))
-        || sources.keys().any(|p| p.starts_with(typedpress::layout::ROOT))
+        || sources.keys().any(|p| p.starts_with(spacepress::layout::ROOT))
     {
         return Err(fail("", "input imports a reserved generated config path"));
     }
@@ -456,19 +456,19 @@ fn convert(
     if let Some(content) = transformed.content_config {
         sources.insert(PathBuf::from("server/__z08-content.ts"), content);
     }
-    // The candidate's app code lives under the TypedPress root (docs/spec/spec.md §1), and what 0.8 kept
-    // under `pages/` (the pages and the data modules beside them) under `tp/app/`. Both move
+    // The candidate's app code lives under the SpacePress root (docs/spec/spec.md §1), and what 0.8 kept
+    // under `pages/` (the pages and the data modules beside them) under `sp/app/`. Both move
     // down by the same one folder, so every relative import between them still resolves.
     let mut sources: BTreeMap<PathBuf, String> = sources
         .into_iter()
         .map(|(path, text)| match path.strip_prefix("pages") {
             Ok(rest) => (Path::new(pages::APP).join(rest), text),
-            Err(_) => (Path::new(typedpress::layout::ROOT).join(path), text),
+            Err(_) => (Path::new(spacepress::layout::ROOT).join(path), text),
         })
         .collect();
     sources.insert(
-        PathBuf::from("typedpress.config.ts"),
-        "export { default } from \"./tp/server/index\";\n".into(),
+        PathBuf::from("spacepress.config.ts"),
+        "export { default } from \"./sp/server/index\";\n".into(),
     );
     let has_layout = converted.contains_key(Path::new(pages::APP).join("layout.tsx").as_path());
     let mut page_origins = BTreeMap::new();
@@ -611,7 +611,7 @@ fn convert(
         );
     }
     for entry in built.migrations {
-        let folder = format!("{}/{}", typedpress::pipeline::LEDGER, entry.id);
+        let folder = format!("{}/{}", spacepress::pipeline::LEDGER, entry.id);
         files.insert(format!("{folder}/migration.sql"), entry.sql);
         files.insert(
             format!("{folder}/ops.json"),
@@ -705,7 +705,7 @@ fn connector_config(
         entries.push(crate::config::entry(
             &crate::config::pointer("/connectors", role),
             "mapped",
-            format!("carried into sf.jsonc `connectors` as a `{kind}` role with every tool and the default cache, as Spacefast served it; the Space's binding for `{role}` keeps serving it. Pages call it with @spacefast/client; server code can't call connectors on TypedPress yet"),
+            format!("carried into sf.jsonc `connectors` as a `{kind}` role with every tool and the default cache, as Spacefast served it; the Space's binding for `{role}` keeps serving it. Pages call it with @spacefast/client; server code can't call connectors on SpacePress yet"),
         ));
     }
     (out.len() == roles.len()).then_some(serde_json::Value::Object(out))
@@ -1009,7 +1009,7 @@ fn convert_pages(
                 report.entries.push(crate::config::entry(
                     "/client/index.tsx",
                     "mapped",
-                    "Layout becomes tp/app/layout.tsx",
+                    "Layout becomes sp/app/layout.tsx",
                 ));
                 out.insert(
                     Path::new(pages::APP).join("layout.tsx"),

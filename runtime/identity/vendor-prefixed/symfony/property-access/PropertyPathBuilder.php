@@ -9,9 +9,9 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\PropertyAccess;
+namespace SpacePress\Identity\Vendor\Symfony\Component\PropertyAccess;
 
-use TypedPress\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\OutOfBoundsException;
+use SpacePress\Identity\Vendor\Symfony\Component\PropertyAccess\Exception\OutOfBoundsException;
 
 /**
  * @author Bernhard Schussek <bschussek@gmail.com>

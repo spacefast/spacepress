@@ -5,9 +5,9 @@ Build the [migration executable](../README.md) and keep the source capsule and a
 ## Convert the application
 
 ```sh
-typedpress-migrate --from zero app ./capsule --out ./candidate --fresh --dry-run
-typedpress-migrate --from zero app ./capsule --out ./candidate --fresh
-typedpress build ./candidate
+spacepress-migrate --from zero app ./capsule --out ./candidate --fresh --dry-run
+spacepress-migrate --from zero app ./capsule --out ./candidate --fresh
+spacepress build ./candidate
 ```
 
 Use `--manifest <finalize.json>` to read a stored finalize payload. If its recorded source tree is available, pass that tree too. Use `--users` to generate a projection for the existing Space Users subjects. For a client app that used generated CSS, pass the original file with `--zero-css <file>`.
@@ -21,8 +21,8 @@ If the source has SQL tables, replace `--fresh` with `--space <original-space-id
 Load the source SQL tables into the destination's database during the migration window. Stop writes to those tables during the copy. Run the table import against the destination WordPress installation before activating the app.
 
 ```sh
-typedpress-migrate --from zero wordpress tables ./candidate/table-import.json --path=/path/to/wordpress
-typedpress-migrate --from zero wordpress tables ./candidate/table-import.json --path=/path/to/wordpress --apply
+spacepress-migrate --from zero wordpress tables ./candidate/table-import.json --path=/path/to/wordpress
+spacepress-migrate --from zero wordpress tables ./candidate/table-import.json --path=/path/to/wordpress --apply
 ```
 
 The import preserves rows, indexes and the next auto-increment ID. It requires an unused destination name and refuses source tables with foreign keys. Import those tables with their constraints using your database tools. The generated map names each source and destination table.
@@ -34,15 +34,15 @@ For a content-only Zero project, run the `config` operation against its capsule.
 Pass the Zero release's trusted `content-model.php` to the content import. Run without `--apply` first to see the records, revisions and references the import can move.
 
 ```sh
-typedpress-migrate --from zero wordpress content ./content-model.php --space=SPACE --path=/path/to/wordpress
-typedpress-migrate --from zero wordpress content ./content-model.php --space=SPACE --path=/path/to/wordpress --apply
+spacepress-migrate --from zero wordpress content ./content-model.php --space=SPACE --path=/path/to/wordpress
+spacepress-migrate --from zero wordpress content ./content-model.php --space=SPACE --path=/path/to/wordpress --apply
 ```
 
-The optional `users` operation reads the original site's user tables and requires an active TypedPress user projection.
+The optional `users` operation reads the original site's user tables and requires an active SpacePress user projection.
 
 ```sh
-typedpress-migrate --from zero wordpress users --space=SPACE --path=/path/to/wordpress
-typedpress-migrate --from zero wordpress users --space=SPACE --path=/path/to/wordpress --apply
+spacepress-migrate --from zero wordpress users --space=SPACE --path=/path/to/wordpress
+spacepress-migrate --from zero wordpress users --space=SPACE --path=/path/to/wordpress --apply
 ```
 
 ## Copy a Spacefast export across prefixes
@@ -50,9 +50,9 @@ typedpress-migrate --from zero wordpress users --space=SPACE --path=/path/to/wor
 Run the import on the destination WordPress site with the source tables present in the same database. Keep source writes stopped until verification completes. Use the source prefix, destination prefix and Space ID from the export.
 
 ```sh
-typedpress-migrate --from zero wordpress spacefast --space=SPACE --source-prefix=SOURCE --target-prefix=TARGET --path=/path/to/wordpress
-typedpress-migrate --from zero wordpress spacefast --space=SPACE --source-prefix=SOURCE --target-prefix=TARGET --path=/path/to/wordpress --apply
-typedpress-migrate --from zero wordpress spacefast --space=SPACE --source-prefix=SOURCE --target-prefix=TARGET --path=/path/to/wordpress --verify
+spacepress-migrate --from zero wordpress spacefast --space=SPACE --source-prefix=SOURCE --target-prefix=TARGET --path=/path/to/wordpress
+spacepress-migrate --from zero wordpress spacefast --space=SPACE --source-prefix=SOURCE --target-prefix=TARGET --path=/path/to/wordpress --apply
+spacepress-migrate --from zero wordpress spacefast --space=SPACE --source-prefix=SOURCE --target-prefix=TARGET --path=/path/to/wordpress --verify
 ```
 
 The importer copies records and accounts. Members sign in again on the destination to create a new session. Verify the copied record counts and read permissions before exposing the new app.

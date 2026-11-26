@@ -1,7 +1,7 @@
 {
-	"name": "@typedpress-admin/admin-toolkit",
+	"name": "@spacepress-admin/admin-toolkit",
 	"version": "1.0.0",
-	"description": "Shared components and utilities for TypedPress Admin",
+	"description": "Shared components and utilities for SpacePress Admin",
 	"type": "module",
 	"wpModule": true,
 	"exports": {
@@ -11,10 +11,10 @@
 		"build"
 	],
 	"dependencies": {
-		"@typedpress-admin/private-apis": "workspace:*",
-		"@typedpress-admin/design-system": "workspace:*",
+		"@spacepress-admin/private-apis": "workspace:*",
+		"@spacepress-admin/design-system": "workspace:*",
 		"@wordpress/theme": "catalog:",
-		"@typedpress-admin/dataviews": "workspace:*",
+		"@spacepress-admin/dataviews": "workspace:*",
 		"@wordpress/a11y": "catalog:",
 		"@wordpress/base-styles": "catalog:",
 		"@wordpress/components": "catalog:",

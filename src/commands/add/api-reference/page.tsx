@@ -1,7 +1,7 @@
-// Written by `typedpress add api-reference`; yours to change. The app's API reference: every operation
-// of the OpenAPI document `typedpress build` writes, by tag, each linking to its own page.
-import { Html, Link } from "typedpress/app";
-import { apiReference } from "typedpress/content";
+// Written by `spacepress add api-reference`; yours to change. The app's API reference: every operation
+// of the OpenAPI document `spacepress build` writes, by tag, each linking to its own page.
+import { Html, Link } from "spacepress/app";
+import { apiReference } from "spacepress/content";
 
 export const metadata = { title: "API reference", description: "Every operation of this app's HTTP API." };
 

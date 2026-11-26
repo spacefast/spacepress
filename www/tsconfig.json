@@ -8,13 +8,13 @@
     "noEmit": true,
     "types": [],
     "jsx": "react-jsx",
-    "jsxImportSource": "typedpress",
+    "jsxImportSource": "spacepress",
     "allowImportingTsExtensions": true,
     "paths": {
-      "typedpress": ["../types/typedpress/index.d.ts"],
-      "typedpress/*": ["../types/typedpress/*.d.ts"],
-      "typedpress:db": ["../types/typedpress/db.d.cts"]
+      "spacepress": ["../types/spacepress/index.d.ts"],
+      "spacepress/*": ["../types/spacepress/*.d.ts"],
+      "spacepress:db": ["../types/spacepress/db.d.cts"]
     }
   },
-  "include": ["typedpress.config.ts", "tp"]
+  "include": ["spacepress.config.ts", "sp"]
 }

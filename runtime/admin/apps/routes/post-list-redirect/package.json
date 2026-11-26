@@ -1,5 +1,5 @@
 {
-	"name": "@typedpress-admin/post-list-redirect",
+	"name": "@spacepress-admin/post-list-redirect",
 	"version": "1.0.0",
 	"private": true,
 	"route": {

@@ -7,7 +7,7 @@
     "strict": true,
     "noEmit": true,
     "types": [],
-    "paths": { "typedpress": ["../../types/typedpress/index.d.ts"] }
+    "paths": { "spacepress": ["../../types/spacepress/index.d.ts"] }
   },
-  "include": ["typedpress.config.ts", "tp/_generated/db.d.ts", "tp/lib/**/*.ts"]
+  "include": ["spacepress.config.ts", "sp/_generated/db.d.ts", "sp/lib/**/*.ts"]
 }

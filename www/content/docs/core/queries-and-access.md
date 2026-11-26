@@ -1,17 +1,17 @@
 ---
 uid: zr_863af58e96e756fc5907
 title: Queries & Access Control
-description: Visitor-scoped typedpress:db queries, trusted db queries, filtering operators, and declarative access rules.
+description: Visitor-scoped spacepress:db queries, trusted db queries, filtering operators, and declarative access rules.
 order: 2
 status: published
 publishedAt: 2026-11-21T09:05:00.000Z
 ---
 ## Visitor-scoped vs trusted database APIs
 
-Import named kinds from `"typedpress:db"` for visitor-scoped operations that automatically enforce access rules, draft visibility, and field masks:
+Import named kinds from `"spacepress:db"` for visitor-scoped operations that automatically enforce access rules, draft visibility, and field masks:
 
 ```ts
-import { posts } from "typedpress:db";
+import { posts } from "spacepress:db";
 
 const published = await posts.list({
   where: { tags: { has: "release" } },
@@ -24,10 +24,10 @@ const published = await posts.list({
 const all = await posts.system.list({ limit: 100 });
 ```
 
-Inside hooks, jobs, and trusted server actions, you can also use the Drizzle-inspired `db` API from `"typedpress"`:
+Inside hooks, jobs, and trusted server actions, you can also use the Drizzle-inspired `db` API from `"spacepress"`:
 
 ```ts
-import { db } from "typedpress";
+import { db } from "spacepress";
 
 const row = await db.query.posts.findFirst({ where: { slug: "hello" } });
 const [created] = await db.insert(tasks).values({ title: "Ship v1" }).returning();
@@ -40,7 +40,7 @@ const [created] = await db.insert(tasks).values({ title: "Ship v1" }).returning(
 By default the searchable fields are the title, the content and every `text()` or `richText()` field. Mark fields with `.searchable()` to choose them yourself. Once any field of a kind is marked, only the title, the content and the marked fields are searched. `.searchable(false)` removes a field, including the title or content:
 
 ```ts
-import { collection, email, richText, text } from "typedpress";
+import { collection, email, richText, text } from "spacepress";
 
 export const recipes = collection({
   title: text(),

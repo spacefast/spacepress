@@ -9,10 +9,10 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\PropertyInfo;
+namespace SpacePress\Identity\Vendor\Symfony\Component\PropertyInfo;
 
-use TypedPress\Identity\Vendor\Symfony\Component\PropertyInfo\Util\LegacyTypeConverter;
-use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Type;
+use SpacePress\Identity\Vendor\Symfony\Component\PropertyInfo\Util\LegacyTypeConverter;
+use SpacePress\Identity\Vendor\Symfony\Component\TypeInfo\Type;
 
 /**
  * Default {@see PropertyInfoExtractorInterface} implementation.
@@ -80,7 +80,7 @@ class PropertyInfoExtractor implements PropertyInfoExtractorInterface, PropertyI
      */
     public function getTypes(string $class, string $property, array $context = []): ?array
     {
-        typedpress_identity_vendor_trigger_deprecation('symfony/property-info', '7.3', 'The "%s()" method is deprecated, use "%s::getType()" instead.', __METHOD__, self::class);
+        spacepress_identity_vendor_trigger_deprecation('symfony/property-info', '7.3', 'The "%s()" method is deprecated, use "%s::getType()" instead.', __METHOD__, self::class);
 
         return $this->extract($this->typeExtractors, 'getTypes', [$class, $property, $context]);
     }

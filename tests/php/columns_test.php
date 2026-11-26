@@ -30,11 +30,11 @@ foreach (range(1, 3) as $n) {
 }
 
 $statements = [];
-\TypedPress\Wp\Connection::$observer = static function (string $sql) use (&$statements): void {
+\SpacePress\Wp\Connection::$observer = static function (string $sql) use (&$statements): void {
     $statements[] = $sql;
 };
 /** The first statement a read ran against $table, and what it returned. @return array{string, list<array>} */
-$read = static function (string $collection, array $opts, ?\TypedPress\Viewer $viewer = null, string $table = 'wp_posts') use ($db, &$statements): array {
+$read = static function (string $collection, array $opts, ?\SpacePress\Viewer $viewer = null, string $table = 'wp_posts') use ($db, &$statements): array {
     $statements = [];
     $rows = $db->findMany($collection, $opts, $viewer);
     $sql = '';
@@ -48,7 +48,7 @@ $read = static function (string $collection, array $opts, ?\TypedPress\Viewer $v
     return [$sql, $rows];
 };
 /** The same read with every column, the result reduced to what `columns` keeps (what Db::project did). */
-$expected = static function (string $collection, array $opts, ?\TypedPress\Viewer $viewer = null) use ($db): array {
+$expected = static function (string $collection, array $opts, ?\SpacePress\Viewer $viewer = null) use ($db): array {
     $columns = $opts['columns'];
     unset($opts['columns']);
     $known = array_keys($db->schema()->collection($collection)['columns']);
@@ -58,8 +58,8 @@ $expected = static function (string $collection, array $opts, ?\TypedPress\Viewe
 
     return array_map(static fn (array $row): array => array_intersect_key($row, array_flip($keep)), $db->findMany($collection, $opts, $viewer));
 };
-$anon = new \TypedPress\Viewer(null);
-$editor = new \TypedPress\Viewer($wp->user('editor'));
+$anon = new \SpacePress\Viewer(null);
+$editor = new \SpacePress\Viewer($wp->user('editor'));
 
 // ---- post-backed ---------------------------------------------------------------------------------
 $opts = ['columns' => ['title' => true], 'orderBy' => ['id' => 'asc']];
@@ -75,13 +75,13 @@ check('posts, columns excluded: those are not selected', !str_contains($sql, 'AS
 $opts = ['columns' => ['title' => true, 'tags' => true, 'seo' => true, 'cover' => true], 'where' => ['excerpt' => 'Excerpt 2']];
 [$sql, $rows] = $read('posts', $opts);
 eq('posts: select, group and media columns read as before, a filter on an unselected field still applies', $rows, $expected('posts', $opts));
-check('posts: the filter joins its own field, the select list holds only what was asked', str_contains($sql, "meta_key = 'tp_excerpt'") && !str_contains($sql, 'AS `excerpt`'), $sql);
+check('posts: the filter joins its own field, the select list holds only what was asked', str_contains($sql, "meta_key = 'sp_excerpt'") && !str_contains($sql, 'AS `excerpt`'), $sql);
 
 $opts = ['columns' => ['title' => true], 'with' => ['authorId' => true, 'comments' => ['columns' => ['name' => true], 'orderBy' => ['id' => 'asc']]], 'orderBy' => ['id' => 'asc']];
 [$sql, $rows] = $read('posts', $opts);
 eq('posts with relations: the parent keeps its relation key, the children theirs', $rows, $expected('posts', $opts));
 check('posts with relations: the relation key is read though not asked for', str_contains($sql, 'AS `authorId`'), $sql);
-[$childSql] = $read('posts', $opts, null, 'wp_tp_comments');
+[$childSql] = $read('posts', $opts, null, 'wp_sp_comments');
 check('comments under posts: only the asked column, its key and its link', str_contains($childSql, '`name` AS `name`') && str_contains($childSql, 'AS `postId`') && !str_contains($childSql, 'AS `body`'), $childSql);
 
 // Field rules: the result as each viewer saw it before.
@@ -95,15 +95,15 @@ $statements = [];
 eq('count agrees with the filtered post list', $db->count('posts', ['excerpt' => 'Excerpt 2'], $editor), 1);
 $countSql = current(array_filter($statements, static fn (string $sql): bool => str_contains($sql, 'first_count')));
 check('count joins the filter field only', is_string($countSql) && substr_count($countSql, 'JOIN `wp_postmeta`') === 1
-    && str_contains($countSql, "meta_key = 'tp_excerpt'") && !str_contains($countSql, 'AS `body`'), $countSql);
+    && str_contains($countSql, "meta_key = 'sp_excerpt'") && !str_contains($countSql, 'AS `body`'), $countSql);
 
 // ---- table-backed --------------------------------------------------------------------------------
 $opts = ['columns' => ['body' => true], 'orderBy' => ['id' => 'asc'], 'limit' => 3];
-[$sql, $rows] = $read('comments', $opts, null, 'wp_tp_comments');
+[$sql, $rows] = $read('comments', $opts, null, 'wp_sp_comments');
 eq('comments: same rows', $rows, $expected('comments', $opts));
 check('comments: only the asked column and the key', str_contains($sql, '`body` AS `body`') && !str_contains($sql, 'AS `name`') && !str_contains($sql, 'AS `createdAt`'), $sql);
 $opts = ['columns' => ['name' => true], 'with' => ['postId' => ['columns' => ['title' => true]]], 'orderBy' => ['id' => 'asc']];
-[$sql, $rows] = $read('comments', $opts, null, 'wp_tp_comments');
+[$sql, $rows] = $read('comments', $opts, null, 'wp_sp_comments');
 eq('comments with their post: same rows', $rows, $expected('comments', $opts));
 check('comments with their post: the relation key is read', str_contains($sql, 'AS `postId`'), $sql);
 
@@ -115,7 +115,7 @@ check('no columns option: every column is selected', str_contains($sql, 'AS `bod
 problem('an unknown column is refused as before', static fn () => $db->findMany('posts', ['columns' => ['nope' => true]]), 400, 'invalid_query', '/columns/nope');
 // A read extension that didn't say which columns it reads sees whole rows.
 $seen = [];
-\TypedPress\Extensions::onRead(static function (array $rows, string $collection) use (&$seen): array {
+\SpacePress\Extensions::onRead(static function (array $rows, string $collection) use (&$seen): array {
     if ($collection === 'posts') {
         $seen = array_column($rows, 'body');
     }
@@ -127,5 +127,5 @@ $opts = ['columns' => ['title' => true], 'orderBy' => ['id' => 'asc']];
 check('with such an extension every column is read', str_contains($sql, 'AS `body`') && $seen === ['<p>Body 1</p>', '<p>Body 2</p>', '<p>Body 3</p>'], [$sql, $seen]);
 eq('and the result is the same', $rows, $expected('posts', $opts));
 
-\TypedPress\Wp\Connection::$observer = null;
+\SpacePress\Wp\Connection::$observer = null;
 finish('columns');

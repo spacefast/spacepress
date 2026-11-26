@@ -1,20 +1,20 @@
-//! `typedpress init --github`: `.github/workflows/typedpress-sync.yml`, the GitHub Actions workflow that runs
-//! `typedpress sync --pr` (see `www/content/docs/integrations/markdown-sync.md`).
+//! `spacepress init --github`: `.github/workflows/spacepress-sync.yml`, the GitHub Actions workflow that runs
+//! `spacepress sync --pr` (see `www/content/docs/integrations/markdown-sync.md`).
 //!
-//! One job serves both directions, because `typedpress sync --pr` is the two-way sync: a run on a
+//! One job serves both directions, because `spacepress sync --pr` is the two-way sync: a run on a
 //! schedule or on the site's `repository_dispatch` brings site edits back as a pull request, and a
 //! run on a push to the default branch that touches a synced folder sends those files to the site.
 //!
 //! The file is the compiler's while its first line is the header [`header()`] writes, which names the
-//! project it was written for (its folder in the repository). For that project, `typedpress init` writes
-//! it back when the synced folders change, and `typedpress check` says when it is out of date. Other
+//! project it was written for (its folder in the repository). For that project, `spacepress init` writes
+//! it back when the synced folders change, and `spacepress check` says when it is out of date. Other
 //! projects in the same repository leave it alone. Delete that line to keep your own edits; the
 //! file is then never touched again.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-const HEADER: &str = "# Written by `typedpress init --github`";
+const HEADER: &str = "# Written by `spacepress init --github`";
 const KEEP: &str = "; delete this line to keep your own edits.";
 
 /// The header line for the project at `rel` in its repository (`.` at the root).
@@ -22,7 +22,7 @@ fn header(rel: &str) -> String {
     format!("{HEADER} for {}{KEEP}", if rel.is_empty() { "." } else { rel })
 }
 
-/// The project a workflow's first line says it was written for, if it is one `typedpress init` wrote.
+/// The project a workflow's first line says it was written for, if it is one `spacepress init` wrote.
 fn owner(text: &str) -> Option<&str> {
     text.lines()
         .next()?
@@ -31,7 +31,7 @@ fn owner(text: &str) -> Option<&str> {
         .strip_suffix(KEEP)
 }
 /// The `repository_dispatch` event type the site sends when a synced record is saved.
-pub const DISPATCH_EVENT: &str = "typedpress-content-changed";
+pub const DISPATCH_EVENT: &str = "spacepress-content-changed";
 /// Actions pinned by commit; the comment names the release.
 const CHECKOUT: &str = "actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0";
 const SETUP_NODE: &str = "actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0";
@@ -112,13 +112,13 @@ pub(super) fn workflow(project: &Path, dirs: &[String]) -> Option<(PathBuf, Stri
 # Content in git (https://spacepress.dev/docs/integrations/markdown-sync):
 # on a schedule, and on a {DISPATCH_EVENT} dispatch (a save on the site can send one), the site's
 # edits come back as one pull request; on a push to the default branch that changes synced files, those files go
-# to the site. Both are `typedpress sync --pr`.
+# to the site. Both are `spacepress sync --pr`.
 #
 # Settings > Secrets and variables > Actions:
-#   variable TP_SITE_URL       the site's URL
-#   secret   TP_APP_PASSWORD   user:application-password of a user who may update the synced kinds
-#                                 (typedpress identity agent add <user> --name=sync --write); or TP_TOKEN
-name: TypedPress content sync
+#   variable SP_SITE_URL       the site's URL
+#   secret   SP_APP_PASSWORD   user:application-password of a user who may update the synced kinds
+#                                 (spacepress identity agent add <user> --name=sync --write); or SP_TOKEN
+name: SpacePress content sync
 
 on:
   schedule:
@@ -132,7 +132,7 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: typedpress-sync
+  group: spacepress-sync
   cancel-in-progress: false
 
 jobs:
@@ -149,13 +149,13 @@ jobs:
         with:
           node-version: \"22\"
       - run: {install}
-      - name: typedpress sync --pr
+      - name: spacepress sync --pr
         env:
-          TP_SITE_URL: ${{{{ vars.TP_SITE_URL }}}}
-          TP_APP_PASSWORD: ${{{{ secrets.TP_APP_PASSWORD }}}}
-          TP_TOKEN: ${{{{ secrets.TP_TOKEN }}}}
+          SP_SITE_URL: ${{{{ vars.SP_SITE_URL }}}}
+          SP_APP_PASSWORD: ${{{{ secrets.SP_APP_PASSWORD }}}}
+          SP_TOKEN: ${{{{ secrets.SP_TOKEN }}}}
           GITHUB_TOKEN: ${{{{ secrets.GITHUB_TOKEN }}}}
-        run: npx --no-install typedpress sync --pr --site \"$TP_SITE_URL\"
+        run: npx --no-install spacepress sync --pr --site \"$SP_SITE_URL\"
 "
     );
     // From the project up to the repository's root, where GitHub reads workflows.
@@ -163,10 +163,10 @@ jobs:
         .split('/')
         .filter(|s| !s.is_empty())
         .fold(PathBuf::new(), |p, _| p.join(".."));
-    Some((up.join(".github/workflows/typedpress-sync.yml"), text))
+    Some((up.join(".github/workflows/spacepress-sync.yml"), text))
 }
 
-/// Whether the project's repository has the workflow `typedpress init --github` wrote for this project,
+/// Whether the project's repository has the workflow `spacepress init --github` wrote for this project,
 /// unedited.
 pub(super) fn written(project: &Path) -> bool {
     let Some((path, text)) = workflow(project, &[]) else {
@@ -176,7 +176,7 @@ pub(super) fn written(project: &Path) -> bool {
         .is_ok_and(|current| owner(&current).is_some() && owner(&current) == owner(&text))
 }
 
-/// What `typedpress init` does with the workflow, given the file there (`current`) and the one it would
+/// What `spacepress init` does with the workflow, given the file there (`current`) and the one it would
 /// write (`next`).
 pub(super) enum Plan {
     /// Write `next`: asked for and absent, or this project's and changed.
@@ -196,9 +196,9 @@ pub(super) fn plan(current: Option<&str>, next: &str, asked: bool) -> Plan {
         Some(_) if !asked => Plan::Keep,
         Some(text) => Plan::Refuse(match owner(text) {
             Some(other) => format!(
-                ".github/workflows/typedpress-sync.yml was written for the project at {other}; one repository has one sync workflow. Run typedpress init --github there, or delete the file first"
+                ".github/workflows/spacepress-sync.yml was written for the project at {other}; one repository has one sync workflow. Run spacepress init --github there, or delete the file first"
             ),
-            None => ".github/workflows/typedpress-sync.yml is your own (its first line isn't typedpress init's); delete it first to have typedpress init write one".into(),
+            None => ".github/workflows/spacepress-sync.yml is your own (its first line isn't spacepress init's); delete it first to have spacepress init write one".into(),
         }),
     }
 }

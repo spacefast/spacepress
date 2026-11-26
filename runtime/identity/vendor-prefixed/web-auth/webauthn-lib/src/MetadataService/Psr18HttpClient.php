@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Webauthn\MetadataService;
+namespace SpacePress\Identity\Vendor\Webauthn\MetadataService;
 
 use function is_array;
 use const JSON_ERROR_NONE;

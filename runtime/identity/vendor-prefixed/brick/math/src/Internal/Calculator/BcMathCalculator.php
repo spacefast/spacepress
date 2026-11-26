@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Brick\Math\Internal\Calculator;
+namespace SpacePress\Identity\Vendor\Brick\Math\Internal\Calculator;
 
-use TypedPress\Identity\Vendor\Brick\Math\Internal\Calculator;
+use SpacePress\Identity\Vendor\Brick\Math\Internal\Calculator;
 use Override;
 
 use function bcadd;

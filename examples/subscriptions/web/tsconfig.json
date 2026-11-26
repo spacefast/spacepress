@@ -11,5 +11,5 @@
     "skipLibCheck": true,
     "types": ["vite/client"]
   },
-  "include": ["src", "../tp/_generated/client"]
+  "include": ["src", "../sp/_generated/client"]
 }

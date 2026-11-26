@@ -16,7 +16,7 @@ export {
 	lock,
 	type PrivateApiToken,
 	unlock,
-} from '@typedpress-admin/private-apis';
+} from '@spacepress-admin/private-apis';
 export {
 	default as useColorPreference,
 	setHostThemeColorSettings,

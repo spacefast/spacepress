@@ -2,12 +2,12 @@
 /**
  * Syntax highlighting field definition for core user fields collection
  *
- * @package TypedPress_Admin
+ * @package SpacePress_Admin
  */
 
 return array(
 	'type'          => 'boolean',
-	'label'         => __( 'Disable syntax highlighting when editing code.', 'typedpress-admin' ),
+	'label'         => __( 'Disable syntax highlighting when editing code.', 'spacepress-admin' ),
 	'enableSorting' => false,
 	'filterBy'      => false,
 	'enableHiding'  => false,

@@ -1,4 +1,4 @@
-import type { FontSize } from '@typedpress-admin/global-styles-engine';
+import type { FontSize } from '@spacepress-admin/global-styles-engine';
 import { __experimentalConfirmDialog as ConfirmDialog } from '@wordpress/components';
 import { __, sprintf } from '@wordpress/i18n';
 
@@ -27,8 +27,8 @@ function ConfirmDeleteFontSizeDialog( {
 	return (
 		<ConfirmDialog
 			isOpen={ isOpen }
-			cancelButtonText={ __( 'Cancel', 'typedpress-admin' ) }
-			confirmButtonText={ __( 'Delete', 'typedpress-admin' ) }
+			cancelButtonText={ __( 'Cancel', 'spacepress-admin' ) }
+			confirmButtonText={ __( 'Delete', 'spacepress-admin' ) }
 			onCancel={ handleCancel }
 			onConfirm={ handleConfirm }
 			size="medium"
@@ -38,7 +38,7 @@ function ConfirmDeleteFontSizeDialog( {
 					/* translators: %s: Name of the font size preset. */
 					__(
 						'Are you sure you want to delete "%s" font size preset?',
-						'typedpress-admin'
+						'spacepress-admin'
 					),
 					fontSize.name
 				) }

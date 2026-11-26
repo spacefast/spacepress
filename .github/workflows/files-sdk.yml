@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
-      TP_BIN: ${{ github.workspace }}/target/debug/typedpress
+      SP_BIN: ${{ github.workspace }}/target/debug/spacepress
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -37,7 +37,7 @@ jobs:
             ~/.cargo/git
             target
           key: rust-${{ runner.os }}-${{ hashFiles('rust-toolchain', 'Cargo.lock') }}
-      - run: cargo build --locked --bin typedpress
+      - run: cargo build --locked --bin spacepress
       - name: files-sdk probe
         run: |
           npm ci --prefix examples/files-sdk --ignore-scripts --no-audit --no-fund

@@ -1,7 +1,7 @@
-//! The `typedpress` command line: one table, build commands here, site commands through WP-CLI
+//! The `spacepress` command line: one table, build commands here, site commands through WP-CLI
 //! (docs/decisions/2026-11-07-one-cli.md). The fixture tests use a stand-in `wp` on PATH; the
 //! WordPress test serves a real WordPress on SQLite (tests/php/wp.php serve) and checks that
-//! `typedpress <site cmd> --site @alias` answers exactly what `wp @alias typedpress <site cmd>` answers.
+//! `spacepress <site cmd> --site @alias` answers exactly what `wp @alias spacepress <site cmd>` answers.
 
 #![cfg(feature = "cli")]
 
@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Output, Stdio};
 
 fn first() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_typedpress"))
+    Command::new(env!("CARGO_BIN_EXE_spacepress"))
 }
 
 fn root() -> PathBuf {
@@ -59,7 +59,7 @@ fn run_with_stdin(mut command: Command, stdin: &str) -> Output {
 #[test]
 fn help_lists_build_and_site_commands_from_one_table() {
     let table: serde_json::Value =
-        serde_json::from_slice(&std::fs::read(root().join("runtime/TypedPress/Cli/commands.json")).unwrap()).unwrap();
+        serde_json::from_slice(&std::fs::read(root().join("runtime/SpacePress/Cli/commands.json")).unwrap()).unwrap();
     let out = first().arg("help").output().unwrap();
     assert!(out.status.success());
     let help = text(&out.stdout);
@@ -89,11 +89,11 @@ fn help_lists_build_and_site_commands_from_one_table() {
     let unknown = first().arg("frobnicate").output().unwrap();
     assert_eq!(unknown.status.code(), Some(2));
     assert_eq!(text(&unknown.stderr), format!("no command frobnicate\n{help}"));
-    // `typedpress help <command>` prints that command's arguments.
+    // `spacepress help <command>` prints that command's arguments.
     let jobs = first().args(["help", "jobs"]).output().unwrap();
     assert_eq!(
         text(&jobs.stdout),
-        "usage: typedpress jobs list [--state=s] | run <id> | retry <id> | cancel <id> | maintain | tick [--limit=n] [--budget-ms=ms]\n"
+        "usage: spacepress jobs list [--state=s] | run <id> | retry <id> | cancel <id> | maintain | tick [--limit=n] [--budget-ms=ms]\n"
     );
 }
 
@@ -108,11 +108,11 @@ fn site_commands_forward_arguments_stdin_and_exit_status_to_wp_cli() {
     let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(
         seen["args"],
-        serde_json::json!(["@test", "typedpress", "seed", "-", "--dry-run"])
+        serde_json::json!(["@test", "spacepress", "seed", "-", "--dry-run"])
     );
     assert_eq!(seen["stdin"], "<?php return [];");
 
-    // `typedpress wp` forwards any WP-CLI command; `--site=@x` works too.
+    // `spacepress wp` forwards any WP-CLI command; `--site=@x` works too.
     let mut command = first();
     command.args(["wp", "--site=@staging", "plugin", "list", "--format=json"]);
     with_path(&mut command, wp.path());
@@ -127,7 +127,7 @@ fn site_commands_forward_arguments_stdin_and_exit_status_to_wp_cli() {
 
 #[test]
 fn migrate_takes_flags_only_and_points_an_import_at_the_importer() {
-    // `typedpress migrate` applies the app's database migrations on the site, with its flags.
+    // `spacepress migrate` applies the app's database migrations on the site, with its flags.
     let wp = fake_wp();
     let mut command = first();
     command.args([
@@ -145,7 +145,7 @@ fn migrate_takes_flags_only_and_points_an_import_at_the_importer() {
         seen["args"],
         serde_json::json!([
             "@prod",
-            "typedpress",
+            "spacepress",
             "migrate",
             "--drop=likes=3",
             "--mark-applied=0002_likes"
@@ -168,7 +168,7 @@ fn migrate_takes_flags_only_and_points_an_import_at_the_importer() {
         assert_eq!(
             text(&out.stderr),
             format!(
-                "no command migrate {word}: typedpress migrate applies this app's database migrations. To import a project, run typedpress-migrate --from <source> <operation>\nusage: typedpress migrate [--drop=<kind>=<rows>,...] [--mark-applied=<id>]\n"
+                "no command migrate {word}: spacepress migrate applies this app's database migrations. To import a project, run spacepress-migrate --from <source> <operation>\nusage: spacepress migrate [--drop=<kind>=<rows>,...] [--mark-applied=<id>]\n"
             ),
             "{args:?}"
         );
@@ -177,7 +177,7 @@ fn migrate_takes_flags_only_and_points_an_import_at_the_importer() {
 
 #[test]
 fn abilities_pull_runs_here_and_bare_abilities_forwards_to_the_site() {
-    // `abilities pull` reads a site over HTTP from this binary; `abilities` alone is `wp typedpress abilities`.
+    // `abilities pull` reads a site over HTTP from this binary; `abilities` alone is `wp spacepress abilities`.
     let wp = fake_wp();
     let mut command = first();
     command.args(["abilities", "--site", "@prod"]);
@@ -185,7 +185,7 @@ fn abilities_pull_runs_here_and_bare_abilities_forwards_to_the_site() {
     let out = command.output().unwrap();
     assert_eq!(out.status.code(), Some(7));
     let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
-    assert_eq!(seen["args"], serde_json::json!(["@prod", "typedpress", "abilities"]));
+    assert_eq!(seen["args"], serde_json::json!(["@prod", "spacepress", "abilities"]));
     let mut command = first();
     command.args(["abilities", "pull"]);
     with_path(&mut command, wp.path());
@@ -200,7 +200,7 @@ fn abilities_pull_runs_here_and_bare_abilities_forwards_to_the_site() {
 
 #[test]
 fn styles_pull_reads_the_site_through_wp_cli_and_refuses_a_url() {
-    // The site answers through WP-CLI: an alias runs `wp @alias typedpress styles export`.
+    // The site answers through WP-CLI: an alias runs `wp @alias spacepress styles export`.
     let wp = fake_wp();
     let project = tempfile::tempdir().unwrap();
     let mut command = first();
@@ -213,11 +213,11 @@ fn styles_pull_reads_the_site_through_wp_cli_and_refuses_a_url() {
     assert_eq!(out.status.code(), Some(1));
     // The stand-in prints its arguments, which is no answer: nothing is written.
     assert!(
-        text(&out.stderr).contains("\"args\":[\"@prod\",\"typedpress\",\"styles\",\"export\"]"),
+        text(&out.stderr).contains("\"args\":[\"@prod\",\"spacepress\",\"styles\",\"export\"]"),
         "{}",
         text(&out.stderr)
     );
-    assert!(!project.path().join("tp/theme.json").exists());
+    assert!(!project.path().join("sp/theme.json").exists());
     let out = first()
         .args(["styles", "pull", "--site", "https://example.test"])
         .output()
@@ -227,7 +227,7 @@ fn styles_pull_reads_the_site_through_wp_cli_and_refuses_a_url() {
     let out = first().args(["styles", "push"]).output().unwrap();
     assert_eq!(out.status.code(), Some(2));
     assert!(
-        text(&out.stderr).starts_with("no command styles push\nusage: typedpress styles pull"),
+        text(&out.stderr).starts_with("no command styles push\nusage: spacepress styles pull"),
         "{}",
         text(&out.stderr)
     );
@@ -249,14 +249,14 @@ fn a_site_url_is_refused_for_wp_cli_commands() {
     assert!(text(&out.stderr).contains("--site given twice"));
     let out = first().arg("wp").output().unwrap();
     assert_eq!(out.status.code(), Some(2));
-    assert!(text(&out.stderr).starts_with("typedpress wp needs WP-CLI arguments\nusage: typedpress wp"));
+    assert!(text(&out.stderr).starts_with("spacepress wp needs WP-CLI arguments\nusage: spacepress wp"));
 }
 
 #[test]
 fn build_commands_refuse_options_they_do_not_take() {
     let out = first().args(["check", "--port", "9"]).output().unwrap();
     assert_eq!(out.status.code(), Some(2));
-    assert!(text(&out.stderr).starts_with("unknown option --port for typedpress check\nusage: typedpress check"));
+    assert!(text(&out.stderr).starts_with("unknown option --port for spacepress check\nusage: spacepress check"));
 }
 
 #[test]
@@ -267,9 +267,9 @@ fn remote_commands_sign_in_one_way() {
         let mut cmd = first();
         cmd.args(args)
             .current_dir(work.path())
-            .env("TP_CONFIG_DIR", &config)
-            .env_remove("TP_APP_PASSWORD")
-            .env_remove("TP_TOKEN");
+            .env("SP_CONFIG_DIR", &config)
+            .env_remove("SP_APP_PASSWORD")
+            .env_remove("SP_TOKEN");
         for (k, v) in env {
             cmd.env(k, v);
         }
@@ -282,12 +282,12 @@ fn remote_commands_sign_in_one_way() {
         let out = run(args, &[]);
         assert_eq!(out.status.code(), Some(code), "{args:?}: {}", text(&out.stderr));
         assert!(
-            text(&out.stderr).starts_with(&format!("not signed in to {site}. Run: typedpress login {site}\n")),
+            text(&out.stderr).starts_with(&format!("not signed in to {site}. Run: spacepress login {site}\n")),
             "{args:?}: {}",
             text(&out.stderr)
         );
         assert!(
-            text(&out.stderr).contains("in CI: TP_APP_PASSWORD"),
+            text(&out.stderr).contains("in CI: SP_APP_PASSWORD"),
             "{}",
             text(&out.stderr)
         );
@@ -299,7 +299,7 @@ fn remote_commands_sign_in_one_way() {
         &["export", "--site", "https://SENTINEL@example.test"][..],
         &["abilities", "pull", "--site", "https://demo:SENTINEL@example.test"][..],
     ] {
-        for env in [&[][..], &[("TP_APP_PASSWORD", "a:b")][..]] {
+        for env in [&[][..], &[("SP_APP_PASSWORD", "a:b")][..]] {
             let out = run(args, env);
             assert!(!out.status.success(), "{args:?}");
             assert!(
@@ -311,20 +311,20 @@ fn remote_commands_sign_in_one_way() {
     }
     // Both variables at once is refused, by every command alike.
     for args in [&["sync", "--site", site][..], &["pull", "--site", site][..]] {
-        let out = run(args, &[("TP_APP_PASSWORD", "a:b"), ("TP_TOKEN", "t")]);
+        let out = run(args, &[("SP_APP_PASSWORD", "a:b"), ("SP_TOKEN", "t")]);
         assert!(
-            text(&out.stderr).starts_with("set TP_APP_PASSWORD or TP_TOKEN, not both"),
+            text(&out.stderr).starts_with("set SP_APP_PASSWORD or SP_TOKEN, not both"),
             "{args:?}: {}",
             text(&out.stderr)
         );
     }
-    let out = run(&["sync", "--site", site], &[("TP_APP_PASSWORD", "no-colon")]);
+    let out = run(&["sync", "--site", site], &[("SP_APP_PASSWORD", "no-colon")]);
     assert!(
-        text(&out.stderr).starts_with("TP_APP_PASSWORD is user:application-password"),
+        text(&out.stderr).starts_with("SP_APP_PASSWORD is user:application-password"),
         "{}",
         text(&out.stderr)
     );
-    // What `typedpress login` stores is what sync signs in with: past the credential check, the
+    // What `spacepress login` stores is what sync signs in with: past the credential check, the
     // command reaches the site (and fails there, since nothing listens on port 9).
     std::fs::create_dir_all(&config).unwrap();
     std::fs::write(
@@ -348,20 +348,20 @@ fn remote_commands_sign_in_one_way() {
     let out = run(&["sync", "--site", site], &[]);
     assert!(
         text(&out.stderr).starts_with(&format!(
-            "the stored credential for {site} is incomplete. Run: typedpress login {site}"
+            "the stored credential for {site} is incomplete. Run: spacepress login {site}"
         )),
         "{}",
         text(&out.stderr)
     );
     // The environment overrides the stored credential (CI): the incomplete entry is never read.
-    let out = run(&["sync", "--site", site], &[("TP_APP_PASSWORD", "ci:password")]);
+    let out = run(&["sync", "--site", site], &[("SP_APP_PASSWORD", "ci:password")]);
     assert!(!text(&out.stderr).contains("incomplete"), "{}", text(&out.stderr));
     // Deploying takes an application password: a bearer token is refused before anything is sent.
-    std::fs::write(work.path().join("typedpress.config.ts"), CONFIG).unwrap();
-    let out = run(&["push", "--site", site], &[("TP_TOKEN", "t")]);
+    std::fs::write(work.path().join("spacepress.config.ts"), CONFIG).unwrap();
+    let out = run(&["push", "--site", site], &[("SP_TOKEN", "t")]);
     assert_eq!(out.status.code(), Some(1));
     assert!(
-        text(&out.stderr).starts_with("deploying needs an application password, not TP_TOKEN"),
+        text(&out.stderr).starts_with("deploying needs an application password, not SP_TOKEN"),
         "{}",
         text(&out.stderr)
     );
@@ -377,8 +377,8 @@ fn push_and_login_say_what_they_need_before_they_reach_a_site() {
         first()
             .args(args)
             .current_dir(&project)
-            .env("TP_CONFIG_DIR", &config)
-            .env_remove("TP_APP_PASSWORD")
+            .env("SP_CONFIG_DIR", &config)
+            .env_remove("SP_APP_PASSWORD")
             .output()
             .unwrap()
     };
@@ -386,29 +386,29 @@ fn push_and_login_say_what_they_need_before_they_reach_a_site() {
     let out = run(&["push"]);
     assert_eq!(out.status.code(), Some(1));
     assert!(
-        text(&out.stderr).starts_with("no typedpress.config.ts in "),
+        text(&out.stderr).starts_with("no spacepress.config.ts in "),
         "{}",
         text(&out.stderr)
     );
-    std::fs::write(project.join("typedpress.config.ts"), CONFIG).unwrap();
-    // A project nobody ran `typedpress login` in.
+    std::fs::write(project.join("spacepress.config.ts"), CONFIG).unwrap();
+    // A project nobody ran `spacepress login` in.
     let out = run(&["push"]);
     assert_eq!(out.status.code(), Some(1));
     assert!(
-        text(&out.stderr).starts_with("this project has no site to deploy to. Run typedpress login <site-url> here")
+        text(&out.stderr).starts_with("this project has no site to deploy to. Run spacepress login <site-url> here")
     );
     // A site with no stored credential: nothing is compiled or sent.
     let out = run(&["push", "--site", "http://127.0.0.1:9/"]);
     assert_eq!(out.status.code(), Some(1));
     assert_eq!(
         text(&out.stderr),
-        "not signed in to http://127.0.0.1:9. Run: typedpress login http://127.0.0.1:9\n"
+        "not signed in to http://127.0.0.1:9. Run: spacepress login http://127.0.0.1:9\n"
     );
-    assert!(!project.join(".tp").exists(), "nothing was written to the project");
+    assert!(!project.join(".sp").exists(), "nothing was written to the project");
     let out = run(&["push", "--force"]);
     assert_eq!(out.status.code(), Some(1));
-    assert!(text(&out.stderr).starts_with("unknown option --force\nusage: typedpress push"));
-    // `typedpress login` takes a site's address and nothing that could carry a credential.
+    assert!(text(&out.stderr).starts_with("unknown option --force\nusage: spacepress push"));
+    // `spacepress login` takes a site's address and nothing that could carry a credential.
     for site in [
         "example.test",
         "https://user:secret@example.test",
@@ -420,7 +420,7 @@ fn push_and_login_say_what_they_need_before_they_reach_a_site() {
     }
     let out = run(&["login"]);
     assert_eq!(out.status.code(), Some(1));
-    assert!(text(&out.stderr).starts_with("usage: typedpress login <site-url>"));
+    assert!(text(&out.stderr).starts_with("usage: spacepress login <site-url>"));
     // Forgetting a site nobody signed in to is not an error, and creates nothing.
     let out = run(&["logout", "https://example.test/"]);
     assert!(out.status.success());
@@ -436,16 +436,16 @@ fn plugin_writes_the_archive_where_it_is_told() {
     let work = tempfile::tempdir().unwrap();
     let out = first().arg("plugin").current_dir(work.path()).output().unwrap();
     assert!(out.status.success(), "{}", text(&out.stderr));
-    let default = std::fs::read(work.path().join("typedpress.zip")).unwrap();
+    let default = std::fs::read(work.path().join("spacepress.zip")).unwrap();
     // A ZIP archive: the local file header's signature.
     assert_eq!(&default[..4], b"PK\x03\x04");
-    let named = work.path().join("out/typedpress-plugin.zip");
+    let named = work.path().join("out/spacepress-plugin.zip");
     let out = first().args(["plugin", "--out"]).arg(&named).output().unwrap();
     assert!(out.status.success(), "{}", text(&out.stderr));
     assert!(named.is_file());
     let out = first().args(["plugin", "--to", "x"]).output().unwrap();
     assert_eq!(out.status.code(), Some(2));
-    assert_eq!(text(&out.stderr), "usage: typedpress plugin [--out <file.zip>]\n");
+    assert_eq!(text(&out.stderr), "usage: spacepress plugin [--out <file.zip>]\n");
 }
 
 /// The served WordPress, stopped (and its directory removed) on drop.
@@ -458,18 +458,18 @@ impl Drop for Served {
     }
 }
 
-const CONFIG: &str = r#"import { defineConfig, table, text, job } from "typedpress";
+const CONFIG: &str = r#"import { defineConfig, table, text, job } from "spacepress";
 const notes = table({ title: text() }, { access: { read: "anyone" } });
 export { notes }; export const stamp = job({}, async (_input: { n?: number }) => {}); export default defineConfig({ name: "clilane" });
 "#;
 
-/// `typedpress <site cmd> --site @lane` and `wp @lane typedpress <site cmd>` on one real WordPress: the same
+/// `spacepress <site cmd> --site @lane` and `wp @lane spacepress <site cmd>` on one real WordPress: the same
 /// stdout, the same exit status. Needs PHP 8.2+ with pdo_sqlite and network for the pinned
 /// downloads (cached in tests/wp/cache), as tests/sync.rs does.
 #[test]
 fn site_commands_reach_wp_zero_on_a_real_wordpress_and_answer_the_same_json() {
     let project = tempfile::tempdir().unwrap();
-    std::fs::write(project.path().join("typedpress.config.ts"), CONFIG).unwrap();
+    std::fs::write(project.path().join("spacepress.config.ts"), CONFIG).unwrap();
     let built = first()
         .arg("build")
         .arg(project.path())
@@ -482,9 +482,9 @@ fn site_commands_reach_wp_zero_on_a_real_wordpress_and_answer_the_same_json() {
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/wp.php"))
         .arg("serve")
-        .arg(project.path().join("tp/dist/wp-content"))
-        .env("TP_WP_CLI", "1")
-        .env("TP_WP_IDENTITY", "1")
+        .arg(project.path().join("sp/dist/wp-content"))
+        .env("SP_WP_CLI", "1")
+        .env("SP_WP_IDENTITY", "1")
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
         .spawn()
@@ -533,7 +533,7 @@ fn site_commands_reach_wp_zero_on_a_real_wordpress_and_answer_the_same_json() {
     };
     let direct = |args: &[&str]| {
         let mut command = Command::new(&wp);
-        command.arg("@lane").arg("typedpress").args(args);
+        command.arg("@lane").arg("spacepress").args(args);
         env(&mut command);
         command.output().unwrap()
     };
@@ -548,7 +548,7 @@ fn site_commands_reach_wp_zero_on_a_real_wordpress_and_answer_the_same_json() {
         assert_eq!(
             text(&b.stdout),
             text(&a.stdout),
-            "first {args:?} vs wp typedpress {args:?}\n{}",
+            "first {args:?} vs wp spacepress {args:?}\n{}",
             text(&b.stderr)
         );
         assert_eq!(b.status.code(), a.status.code(), "{args:?}");
@@ -559,7 +559,7 @@ fn site_commands_reach_wp_zero_on_a_real_wordpress_and_answer_the_same_json() {
     let empty = same(&["jobs", "list"]);
     assert_eq!(empty, serde_json::json!({"data": []}));
     assert_eq!(same(&["find", "notes"]), serde_json::json!({"data": []}));
-    // A write through `typedpress`, read back both ways.
+    // A write through `spacepress`, read back both ways.
     let inserted = forwarded(&["insert", "notes", r#"{"title":"From first"}"#]);
     assert_eq!(inserted.status.code(), Some(0), "{}", text(&inserted.stdout));
     let found = same(&["find", "notes"]);
@@ -567,7 +567,7 @@ fn site_commands_reach_wp_zero_on_a_real_wordpress_and_answer_the_same_json() {
     // A failing command keeps WP-CLI's exit status and error document.
     let bad = same(&["jobs", "retry", "no-such-job"]);
     assert!(bad["error"]["code"].is_string(), "{bad}");
-    // Identity lives under the one `typedpress` namespace.
+    // Identity lives under the one `spacepress` namespace.
     let app = same(&[
         "identity",
         "app",
@@ -580,7 +580,7 @@ fn site_commands_reach_wp_zero_on_a_real_wordpress_and_answer_the_same_json() {
     assert_eq!(app["data"]["id"], "app_lane", "{app}");
     let usage = same(&["identity", "frobnicate"]);
     assert_eq!(usage["error"]["code"], "invalid_command");
-    // `typedpress mcp --allow-remote-read`: `query` reads the same site through the same forwarding, by
+    // `spacepress mcp --allow-remote-read`: `query` reads the same site through the same forwarding, by
     // the kind's name, with its filter; a kind the site lacks is the site's own error document.
     let mut mcp = Mcp::start(project.path(), &["--allow-remote-read"], |command| env(command));
     mcp.modern = true;
@@ -603,8 +603,8 @@ fn site_commands_reach_wp_zero_on_a_real_wordpress_and_answer_the_same_json() {
         "{unknown}"
     );
     mcp.finish();
-    // `typedpress styles pull`: the owner's Global Styles on the site become the project's tp/theme.json
-    // and tp/_generated/theme.css; a second pull with --check finds nothing to change.
+    // `spacepress styles pull`: the owner's Global Styles on the site become the project's sp/theme.json
+    // and sp/_generated/theme.css; a second pull with --check finds nothing to change.
     let mut command = Command::new(&wp);
     command.args([
         "@lane",
@@ -636,33 +636,33 @@ fn site_commands_reach_wp_zero_on_a_real_wordpress_and_answer_the_same_json() {
         text(&pulled.stderr)
     );
     let theme: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string(project.path().join("tp/theme.json")).unwrap()).unwrap();
+        serde_json::from_str(&std::fs::read_to_string(project.path().join("sp/theme.json")).unwrap()).unwrap();
     assert_eq!(
         theme["settings"]["color"]["palette"],
         serde_json::json!([{ "slug": "brand", "color": "#123456", "name": "Brand" }])
     );
-    let tokens = std::fs::read_to_string(project.path().join("tp/_generated/theme.css")).unwrap();
+    let tokens = std::fs::read_to_string(project.path().join("sp/_generated/theme.css")).unwrap();
     assert!(
         tokens.contains("  --color-brand: var(--wp--preset--color--brand);\n"),
         "{tokens}"
     );
     let again = pull(&["--check"]);
     assert_eq!(again.status.code(), Some(0), "{}", text(&again.stderr));
-    // `typedpress wp` reaches plain WordPress commands.
+    // `spacepress wp` reaches plain WordPress commands.
     let mut command = first();
     command.args(["wp", "--site", "@lane", "option", "get", "blogname"]);
     env(&mut command);
     let blogname = command.output().unwrap();
     assert_eq!(
         text(&blogname.stdout).trim(),
-        "TypedPress test site",
+        "SpacePress test site",
         "{}",
         text(&blogname.stderr)
     );
 }
 
 // ---------------------------------------------------------------------------------------------
-// `typedpress mcp`: the real binary driven over stdin and stdout, one JSON-RPC message per line.
+// `spacepress mcp`: the real binary driven over stdin and stdout, one JSON-RPC message per line.
 // ---------------------------------------------------------------------------------------------
 
 /// What every 2026-07-28 request carries in `params._meta`.
@@ -839,7 +839,7 @@ fn mcp_opens_with_initialize_and_lists_read_only_tools_unless_writes_are_allowed
         serde_json::json!({ "protocolVersion": "2024-11-05", "capabilities": {}, "clientInfo": { "name": "old", "version": "1" } }),
     );
     assert_eq!(opened["protocolVersion"], "2025-11-25");
-    assert_eq!(opened["serverInfo"]["name"], "typedpress");
+    assert_eq!(opened["serverInfo"]["name"], "spacepress");
     assert_eq!(opened["serverInfo"]["version"], env!("CARGO_PKG_VERSION"));
     assert_eq!(
         opened["capabilities"],
@@ -908,10 +908,10 @@ fn mcp_opens_with_initialize_and_lists_read_only_tools_unless_writes_are_allowed
     // An option the command does not take is a usage error, before any protocol.
     let bad = first().args(["mcp", "--allow-everything"]).output().unwrap();
     assert_eq!(bad.status.code(), Some(2));
-    assert!(text(&bad.stderr).contains("usage: typedpress mcp [dir] [--allow-remote-read] [--allow-writes]"));
+    assert!(text(&bad.stderr).contains("usage: spacepress mcp [dir] [--allow-remote-read] [--allow-writes]"));
     assert!(bad.stdout.is_empty());
     // One project directory, and a directory: a second one or a file is refused, not guessed at.
-    let config = agent_kit().join("typedpress.config.ts");
+    let config = agent_kit().join("spacepress.config.ts");
     for args in [
         vec![config.as_os_str()],
         vec![agent_kit().as_os_str(), config.as_os_str()],
@@ -922,16 +922,16 @@ fn mcp_opens_with_initialize_and_lists_read_only_tools_unless_writes_are_allowed
     }
     let timeout = first()
         .args(["mcp", "--allow-writes"])
-        .env("TP_MCP_TIMEOUT", "soon")
+        .env("SP_MCP_TIMEOUT", "soon")
         .stdin(Stdio::null())
         .output()
         .unwrap();
     assert_eq!(timeout.status.code(), Some(2));
-    assert!(text(&timeout.stderr).contains("TP_MCP_TIMEOUT is a number of seconds"));
+    assert!(text(&timeout.stderr).contains("SP_MCP_TIMEOUT is a number of seconds"));
     let help = first().args(["help", "mcp"]).output().unwrap();
     assert_eq!(
         text(&help.stdout),
-        "usage: typedpress mcp [dir] [--allow-remote-read] [--allow-writes]\n"
+        "usage: spacepress mcp [dir] [--allow-remote-read] [--allow-writes]\n"
     );
 }
 
@@ -948,7 +948,7 @@ fn mcp_serves_the_stateless_revision_from_per_request_metadata() {
     assert_eq!(discovered["resultType"], "complete");
     assert_eq!(
         discovered["_meta"]["io.modelcontextprotocol/serverInfo"]["name"],
-        "typedpress"
+        "spacepress"
     );
     assert_eq!(discovered["cacheScope"], "public");
     assert!(discovered["ttlMs"].as_u64().is_some());
@@ -970,10 +970,10 @@ fn mcp_serves_the_stateless_revision_from_per_request_metadata() {
     // A missing resource is Invalid Params in this revision (it was -32002 before).
     let missing = mcp.request(
         "resources/read",
-        serde_json::json!({ "uri": "typedpress-docs:///docs/nope.md" }),
+        serde_json::json!({ "uri": "spacepress-docs:///docs/nope.md" }),
     );
     assert_eq!(missing["error"]["code"], -32602, "{missing}");
-    assert_eq!(missing["error"]["data"]["uri"], "typedpress-docs:///docs/nope.md");
+    assert_eq!(missing["error"]["data"]["uri"], "spacepress-docs:///docs/nope.md");
 
     // A revision this server does not speak is refused with the ones it does.
     mcp.modern = false;
@@ -1124,7 +1124,7 @@ fn mcp_schema_describes_the_projects_kinds_actions_jobs_and_routes() {
 
     let rename = &schema["actions"]["rename"];
     assert_eq!(rename["access"], "editor");
-    assert_eq!(rename["endpoint"], "POST /wp-json/typedpress/v1/actions/rename");
+    assert_eq!(rename["endpoint"], "POST /wp-json/spacepress/v1/actions/rename");
     assert_eq!(rename["ability"], "agentkit/rename");
     assert_eq!(
         rename["input"]["id"],
@@ -1139,9 +1139,9 @@ fn mcp_schema_describes_the_projects_kinds_actions_jobs_and_routes() {
     assert_eq!(
         schema["routes"],
         serde_json::json!([
-            { "pattern": "/api/list", "type": "route", "file": "tp/app/api/list/route.ts", "methods": ["GET"], "guard": "anyone" },
-            { "pattern": "/events/:slug", "type": "page", "file": "tp/app/events/[slug]/page.tsx", "kind": "cookingEvents" },
-            { "pattern": "/", "type": "page", "file": "tp/app/page.tsx" },
+            { "pattern": "/api/list", "type": "route", "file": "sp/app/api/list/route.ts", "methods": ["GET"], "guard": "anyone" },
+            { "pattern": "/events/:slug", "type": "page", "file": "sp/app/events/[slug]/page.tsx", "kind": "cookingEvents" },
+            { "pattern": "/", "type": "page", "file": "sp/app/page.tsx" },
         ])
     );
     let events = &schema["kinds"]["cookingEvents"];
@@ -1185,8 +1185,8 @@ fn mcp_schema_describes_the_projects_kinds_actions_jobs_and_routes() {
         schema["roles"],
         serde_json::json!(["guest", "subscriber", "author", "editor", "admin"])
     );
-    assert_eq!(schema["endpoints"]["mcp"], "/wp-json/mcp/typedpress-agentkit");
-    // Both admins, with TypedPress Admin the default (the kit does not set `admin: false`).
+    assert_eq!(schema["endpoints"]["mcp"], "/wp-json/mcp/spacepress-agentkit");
+    // Both admins, with SpacePress Admin the default (the kit does not set `admin: false`).
     assert_eq!(
         schema["admin"],
         serde_json::json!({ "default": "/wp-admin/new/", "classic": "/wp-admin/" })
@@ -1266,10 +1266,10 @@ fn mcp_schema_reports_page_and_handler_guards() {
         (
             "signed",
             "page.tsx",
-            format!("import {{ env }} from 'typedpress';\nexport const guard = 'editor';\n{signature}\n{hybrid}"),
+            format!("import {{ env }} from 'spacepress';\nexport const guard = 'editor';\n{signature}\n{hybrid}"),
         ),
     ] {
-        let dir = project.path().join("tp/app").join(name);
+        let dir = project.path().join("sp/app").join(name);
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join(file), exports).unwrap();
     }
@@ -1300,20 +1300,20 @@ fn mcp_schema_reports_page_and_handler_guards() {
 
 #[test]
 fn mcp_check_returns_the_envelope_first_check_json_prints_and_sees_edits() {
-    // On the fixture, the same document `typedpress check --json` writes.
+    // On the fixture, the same document `spacepress check --json` writes.
     let printed = first().arg("check").arg(agent_kit()).arg("--json").output().unwrap();
     assert!(printed.status.success(), "{}", text(&printed.stderr));
     let printed: serde_json::Value = serde_json::from_slice(&printed.stdout).unwrap();
     let mut mcp = Mcp::initialized(&agent_kit(), &[]);
     let checked = mcp.ok("check", serde_json::json!({}));
     assert_eq!(checked, printed);
-    assert_eq!(checked["schema"], "typedpress-diagnostics");
+    assert_eq!(checked["schema"], "spacepress-diagnostics");
     assert_eq!(checked["ok"], true);
     mcp.finish();
 
     // The server compiles the files as they are at each call: an edit shows up without a restart.
     let project = tempfile::tempdir().unwrap();
-    let config = project.path().join("typedpress.config.ts");
+    let config = project.path().join("spacepress.config.ts");
     std::fs::write(&config, CONFIG).unwrap();
     let mut mcp = Mcp::initialized(project.path(), &[]);
     assert_eq!(mcp.ok("check", serde_json::json!({}))["ok"], true);
@@ -1322,7 +1322,7 @@ fn mcp_check_returns_the_envelope_first_check_json_prints_and_sees_edits() {
     let broken = mcp.ok("check", serde_json::json!({}));
     assert_eq!(broken["ok"], false);
     let diagnostic = &broken["diagnostics"][0];
-    assert_eq!(diagnostic["location"]["file"], "typedpress.config.ts");
+    assert_eq!(diagnostic["location"]["file"], "spacepress.config.ts");
     assert_eq!(diagnostic["location"]["line"], 2);
     assert!(diagnostic["code"].as_str().unwrap().starts_with('F'), "{diagnostic}");
     let printed = first().arg("check").arg(project.path()).arg("--json").output().unwrap();
@@ -1342,7 +1342,7 @@ fn mcp_check_returns_the_envelope_first_check_json_prints_and_sees_edits() {
         .unwrap()
         .map(|e| e.unwrap().file_name())
         .collect();
-    assert_eq!(written, ["typedpress.config.ts"]);
+    assert_eq!(written, ["spacepress.config.ts"]);
     mcp.finish();
 }
 
@@ -1459,11 +1459,11 @@ fn mcp_searches_and_reads_the_documentation_built_into_the_binary() {
     // The same pages are the server's resources.
     let uris: Vec<&str> = resources.iter().map(|r| r["uri"].as_str().unwrap()).collect();
     assert!(
-        uris.contains(&"typedpress-docs:///www/content/docs/operations/mcp-and-agents.md"),
+        uris.contains(&"spacepress-docs:///www/content/docs/operations/mcp-and-agents.md"),
         "{uris:?}"
     );
     assert!(
-        uris.contains(&"typedpress-docs:///www/content/docs/getting-started/installation.md"),
+        uris.contains(&"spacepress-docs:///www/content/docs/getting-started/installation.md"),
         "{uris:?}"
     );
     let started = resources
@@ -1475,16 +1475,16 @@ fn mcp_searches_and_reads_the_documentation_built_into_the_binary() {
     assert!(started["description"].as_str().unwrap().contains("WordPress"));
     let read = mcp.result(
         "resources/read",
-        serde_json::json!({ "uri": "typedpress-docs:///www/content/docs/operations/mcp-and-agents.md" }),
+        serde_json::json!({ "uri": "spacepress-docs:///www/content/docs/operations/mcp-and-agents.md" }),
     );
     assert_eq!(
         read["contents"],
-        serde_json::json!([{ "uri": "typedpress-docs:///www/content/docs/operations/mcp-and-agents.md", "mimeType": "text/markdown", "text": on_disk }])
+        serde_json::json!([{ "uri": "spacepress-docs:///www/content/docs/operations/mcp-and-agents.md", "mimeType": "text/markdown", "text": on_disk }])
     );
     // Through 2025-11-25 a missing resource is -32002.
     let missing = mcp.request(
         "resources/read",
-        serde_json::json!({ "uri": "typedpress-docs:///www/content/docs/nope.md" }),
+        serde_json::json!({ "uri": "spacepress-docs:///www/content/docs/nope.md" }),
     );
     assert_eq!(missing["error"]["code"], -32002, "{missing}");
     assert_eq!(
@@ -1497,9 +1497,9 @@ fn mcp_searches_and_reads_the_documentation_built_into_the_binary() {
 #[test]
 fn mcp_commands_is_the_command_table_and_dev_status_reports_a_project_with_no_site() {
     let table: serde_json::Value =
-        serde_json::from_slice(&std::fs::read(root().join("runtime/TypedPress/Cli/commands.json")).unwrap()).unwrap();
+        serde_json::from_slice(&std::fs::read(root().join("runtime/SpacePress/Cli/commands.json")).unwrap()).unwrap();
     let project = tempfile::tempdir().unwrap();
-    std::fs::write(project.path().join("typedpress.config.ts"), CONFIG).unwrap();
+    std::fs::write(project.path().join("spacepress.config.ts"), CONFIG).unwrap();
     let mut mcp = Mcp::initialized(project.path(), &["--allow-writes"]);
     assert_eq!(mcp.ok("commands", serde_json::json!({})), table);
     // The table lists the server's own command.
@@ -1514,9 +1514,9 @@ fn mcp_commands_is_the_command_table_and_dev_status_reports_a_project_with_no_si
     // No dev site was ever started here: the tools say so and start nothing.
     assert_eq!(
         mcp.ok("dev_status", serde_json::json!({})),
-        serde_json::json!({ "state": "none", "start": "typedpress dev" })
+        serde_json::json!({ "state": "none", "start": "spacepress dev" })
     );
-    // `typedpress dev status --json` is the same report, and starts nothing either.
+    // `spacepress dev status --json` is the same report, and starts nothing either.
     let status = first()
         .args(["dev", "status", "--json"])
         .arg(project.path())
@@ -1525,7 +1525,7 @@ fn mcp_commands_is_the_command_table_and_dev_status_reports_a_project_with_no_si
     assert!(status.status.success(), "{}", text(&status.stderr));
     assert_eq!(
         serde_json::from_slice::<serde_json::Value>(&status.stdout).unwrap(),
-        serde_json::json!({ "state": "none", "start": "typedpress dev" })
+        serde_json::json!({ "state": "none", "start": "spacepress dev" })
     );
     // The flags belong to the commands that take them.
     for misplaced in [
@@ -1541,7 +1541,7 @@ fn mcp_commands_is_the_command_table_and_dev_status_reports_a_project_with_no_si
             text(&out.stderr)
         );
     }
-    let no_site = "this project has no dev site yet; start one with `typedpress dev` (`typedpress dev --no-watch` starts it and returns)";
+    let no_site = "this project has no dev site yet; start one with `spacepress dev` (`spacepress dev --no-watch` starts it and returns)";
     assert_eq!(mcp.refused("query", serde_json::json!({ "kind": "notes" })), no_site);
     assert_eq!(
         mcp.refused(
@@ -1550,7 +1550,7 @@ fn mcp_commands_is_the_command_table_and_dev_status_reports_a_project_with_no_si
         ),
         no_site
     );
-    assert!(!project.path().join(".tp").exists());
+    assert!(!project.path().join(".sp").exists());
     mcp.finish();
 }
 
@@ -1559,7 +1559,7 @@ fn mcp_refuses_writes_and_other_sites_unless_its_flags_allow_them() {
     // A stand-in `wp` records anything that reaches a site; nothing may.
     let wp = fake_wp();
     let project = tempfile::tempdir().unwrap();
-    std::fs::write(project.path().join("typedpress.config.ts"), CONFIG).unwrap();
+    std::fs::write(project.path().join("spacepress.config.ts"), CONFIG).unwrap();
     let mut mcp = Mcp::start(project.path(), &[], |command| with_path(command, wp.path()));
     mcp.modern = true;
     for (tool, arguments) in [
@@ -1576,13 +1576,13 @@ fn mcp_refuses_writes_and_other_sites_unless_its_flags_allow_them() {
         assert_eq!(
             mcp.refused(tool, arguments),
             format!(
-                "{tool} writes to the dev site, and this server was started read-only. Start it as `typedpress mcp --allow-writes` to allow writes to this project's dev site."
+                "{tool} writes to the dev site, and this server was started read-only. Start it as `spacepress mcp --allow-writes` to allow writes to this project's dev site."
             )
         );
     }
     assert_eq!(
         mcp.refused("query", serde_json::json!({ "kind": "notes", "site": "@prod" })),
-        "query reads this project's dev site only, and was asked for @prod. Start the server as `typedpress mcp --allow-remote-read` to read another site."
+        "query reads this project's dev site only, and was asked for @prod. Start the server as `spacepress mcp --allow-remote-read` to read another site."
     );
     mcp.finish();
 
@@ -1604,7 +1604,7 @@ fn mcp_refuses_writes_and_other_sites_unless_its_flags_allow_them() {
     );
     mcp.finish();
 
-    // --allow-remote-read forwards a read to the named site, as `typedpress find --site` does.
+    // --allow-remote-read forwards a read to the named site, as `spacepress find --site` does.
     let mut mcp = Mcp::start(project.path(), &["--allow-remote-read"], |command| {
         with_path(command, wp.path())
     });
@@ -1619,7 +1619,7 @@ fn mcp_refuses_writes_and_other_sites_unless_its_flags_allow_them() {
         seen["structuredContent"]["args"],
         serde_json::json!([
             "@prod",
-            "typedpress",
+            "spacepress",
             "find",
             "notes",
             r#"{"where":{"title":"x"},"limit":3}"#
@@ -1722,7 +1722,7 @@ fn running(file: &Path) -> bool {
 #[test]
 fn mcp_stops_a_command_at_the_timeout_and_when_the_request_is_cancelled() {
     let project = tempfile::tempdir().unwrap();
-    std::fs::write(project.path().join("typedpress.config.ts"), CONFIG).unwrap();
+    std::fs::write(project.path().join("spacepress.config.ts"), CONFIG).unwrap();
     let pids = tempfile::tempdir().unwrap();
     // A site that never answers. Each call records the pid of the command it is stuck in.
     let wp = scripted_wp(&format!("sleep 600 & echo $! > {}/$$; wait", pids.path().display()));
@@ -1737,12 +1737,12 @@ fn mcp_stops_a_command_at_the_timeout_and_when_the_request_is_cancelled() {
     // The timeout ends the command and everything it started, and the call says why.
     let mut mcp = Mcp::start(project.path(), &["--allow-remote-read"], |command| {
         with_path(command, wp.path());
-        command.env("TP_MCP_TIMEOUT", "1");
+        command.env("SP_MCP_TIMEOUT", "1");
     });
     mcp.modern = true;
     assert_eq!(
         mcp.refused("query", query.clone()),
-        "typedpress find took longer than 1 seconds and was stopped; TP_MCP_TIMEOUT sets the limit"
+        "spacepress find took longer than 1 seconds and was stopped; SP_MCP_TIMEOUT sets the limit"
     );
     let started = stuck(pids.path());
     assert_eq!(started.len(), 1);
@@ -1788,7 +1788,7 @@ fn mcp_stops_a_command_at_the_timeout_and_when_the_request_is_cancelled() {
 #[test]
 fn mcp_reads_a_site_commands_answer_after_other_output() {
     let project = tempfile::tempdir().unwrap();
-    std::fs::write(project.path().join("typedpress.config.ts"), CONFIG).unwrap();
+    std::fs::write(project.path().join("spacepress.config.ts"), CONFIG).unwrap();
     // A PHP notice before the document, as a site with WP_DEBUG prints it.
     let wp = scripted_wp(
         r#"echo "PHP Notice:  Undefined index: x in /site/wp-content/plugins/other.php on line 3"; echo '{"data":[{"id":1}]}'"#,
@@ -1804,7 +1804,7 @@ fn mcp_reads_a_site_commands_answer_after_other_output() {
     mcp.finish();
 }
 
-/// `typedpress add api-reference` on a fresh scaffold: the pages check, build and type-check, and the
+/// `spacepress add api-reference` on a fresh scaffold: the pages check, build and type-check, and the
 /// app's routes now include /api and /api/<tag>/<operation>.
 #[test]
 fn add_api_reference_on_a_fresh_scaffold_checks_builds_and_type_checks() {
@@ -1814,23 +1814,23 @@ fn add_api_reference_on_a_fresh_scaffold_checks_builds_and_type_checks() {
     assert_eq!(added.status.code(), Some(0), "{}", text(&added.stderr));
     let report = text(&added.stdout);
     for file in [
-        "tp/app/api/page.tsx",
-        "tp/app/api/[tag]/[operation]/page.tsx",
-        "tp/components/ApiFields.tsx",
-        "tp/API.md",
+        "sp/app/api/page.tsx",
+        "sp/app/api/[tag]/[operation]/page.tsx",
+        "sp/components/ApiFields.tsx",
+        "sp/API.md",
     ] {
         assert!(project.join(file).is_file(), "{file}");
         assert_eq!(reported(&report, file).0, "created", "{report}");
     }
     let built = first().arg("build").arg(&project).output().unwrap();
     assert_eq!(built.status.code(), Some(0), "{}", text(&built.stderr));
-    let routes = std::fs::read_to_string(project.join("tp/_generated/routes.d.ts")).unwrap();
+    let routes = std::fs::read_to_string(project.join("sp/_generated/routes.d.ts")).unwrap();
     assert!(routes.contains("\"api\": { path: `/api`"), "{routes}");
     assert!(
         routes.contains("\"api/[tag]/[operation]\": { path: `/api/${string}/${string}`"),
         "{routes}"
     );
-    // The pages type-check against TypedPress's types, with the generated routes.
+    // The pages type-check against SpacePress's types, with the generated routes.
     std::fs::write(
         project.join("tsconfig.test.json"),
         serde_json::to_vec(&serde_json::json!({
@@ -1838,14 +1838,14 @@ fn add_api_reference_on_a_fresh_scaffold_checks_builds_and_type_checks() {
             "compilerOptions": {
                 "types": [], "skipLibCheck": true,
                 "paths": {
-                    "typedpress": [root().join("types/typedpress/index.d.ts")],
-                    "typedpress/*": [root().join("types/typedpress/*.d.ts")],
-                    "typedpress:db": [root().join("types/typedpress/db.d.cts")],
-                    "php/wordpress": [root().join("types/typedpress/wordpress.d.ts")],
+                    "spacepress": [root().join("types/spacepress/index.d.ts")],
+                    "spacepress/*": [root().join("types/spacepress/*.d.ts")],
+                    "spacepress:db": [root().join("types/spacepress/db.d.cts")],
+                    "php/wordpress": [root().join("types/spacepress/wordpress.d.ts")],
                 }
             },
-            "include": ["tp/**/*.ts", "tp/**/*.tsx"],
-            "exclude": ["tp/dist"]
+            "include": ["sp/**/*.ts", "sp/**/*.tsx"],
+            "exclude": ["sp/dist"]
         }))
         .unwrap(),
     )
@@ -1859,22 +1859,22 @@ fn add_api_reference_on_a_fresh_scaffold_checks_builds_and_type_checks() {
     // A second run keeps every file as it is.
     let again = add(&project, &["api-reference"]);
     assert!(
-        text(&again.stdout).starts_with("typedpress add api-reference: nothing to add\n"),
+        text(&again.stdout).starts_with("spacepress add api-reference: nothing to add\n"),
         "{}",
         text(&again.stdout)
     );
 }
 
 /// The added pages in a static site (`output: "static"`): the operation page lists one page per
-/// operation in `staticParams`, and `typedpress export --site` writes exactly those pages, one per
+/// operation in `staticParams`, and `spacepress export --site` writes exactly those pages, one per
 /// operation of the app's OpenAPI document.
 #[test]
 fn add_api_reference_exports_every_operation_in_a_static_site() {
     let tmp = tempfile::tempdir().unwrap();
     let project = tmp.path().to_path_buf();
     std::fs::write(
-        project.join("typedpress.config.ts"),
-        r#"import { collection, defineConfig, text } from "typedpress";
+        project.join("spacepress.config.ts"),
+        r#"import { collection, defineConfig, text } from "spacepress";
 export const notes = collection({ title: text() }, { title: "title" });
 export default defineConfig({ name: "static-api", output: "static" });
 "#,
@@ -1890,7 +1890,7 @@ export default defineConfig({ name: "static-api", output: "static" });
     );
     // Export requires a home page for the WordPress header's home link.
     std::fs::write(
-        project.join("tp/app/page.tsx"),
+        project.join("sp/app/page.tsx"),
         "export default function Home() { return <main>API documentation</main>; }\n",
     )
     .unwrap();
@@ -1898,7 +1898,7 @@ export default defineConfig({ name: "static-api", output: "static" });
     assert_eq!(built.status.code(), Some(0), "{}", text(&built.stderr));
     // The operations, from the document the pages read.
     let openapi: serde_json::Value =
-        serde_json::from_slice(&std::fs::read(project.join("tp/_generated/openapi.json")).unwrap()).unwrap();
+        serde_json::from_slice(&std::fs::read(project.join("sp/_generated/openapi.json")).unwrap()).unwrap();
     let operations = openapi["paths"]
         .as_object()
         .unwrap()
@@ -1912,9 +1912,9 @@ export default defineConfig({ name: "static-api", output: "static" });
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/wp.php"))
         .arg("serve")
-        .arg(project.join("tp/dist/wp-content"))
+        .arg(project.join("sp/dist/wp-content"))
         .arg("chief=editor")
-        .env("TP_WP_THEMES", "1")
+        .env("SP_WP_THEMES", "1")
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
         .spawn()
@@ -1930,7 +1930,7 @@ export default defineConfig({ name: "static-api", output: "static" });
         .arg(&project)
         .args(["--site", served["url"].as_str().unwrap()])
         .env(
-            "TP_APP_PASSWORD",
+            "SP_APP_PASSWORD",
             served["users"]["chief"]["appPassword"].as_str().unwrap(),
         )
         .output()
@@ -1942,11 +1942,11 @@ export default defineConfig({ name: "static-api", output: "static" });
         text(&exported.stderr)
     );
     assert!(
-        std::fs::read_to_string(project.join("tp/dist/static/index.html"))
+        std::fs::read_to_string(project.join("sp/dist/static/index.html"))
             .unwrap()
             .contains("API documentation")
     );
-    let api = project.join("tp/dist/static/api");
+    let api = project.join("sp/dist/static/api");
     let pages = std::fs::read_dir(&api)
         .unwrap()
         .map(|tag| tag.unwrap().path())
@@ -1963,15 +1963,15 @@ export default defineConfig({ name: "static-api", output: "static" });
 fn add_api_reference_renders_per_request_under_a_guarded_layout() {
     let tmp = tempfile::tempdir().unwrap();
     let project = scaffold(tmp.path());
-    std::fs::create_dir_all(project.join("tp/app/api/help")).unwrap();
+    std::fs::create_dir_all(project.join("sp/app/api/help")).unwrap();
     std::fs::write(
-        project.join("tp/app/api/help/page.tsx"),
+        project.join("sp/app/api/help/page.tsx"),
         "export default function Help() { return <p>Ask in the forum.</p>; }\n",
     )
     .unwrap();
     std::fs::write(
-        project.join("tp/app/api/layout.tsx"),
-        "import type { LayoutProps } from \"typedpress/app\";\nexport const guard = \"subscriber\";\nexport default function ApiLayout({ children }: LayoutProps) { return <div>{children}</div>; }\n",
+        project.join("sp/app/api/layout.tsx"),
+        "import type { LayoutProps } from \"spacepress/app\";\nexport const guard = \"subscriber\";\nexport default function ApiLayout({ children }: LayoutProps) { return <div>{children}</div>; }\n",
     )
     .unwrap();
     let added = add(&project, &["api-reference"]);
@@ -1982,18 +1982,18 @@ fn add_api_reference_renders_per_request_under_a_guarded_layout() {
         text(&added.stdout),
         text(&added.stderr)
     );
-    let page = std::fs::read_to_string(project.join("tp/app/api/[tag]/[operation]/page.tsx")).unwrap();
+    let page = std::fs::read_to_string(project.join("sp/app/api/[tag]/[operation]/page.tsx")).unwrap();
     assert!(!page.contains("staticParams"), "{page}");
     let built = first().arg("build").arg(&project).output().unwrap();
     assert_eq!(built.status.code(), Some(0), "{}", text(&built.stderr));
 }
 
-/// A project from the scaffolder, as `npm create typedpress` writes it, without the npm
+/// A project from the scaffolder, as `npm create spacepress` writes it, without the npm
 /// install. Its directory name has a space, as a real one may.
 fn scaffold(parent: &Path) -> PathBuf {
     let project = parent.join("my app");
     let created = Command::new("node")
-        .arg(root().join("packages/create-typedpress/bin/create-typedpress.mjs"))
+        .arg(root().join("packages/create-spacepress/bin/create-spacepress.mjs"))
         .arg(&project)
         .arg("--no-install")
         .output()
@@ -2003,7 +2003,7 @@ fn scaffold(parent: &Path) -> PathBuf {
 }
 
 /// A starter note the seed would refuse on the site fails the build at its file and field, in
-/// `typedpress check` too, and nothing is written for WordPress to run.
+/// `spacepress check` too, and nothing is written for WordPress to run.
 #[test]
 fn a_seed_file_the_site_would_refuse_fails_the_build_at_its_file_and_field() {
     let tmp = tempfile::tempdir().unwrap();
@@ -2034,7 +2034,7 @@ fn a_seed_file_the_site_would_refuse_fails_the_build_at_its_file_and_field() {
         assert!(said.contains("it has 130 characters"), "{said}");
     }
     assert!(
-        !project.join("tp/dist").exists(),
+        !project.join("sp/dist").exists(),
         "a refused build wrote a plugin WordPress would run"
     );
 
@@ -2075,7 +2075,7 @@ fn a_seed_file_the_site_would_refuse_fails_the_build_at_its_file_and_field() {
 
 /// A copied note keeps its `uid` line: the error names both files and says what to delete.
 /// Only `build` and `check` check the seed files: a content typo doesn't stop a command that
-/// compiles for another reason, such as `typedpress add`.
+/// compiles for another reason, such as `spacepress add`.
 #[test]
 fn a_seed_file_typo_does_not_block_add() {
     let tmp = tempfile::tempdir().unwrap();
@@ -2129,7 +2129,7 @@ fn seed_without_a_synced_kind_warns_that_nothing_is_seeded() {
         "{}",
         text(&seeded.stderr)
     );
-    let config = project.join("typedpress.config.ts");
+    let config = project.join("spacepress.config.ts");
     let source = std::fs::read_to_string(&config).unwrap();
     assert!(source.contains("  sync: \"content/notes/*.md\",\n"));
     std::fs::write(&config, source.replace("  sync: \"content/notes/*.md\",\n", "")).unwrap();
@@ -2148,7 +2148,7 @@ fn add(project: &Path, args: &[&str]) -> Output {
     first().arg("add").args(args).arg(project).output().unwrap()
 }
 
-/// The report line `typedpress add` printed for `file`: "created", "kept" or "skipped", and its reason.
+/// The report line `spacepress add` printed for `file`: "created", "kept" or "skipped", and its reason.
 fn reported(report: &str, file: &str) -> (String, String) {
     let line = report
         .lines()
@@ -2181,7 +2181,7 @@ fn tree(dir: &Path) -> Vec<(String, Vec<u8>)> {
     out
 }
 
-/// `typedpress add db` on a fresh scaffold: the project still checks and builds, the build plans the
+/// `spacepress add db` on a fresh scaffold: the project still checks and builds, the build plans the
 /// tables with their foreign key, and the new files type-check under the scaffold's own tsconfig.
 /// Needs node and tsc (or TSC), as the other generated-client tests do.
 #[test]
@@ -2199,7 +2199,7 @@ fn add_db_on_a_fresh_scaffold_checks_builds_and_type_checks() {
     let added = first().args(["add", "db"]).current_dir(&project).output().unwrap();
     assert_eq!(added.status.code(), Some(0), "{}", text(&added.stderr));
     let report = text(&added.stdout);
-    for file in ["tp/tables.ts", "tables.client.ts", "tp/DATABASE.md"] {
+    for file in ["sp/tables.ts", "tables.client.ts", "sp/DATABASE.md"] {
         assert!(project.join(file).is_file(), "{file}");
         assert_eq!(reported(&report, file).0, "created", "{report}");
     }
@@ -2216,23 +2216,23 @@ fn add_db_on_a_fresh_scaffold_checks_builds_and_type_checks() {
     );
     let built = first().arg("build").arg(&project).output().unwrap();
     assert_eq!(built.status.code(), Some(0), "{}", text(&built.stderr));
-    let mut ledger: Vec<String> = std::fs::read_dir(project.join("tp/_generated/migrations"))
+    let mut ledger: Vec<String> = std::fs::read_dir(project.join("sp/_generated/migrations"))
         .unwrap()
         .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
         .collect();
     ledger.sort();
     assert_eq!(ledger.len(), 1, "expected 1 sortable migration folder: {ledger:?}");
     assert!(ledger[0].ends_with("_init"), "expected *_init folder: {ledger:?}");
-    let init_dir = project.join("tp/_generated/migrations").join(&ledger[0]);
+    let init_dir = project.join("sp/_generated/migrations").join(&ledger[0]);
     assert!(init_dir.join("ops.json").is_file(), "expected ops.json in {init_dir:?}");
     let sql = std::fs::read_to_string(init_dir.join("migration.sql")).unwrap();
-    assert_eq!(sql.matches("CREATE TABLE `{prefix}tp_projects`").count(), 1, "{sql}");
+    assert_eq!(sql.matches("CREATE TABLE `{prefix}sp_projects`").count(), 1, "{sql}");
     assert!(
-        sql.contains("FOREIGN KEY (`project`) REFERENCES `{prefix}tp_projects` (`id`) ON DELETE CASCADE"),
+        sql.contains("FOREIGN KEY (`project`) REFERENCES `{prefix}sp_projects` (`id`) ON DELETE CASCADE"),
         "{sql}"
     );
     // The scaffold's own kind stays a WordPress post type: it gets no table.
-    assert!(!sql.contains("tp_notes"), "{sql}");
+    assert!(!sql.contains("sp_notes"), "{sql}");
 
     // The scaffold's own tsconfig covers the new files. Only the path to the types differs here,
     // where nothing is installed from npm.
@@ -2243,10 +2243,10 @@ fn add_db_on_a_fresh_scaffold_checks_builds_and_type_checks() {
             "compilerOptions": {
                 "types": [],
                 "paths": {
-                    "typedpress": [root().join("types/typedpress/index.d.ts")],
-                    "typedpress/*": [root().join("types/typedpress/*.d.ts")],
-                    "typedpress:db": [root().join("types/typedpress/db.d.cts")],
-                    "php/wordpress": [root().join("types/typedpress/wordpress.d.ts")],
+                    "spacepress": [root().join("types/spacepress/index.d.ts")],
+                    "spacepress/*": [root().join("types/spacepress/*.d.ts")],
+                    "spacepress:db": [root().join("types/spacepress/db.d.cts")],
+                    "php/wordpress": [root().join("types/spacepress/wordpress.d.ts")],
                 }
             }
         }))
@@ -2262,7 +2262,7 @@ fn add_db_on_a_fresh_scaffold_checks_builds_and_type_checks() {
             .expect("tsc (or TSC) must be installed to check the added files")
     };
     let listed = text(&tsc(&["--listFilesOnly"]).stdout);
-    for file in ["tp/tables.ts", "tables.client.ts"] {
+    for file in ["sp/tables.ts", "tables.client.ts"] {
         assert!(
             listed.lines().any(|l| l.ends_with(file)),
             "{file} is not type-checked:\n{listed}"
@@ -2295,16 +2295,16 @@ fn add_only_creates_missing_files_and_never_changes_one_that_is_there() {
     // The author edits what they were given.
     let mine = format!(
         "{}\n// mine\n",
-        std::fs::read_to_string(project.join("tp/tables.ts")).unwrap()
+        std::fs::read_to_string(project.join("sp/tables.ts")).unwrap()
     );
-    std::fs::write(project.join("tp/tables.ts"), &mine).unwrap();
-    std::fs::write(project.join("tp/DATABASE.md"), "my notes\n").unwrap();
+    std::fs::write(project.join("sp/tables.ts"), &mine).unwrap();
+    std::fs::write(project.join("sp/DATABASE.md"), "my notes\n").unwrap();
     let state = tree(&project);
     let again = add(&project, &["db"]);
     assert_eq!(again.status.code(), Some(0), "{}", text(&again.stderr));
     let report = text(&again.stdout);
-    assert!(report.starts_with("typedpress add db: nothing to add\n"), "{report}");
-    for file in ["tp/tables.ts", "tables.client.ts", "tp/DATABASE.md"] {
+    assert!(report.starts_with("spacepress add db: nothing to add\n"), "{report}");
+    for file in ["sp/tables.ts", "tables.client.ts", "sp/DATABASE.md"] {
         assert_eq!(reported(&report, file).0, "kept", "{report}");
     }
     assert_eq!(tree(&project), state);
@@ -2336,20 +2336,20 @@ fn add_only_creates_missing_files_and_never_changes_one_that_is_there() {
 fn add_db_leaves_out_the_example_where_the_project_has_its_own_tables() {
     let tmp = tempfile::tempdir().unwrap();
     let project = scaffold(tmp.path());
-    std::fs::create_dir_all(project.join("tp")).unwrap();
-    let mine = "import { table, text } from \"typedpress\";\nexport const orders = table({ code: text().max(40) });\n";
-    // At the module's own path first, then anywhere else under tp/.
-    for (at, status) in [("tp/tables.ts", "kept"), ("tp/schema.ts", "skipped")] {
+    std::fs::create_dir_all(project.join("sp")).unwrap();
+    let mine = "import { table, text } from \"spacepress\";\nexport const orders = table({ code: text().max(40) });\n";
+    // At the module's own path first, then anywhere else under sp/.
+    for (at, status) in [("sp/tables.ts", "kept"), ("sp/schema.ts", "skipped")] {
         std::fs::write(project.join(at), mine).unwrap();
-        let _ = std::fs::remove_file(project.join("tp/DATABASE.md"));
+        let _ = std::fs::remove_file(project.join("sp/DATABASE.md"));
         let added = add(&project, &["db"]);
         assert_eq!(added.status.code(), Some(0), "{}", text(&added.stderr));
         let report = text(&added.stdout);
-        assert_eq!(reported(&report, "tp/tables.ts").0, status, "{report}");
+        assert_eq!(reported(&report, "sp/tables.ts").0, status, "{report}");
         let (client, why) = reported(&report, "tables.client.ts");
         assert_eq!(client, "skipped", "{report}");
         assert!(why.contains("`projects`"), "{report}");
-        assert_eq!(reported(&report, "tp/DATABASE.md").0, "created", "{report}");
+        assert_eq!(reported(&report, "sp/DATABASE.md").0, "created", "{report}");
         assert!(!project.join("tables.client.ts").exists());
         let checked = first().arg("check").arg(&project).output().unwrap();
         assert!(
@@ -2362,14 +2362,14 @@ fn add_db_leaves_out_the_example_where_the_project_has_its_own_tables() {
 
     // An author who took the example and then moved and renamed its tables doesn't get it back.
     assert_eq!(add(&project, &["db"]).status.code(), Some(0));
-    assert!(project.join("tp/tables.ts").is_file() && project.join("tables.client.ts").is_file());
-    std::fs::remove_file(project.join("tp/tables.ts")).unwrap();
+    assert!(project.join("sp/tables.ts").is_file() && project.join("tables.client.ts").is_file());
+    std::fs::remove_file(project.join("sp/tables.ts")).unwrap();
     std::fs::remove_file(project.join("tables.client.ts")).unwrap();
-    std::fs::write(project.join("tp/schema.ts"), mine).unwrap();
+    std::fs::write(project.join("sp/schema.ts"), mine).unwrap();
     let state = tree(&project);
     let again = add(&project, &["db"]);
     assert_eq!(again.status.code(), Some(0), "{}", text(&again.stderr));
-    assert!(text(&again.stdout).starts_with("typedpress add db: nothing to add\n"));
+    assert!(text(&again.stdout).starts_with("spacepress add db: nothing to add\n"));
     assert_eq!(tree(&project), state);
 }
 
@@ -2378,10 +2378,10 @@ fn add_changes_nothing_when_the_project_or_the_result_does_not_compile() {
     let tmp = tempfile::tempdir().unwrap();
     let project = scaffold(tmp.path());
     // An export of the author's already uses a name the module's example exports.
-    std::fs::create_dir_all(project.join("tp/server")).unwrap();
+    std::fs::create_dir_all(project.join("sp/server")).unwrap();
     std::fs::write(
-        project.join("tp/server/tasks.ts"),
-        "import { mutation } from \"typedpress\";\nexport const tasks = mutation({}, async () => { return 1; });\n",
+        project.join("sp/server/tasks.ts"),
+        "import { mutation } from \"spacepress\";\nexport const tasks = mutation({}, async () => { return 1; });\n",
     )
     .unwrap();
     let state = tree(&project);
@@ -2393,12 +2393,12 @@ fn add_changes_nothing_when_the_project_or_the_result_does_not_compile() {
     assert_eq!(tree(&project), state);
 
     // A project that doesn't compile today is refused before anything is written, with its own error.
-    std::fs::write(project.join("tp/server/tasks.ts"), "export const broken = ;\n").unwrap();
+    std::fs::write(project.join("sp/server/tasks.ts"), "export const broken = ;\n").unwrap();
     let state = tree(&project);
     let broken = add(&project, &["db"]);
     assert_eq!(broken.status.code(), Some(1), "{}", text(&broken.stdout));
     assert!(
-        text(&broken.stderr).contains("tp/server/tasks.ts:1"),
+        text(&broken.stderr).contains("sp/server/tasks.ts:1"),
         "{}",
         text(&broken.stderr)
     );
@@ -2409,12 +2409,12 @@ fn add_changes_nothing_when_the_project_or_the_result_does_not_compile() {
     );
     assert_eq!(tree(&project), state);
 
-    // With no tp/ directory yet, a refused add doesn't leave an empty one behind.
+    // With no sp/ directory yet, a refused add doesn't leave an empty one behind.
     let bare = tmp.path().join("bare");
     std::fs::create_dir_all(&bare).unwrap();
     std::fs::write(
-        bare.join("typedpress.config.ts"),
-        "import { defineConfig, mutation } from \"typedpress\";\nconst __projects = mutation({}, async () => { return 1; }); export { __projects as projects }; export default defineConfig({ name: \"bare\" });\n",
+        bare.join("spacepress.config.ts"),
+        "import { defineConfig, mutation } from \"spacepress\";\nconst __projects = mutation({}, async () => { return 1; }); export { __projects as projects }; export default defineConfig({ name: \"bare\" });\n",
     )
     .unwrap();
     let state = tree(&bare);
@@ -2428,7 +2428,7 @@ fn add_changes_nothing_when_the_project_or_the_result_does_not_compile() {
     let none = add(&empty, &["db"]);
     assert_eq!(none.status.code(), Some(1));
     assert!(
-        text(&none.stderr).starts_with("typedpress add db: no typedpress.config.ts in "),
+        text(&none.stderr).starts_with("spacepress add db: no spacepress.config.ts in "),
         "{}",
         text(&none.stderr)
     );
@@ -2445,14 +2445,14 @@ fn add_removes_a_file_it_could_not_finish_writing() {
     let state = tree(&project);
     let out = Command::new("sh")
         .args(["-c", "trap '' XFSZ; ulimit -f 1; exec \"$@\"", "sh"])
-        .arg(env!("CARGO_BIN_EXE_typedpress"))
+        .arg(env!("CARGO_BIN_EXE_spacepress"))
         .args(["add", "db"])
         .arg(&project)
         .output()
         .unwrap();
     assert_eq!(out.status.code(), Some(1), "{}{}", text(&out.stdout), text(&out.stderr));
     assert!(
-        text(&out.stderr).contains("can't write tp/tables.ts") && text(&out.stderr).contains("Nothing was added"),
+        text(&out.stderr).contains("can't write sp/tables.ts") && text(&out.stderr).contains("Nothing was added"),
         "{}",
         text(&out.stderr)
     );
@@ -2460,21 +2460,21 @@ fn add_removes_a_file_it_could_not_finish_writing() {
     // The project still compiles, and the next run adds everything.
     let added = add(&project, &["db"]);
     assert_eq!(added.status.code(), Some(0), "{}", text(&added.stderr));
-    assert_eq!(reported(&text(&added.stdout), "tp/tables.ts").0, "created");
+    assert_eq!(reported(&text(&added.stdout), "sp/tables.ts").0, "created");
 }
 
 #[test]
 fn add_names_its_modules_when_the_module_is_missing_or_unknown() {
-    // `typedpress help add` lists the modules; the command table's summary names each of them.
+    // `spacepress help add` lists the modules; the command table's summary names each of them.
     let help = first().args(["help", "add"]).output().unwrap();
     assert_eq!(help.status.code(), Some(0));
     let modules = text(&help.stdout);
     assert!(
-        modules.starts_with("usage: typedpress add <module> [dir]\nmodules:\n  db  "),
+        modules.starts_with("usage: spacepress add <module> [dir]\nmodules:\n  db  "),
         "{modules}"
     );
     let table: serde_json::Value =
-        serde_json::from_slice(&std::fs::read(root().join("runtime/TypedPress/Cli/commands.json")).unwrap()).unwrap();
+        serde_json::from_slice(&std::fs::read(root().join("runtime/SpacePress/Cli/commands.json")).unwrap()).unwrap();
     let row = table["build"]
         .as_array()
         .unwrap()
@@ -2494,7 +2494,7 @@ fn add_names_its_modules_when_the_module_is_missing_or_unknown() {
 
     let none = first().arg("add").output().unwrap();
     assert_eq!(none.status.code(), Some(2));
-    assert_eq!(text(&none.stderr), format!("typedpress add needs a module\n{modules}"));
+    assert_eq!(text(&none.stderr), format!("spacepress add needs a module\n{modules}"));
     let tmp = tempfile::tempdir().unwrap();
     let unknown = add(tmp.path(), &["pages"]);
     assert_eq!(unknown.status.code(), Some(2));
@@ -2503,7 +2503,7 @@ fn add_names_its_modules_when_the_module_is_missing_or_unknown() {
     assert_eq!(option.status.code(), Some(2));
     assert_eq!(
         text(&option.stderr),
-        format!("unknown option --force for typedpress add\n{modules}")
+        format!("unknown option --force for spacepress add\n{modules}")
     );
     assert!(std::fs::read_dir(tmp.path()).unwrap().next().is_none());
 }
@@ -2523,7 +2523,7 @@ fn the_added_tables_enforce_their_access_rules_on_a_real_wordpress() {
         .args(["-d", "memory_limit=512M"])
         .arg(root().join("tests/php/wp.php"))
         .arg("serve")
-        .arg(project.join("tp/dist/wp-content"))
+        .arg(project.join("sp/dist/wp-content"))
         .args(["sub=subscriber", "ed=editor"])
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
@@ -2535,7 +2535,7 @@ fn the_added_tables_enforce_their_access_rules_on_a_real_wordpress() {
         .unwrap();
     let _served = Served(child);
     let served: serde_json::Value = serde_json::from_str(&line).unwrap_or_else(|_| panic!("serve: {line}"));
-    let base = format!("{}/wp-json/typedpress/v1", served["url"].as_str().unwrap());
+    let base = format!("{}/wp-json/spacepress/v1", served["url"].as_str().unwrap());
     // (status, body) of one request, as `who` (a served user) or signed out.
     let call = |who: Option<&str>, method: &str, path: &str, body: Option<serde_json::Value>| {
         let mut curl = Command::new("curl");
@@ -2636,7 +2636,7 @@ fn the_added_tables_enforce_their_access_rules_on_a_real_wordpress() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// `typedpress init`: AGENTS.md, .mcp.json and the agent skills, written from the project's config.
+// `spacepress init`: AGENTS.md, .mcp.json and the agent skills, written from the project's config.
 // ---------------------------------------------------------------------------------------------
 
 fn copy_tree(from: &Path, to: &Path) {
@@ -2706,33 +2706,33 @@ fn init_writes_the_agent_files_from_the_project_and_a_rerun_replaces_only_its_ow
     let agents = read("AGENTS.md");
     // The author's text stays, and the section follows it between the markers.
     assert!(
-        agents.starts_with("# House rules\n\nTabs, not spaces.\n\n<!-- typedpress:begin -->\n"),
+        agents.starts_with("# House rules\n\nTabs, not spaces.\n\n<!-- spacepress:begin -->\n"),
         "{agents}"
     );
-    assert!(agents.ends_with("<!-- typedpress:end -->\n"));
+    assert!(agents.ends_with("<!-- spacepress:end -->\n"));
     // It describes this project: its kinds with their access rules and API paths, its fields, its
     // action with its endpoint, its job, its page and route, and the site's MCP endpoint.
     for line in [
-        "This project is the TypedPress app `agentkit`.",
-        "| `shoppingList` | table | anyone | editor | editor | admin | `/wp-json/typedpress/v1/shopping_list` |",
-        "| `articles` | collection | anyone | author | editor | editor | `/wp-json/typedpress/v1/articles` |",
+        "This project is the SpacePress app `agentkit`.",
+        "| `shoppingList` | table | anyone | editor | editor | admin | `/wp-json/spacepress/v1/shopping_list` |",
+        "| `articles` | collection | anyone | author | editor | editor | `/wp-json/spacepress/v1/articles` |",
         "- `substitutes`: `item`: ref → shoppingList, `name`: text",
-        "| `rename` | `id`: number, `name`: text | editor | `POST /wp-json/typedpress/v1/actions/rename` |",
+        "| `rename` | `id`: number, `name`: text | editor | `POST /wp-json/spacepress/v1/actions/rename` |",
         "- `clearDone`: input `keep?`: number; retried up to 2 times",
-        "| `/api/list` | route (GET) | `tp/app/api/list/route.ts` |",
-        "| `/` | page | `tp/app/page.tsx` |",
+        "| `/api/list` | route (GET) | `sp/app/api/list/route.ts` |",
+        "| `/` | page | `sp/app/page.tsx` |",
         "guest < subscriber < author < editor < admin.",
-        "`/wp-json/mcp/typedpress-agentkit`",
+        "`/wp-json/mcp/spacepress-agentkit`",
     ] {
         assert!(agents.contains(line), "{line}\nin\n{agents}");
     }
     // Every command of the table is listed with its arguments.
     let table: serde_json::Value =
-        serde_json::from_slice(&std::fs::read(root().join("runtime/TypedPress/Cli/commands.json")).unwrap()).unwrap();
+        serde_json::from_slice(&std::fs::read(root().join("runtime/SpacePress/Cli/commands.json")).unwrap()).unwrap();
     for group in ["build", "site"] {
         for row in table[group].as_array().unwrap() {
             let usage = format!(
-                "typedpress {} {}",
+                "spacepress {} {}",
                 row["name"].as_str().unwrap(),
                 row["args"].as_str().unwrap()
             );
@@ -2741,18 +2741,18 @@ fn init_writes_the_agent_files_from_the_project_and_a_rerun_replaces_only_its_ow
         }
     }
 
-    // .mcp.json keeps the author's server and gains one that starts `typedpress mcp`.
+    // .mcp.json keeps the author's server and gains one that starts `spacepress mcp`.
     let mcp: serde_json::Value = serde_json::from_str(&read(".mcp.json")).unwrap();
     assert_eq!(mcp["mcpServers"]["tracker"]["command"], "tracker-mcp");
     assert_eq!(
-        mcp["mcpServers"]["typedpress"],
-        serde_json::json!({ "command": "npx", "args": ["--no-install", "typedpress", "mcp"] })
+        mcp["mcpServers"]["spacepress"],
+        serde_json::json!({ "command": "npx", "args": ["--no-install", "spacepress", "mcp"] })
     );
 
     // The skills this binary carries, as committed under skills/, in both places agents read.
     let skills = files_under(&root().join("skills"));
     assert!(
-        skills.contains(&"typedpress-fix-diagnostic/SKILL.md".to_string()),
+        skills.contains(&"spacepress-fix-diagnostic/SKILL.md".to_string()),
         "{skills:?}"
     );
     for dir in [".agents/skills", ".claude/skills"] {
@@ -2766,9 +2766,9 @@ fn init_writes_the_agent_files_from_the_project_and_a_rerun_replaces_only_its_ow
         }
     }
     // Each skill is listed in the section by its name.
-    assert!(agents.contains("- `typedpress-fix-diagnostic` (`.agents/skills/typedpress-fix-diagnostic/SKILL.md`): "));
+    assert!(agents.contains("- `spacepress-fix-diagnostic` (`.agents/skills/spacepress-fix-diagnostic/SKILL.md`): "));
 
-    // Now everything matches: --check exits 0, a rerun writes nothing, and `typedpress check` has no hint.
+    // Now everything matches: --check exits 0, a rerun writes nothing, and `spacepress check` has no hint.
     let current = init(&project, &["--check"]);
     assert_eq!(current.status.code(), Some(0), "{}", text(&current.stderr));
     let again = init(&project, &[]);
@@ -2780,14 +2780,14 @@ fn init_writes_the_agent_files_from_the_project_and_a_rerun_replaces_only_its_ow
     let checked = first().arg("check").arg(&project).output().unwrap();
     assert!(checked.status.success());
     assert!(
-        !text(&checked.stderr).contains("typedpress init"),
+        !text(&checked.stderr).contains("spacepress init"),
         "{}",
         text(&checked.stderr)
     );
 
-    // The config changes: `typedpress check` and `typedpress build` say so in one line, --check fails for CI
+    // The config changes: `spacepress check` and `spacepress build` say so in one line, --check fails for CI
     // and names the file, and nothing but the section is rewritten.
-    let schema = project.join("tp/schema.ts");
+    let schema = project.join("sp/schema.ts");
     let source = std::fs::read_to_string(&schema).unwrap();
     std::fs::write(
         &schema,
@@ -2795,12 +2795,12 @@ fn init_writes_the_agent_files_from_the_project_and_a_rerun_replaces_only_its_ow
     )
     .unwrap();
     std::fs::write(project.join("AGENTS.md"), format!("{agents}\n## After\n\nMine too.\n")).unwrap();
-    let hint = "hint: AGENTS.md and the agent skills no longer match this project or this compiler; run typedpress init to update them\n";
+    let hint = "hint: AGENTS.md and the agent skills no longer match this project or this compiler; run spacepress init to update them\n";
     for command in ["check", "build"] {
         let ran = first().arg(command).arg(&project).output().unwrap();
         assert!(ran.status.success(), "{}", text(&ran.stderr));
         assert_eq!(
-            text(&ran.stderr).matches("typedpress init").count(),
+            text(&ran.stderr).matches("spacepress init").count(),
             1,
             "{}",
             text(&ran.stderr)
@@ -2809,64 +2809,64 @@ fn init_writes_the_agent_files_from_the_project_and_a_rerun_replaces_only_its_ow
     }
     // --quiet and --json keep their output as it was.
     let quiet = first().arg("build").arg(&project).arg("--quiet").output().unwrap();
-    assert!(!text(&quiet.stderr).contains("typedpress init"));
+    assert!(!text(&quiet.stderr).contains("spacepress init"));
     let json = first().arg("check").arg(&project).arg("--json").output().unwrap();
     assert!(json.stderr.is_empty(), "{}", text(&json.stderr));
     let stale = init(&project, &["--check"]);
     assert_eq!(stale.status.code(), Some(1));
     assert_eq!(
         text(&stale.stderr),
-        "out of date: AGENTS.md\nrun typedpress init to update them\n"
+        "out of date: AGENTS.md\nrun spacepress init to update them\n"
     );
     let updated = init(&project, &[]);
     assert_eq!(text(&updated.stdout), "wrote AGENTS.md\n");
     let agents = read("AGENTS.md");
-    assert!(agents.starts_with("# House rules\n\nTabs, not spaces.\n\n<!-- typedpress:begin -->\n"));
+    assert!(agents.starts_with("# House rules\n\nTabs, not spaces.\n\n<!-- spacepress:begin -->\n"));
     assert!(
-        agents.ends_with("<!-- typedpress:end -->\n\n## After\n\nMine too.\n"),
+        agents.ends_with("<!-- spacepress:end -->\n\n## After\n\nMine too.\n"),
         "{agents}"
     );
-    assert_eq!(agents.matches("<!-- typedpress:begin -->").count(), 1);
+    assert_eq!(agents.matches("<!-- spacepress:begin -->").count(), 1);
     assert!(agents.contains("| `recipes` | table |"));
     assert_eq!(init(&project, &["--check"]).status.code(), Some(0));
 
     // A skill edited in the project is out of date like any other file, and is written back.
-    let skill = project.join(".claude/skills/typedpress-fix-diagnostic/SKILL.md");
+    let skill = project.join(".claude/skills/spacepress-fix-diagnostic/SKILL.md");
     std::fs::write(&skill, "changed").unwrap();
     let edited = init(&project, &["--check"]);
     assert_eq!(
         text(&edited.stderr),
-        "out of date: .claude/skills/typedpress-fix-diagnostic/SKILL.md\nrun typedpress init to update them\n"
+        "out of date: .claude/skills/spacepress-fix-diagnostic/SKILL.md\nrun spacepress init to update them\n"
     );
     assert!(init(&project, &[]).status.success());
     assert_eq!(
         std::fs::read_to_string(&skill).unwrap(),
-        std::fs::read_to_string(root().join("skills/typedpress-fix-diagnostic/SKILL.md")).unwrap()
+        std::fs::read_to_string(root().join("skills/spacepress-fix-diagnostic/SKILL.md")).unwrap()
     );
 
-    // A `typedpress` server the author configured themselves is theirs: it is never replaced.
+    // A `spacepress` server the author configured themselves is theirs: it is never replaced.
     std::fs::write(
         project.join(".mcp.json"),
-        r#"{"mcpServers":{"typedpress":{"command":"/opt/tp","args":["mcp","--allow-writes"]}}}"#,
+        r#"{"mcpServers":{"spacepress":{"command":"/opt/sp","args":["mcp","--allow-writes"]}}}"#,
     )
     .unwrap();
     assert_eq!(init(&project, &["--check"]).status.code(), Some(0));
     assert!(init(&project, &[]).status.success());
     assert_eq!(
         read(".mcp.json"),
-        r#"{"mcpServers":{"typedpress":{"command":"/opt/tp","args":["mcp","--allow-writes"]}}}"#
+        r#"{"mcpServers":{"spacepress":{"command":"/opt/sp","args":["mcp","--allow-writes"]}}}"#
     );
 }
 
 #[test]
 fn init_refuses_what_it_cannot_describe_and_leaves_other_projects_without_a_hint() {
-    // A project that never ran `typedpress init` gets no hint about it.
+    // A project that never ran `spacepress init` gets no hint about it.
     let dir = tempfile::tempdir().unwrap();
-    std::fs::write(dir.path().join("typedpress.config.ts"), CONFIG).unwrap();
+    std::fs::write(dir.path().join("spacepress.config.ts"), CONFIG).unwrap();
     let checked = first().arg("check").arg(dir.path()).output().unwrap();
     assert!(checked.status.success());
     assert!(
-        !text(&checked.stderr).contains("typedpress init"),
+        !text(&checked.stderr).contains("spacepress init"),
         "{}",
         text(&checked.stderr)
     );
@@ -2874,21 +2874,21 @@ fn init_refuses_what_it_cannot_describe_and_leaves_other_projects_without_a_hint
     std::fs::write(dir.path().join("AGENTS.md"), "# Mine\n").unwrap();
     let checked = first().arg("check").arg(dir.path()).output().unwrap();
     assert!(
-        !text(&checked.stderr).contains("typedpress init"),
+        !text(&checked.stderr).contains("spacepress init"),
         "{}",
         text(&checked.stderr)
     );
 
     // A project that does not compile has nothing to describe: the diagnostic, exit 1, no files.
     std::fs::write(
-        dir.path().join("typedpress.config.ts"),
+        dir.path().join("spacepress.config.ts"),
         CONFIG.replace("title: text()", "title: nothing()"),
     )
     .unwrap();
     let broken = init(dir.path(), &[]);
     assert_eq!(broken.status.code(), Some(1));
     assert!(
-        text(&broken.stderr).contains("typedpress.config.ts:2:"),
+        text(&broken.stderr).contains("spacepress.config.ts:2:"),
         "{}",
         text(&broken.stderr)
     );
@@ -2897,12 +2897,12 @@ fn init_refuses_what_it_cannot_describe_and_leaves_other_projects_without_a_hint
         "# Mine\n"
     );
     assert!(!dir.path().join(".mcp.json").exists() && !dir.path().join(".agents").exists());
-    std::fs::write(dir.path().join("typedpress.config.ts"), CONFIG).unwrap();
+    std::fs::write(dir.path().join("spacepress.config.ts"), CONFIG).unwrap();
 
     // One marker without the other: the author's file is not guessed at.
     std::fs::write(
         dir.path().join("AGENTS.md"),
-        "# Mine\n<!-- typedpress:begin -->\nhalf\n",
+        "# Mine\n<!-- spacepress:begin -->\nhalf\n",
     )
     .unwrap();
     let half = init(dir.path(), &[]);
@@ -2914,7 +2914,7 @@ fn init_refuses_what_it_cannot_describe_and_leaves_other_projects_without_a_hint
     );
     assert_eq!(
         std::fs::read_to_string(dir.path().join("AGENTS.md")).unwrap(),
-        "# Mine\n<!-- typedpress:begin -->\nhalf\n"
+        "# Mine\n<!-- spacepress:begin -->\nhalf\n"
     );
     // An .mcp.json that is not JSON is the author's to fix; nothing is written over it.
     std::fs::write(dir.path().join("AGENTS.md"), "# Mine\n").unwrap();
@@ -2940,18 +2940,18 @@ fn init_refuses_what_it_cannot_describe_and_leaves_other_projects_without_a_hint
     let none = init(empty.path(), &[]);
     assert_eq!(none.status.code(), Some(1));
     assert!(
-        text(&none.stderr).starts_with("no typedpress.config.ts in "),
+        text(&none.stderr).starts_with("no spacepress.config.ts in "),
         "{}",
         text(&none.stderr)
     );
     assert_eq!(std::fs::read_dir(empty.path()).unwrap().count(), 0);
     let bad = first().args(["init", "--force"]).output().unwrap();
     assert_eq!(bad.status.code(), Some(2));
-    assert!(text(&bad.stderr).contains("usage: typedpress init [dir] [--check]"));
+    assert!(text(&bad.stderr).contains("usage: spacepress init [dir] [--check]"));
 }
 
 /// The server `.mcp.json` names is one a client can start: the command as written, run in the
-/// project with the project's own `typedpress` in `node_modules/.bin`, answers `server/discover`.
+/// project with the project's own `spacepress` in `node_modules/.bin`, answers `server/discover`.
 #[cfg(unix)]
 #[test]
 fn init_configures_an_mcp_server_that_starts_from_the_project() {
@@ -2961,10 +2961,10 @@ fn init_configures_an_mcp_server_that_starts_from_the_project() {
     assert!(init(&project, &[]).status.success());
     let bin = project.join("node_modules/.bin");
     std::fs::create_dir_all(&bin).unwrap();
-    std::os::unix::fs::symlink(env!("CARGO_BIN_EXE_typedpress"), bin.join("typedpress")).unwrap();
+    std::os::unix::fs::symlink(env!("CARGO_BIN_EXE_spacepress"), bin.join("spacepress")).unwrap();
     let config: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(project.join(".mcp.json")).unwrap()).unwrap();
-    let server = &config["mcpServers"]["typedpress"];
+    let server = &config["mcpServers"]["spacepress"];
     let mut command = Command::new(server["command"].as_str().unwrap());
     command
         .args(
@@ -2990,7 +2990,7 @@ fn init_configures_an_mcp_server_that_starts_from_the_project() {
 #[test]
 fn every_skill_has_the_agent_skills_layout_and_names_only_commands_and_pages_that_exist() {
     let table: serde_json::Value =
-        serde_json::from_slice(&std::fs::read(root().join("runtime/TypedPress/Cli/commands.json")).unwrap()).unwrap();
+        serde_json::from_slice(&std::fs::read(root().join("runtime/SpacePress/Cli/commands.json")).unwrap()).unwrap();
     let commands: Vec<&str> = ["build", "site"]
         .iter()
         .flat_map(|group| table[*group].as_array().unwrap())
@@ -3031,7 +3031,7 @@ fn every_skill_has_the_agent_skills_layout_and_names_only_commands_and_pages_tha
         // The compatibility line names the versions this compiler targets.
         let series = env!("CARGO_PKG_VERSION").rsplit_once('.').unwrap().0;
         assert!(
-            value("compatibility").contains(&format!("TypedPress {series} ")),
+            value("compatibility").contains(&format!("SpacePress {series} ")),
             "{name}: {}",
             value("compatibility")
         );
@@ -3048,8 +3048,8 @@ fn every_skill_has_the_agent_skills_layout_and_names_only_commands_and_pages_tha
         // Short: depth is in the documentation it links.
         assert!(skill.lines().count() <= 120, "{name}: {} lines", skill.lines().count());
 
-        // Every `typedpress <command>` it names, in inline code or in a shell block, is in the command
-        // table (or is `typedpress help`).
+        // Every `spacepress <command>` it names, in inline code or in a shell block, is in the command
+        // table (or is `spacepress help`).
         // The skill's reference files count too.
         let every_file: String = files_under(&dir)
             .iter()
@@ -3061,14 +3061,14 @@ fn every_skill_has_the_agent_skills_layout_and_names_only_commands_and_pages_tha
                 named.extend(
                     part.lines()
                         .map(str::trim)
-                        .filter(|line| line.starts_with("typedpress ")),
+                        .filter(|line| line.starts_with("spacepress ")),
                 );
             } else {
                 named.extend(
                     part.split('`')
                         .skip(1)
                         .step_by(2)
-                        .filter(|code| code.starts_with("typedpress ")),
+                        .filter(|code| code.starts_with("spacepress ")),
                 );
             }
         }
@@ -3089,19 +3089,19 @@ fn every_skill_has_the_agent_skills_layout_and_names_only_commands_and_pages_tha
                 .flat_map(|group| table[*group].as_array().unwrap())
                 .find(|row| row["name"] == command.as_str())
                 .unwrap_or_else(|| panic!("{name} names `{usage}`, which is not in the command table"));
-            // Each option it passes is one the command takes. `typedpress wp` forwards WP-CLI's own.
+            // Each option it passes is one the command takes. `spacepress wp` forwards WP-CLI's own.
             if command != "wp" {
                 let takes = row["args"].as_str().unwrap();
                 for flag in words.iter().filter(|word| word.starts_with("--")) {
                     let flag = flag.split('=').next().unwrap();
                     assert!(
                         takes.contains(flag),
-                        "{name} passes {flag} to `typedpress {command}`, which takes {takes}"
+                        "{name} passes {flag} to `spacepress {command}`, which takes {takes}"
                     );
                 }
             }
         }
-        // Every documentation page it points to is one `typedpress mcp`'s `docs_read` serves, unless the
+        // Every documentation page it points to is one `spacepress mcp`'s `docs_read` serves, unless the
         // skill says it is not.
         for prefix in ["`docs", "`www/content/docs"] {
             for (at, _) in every_file.match_indices(prefix) {
@@ -3126,29 +3126,29 @@ fn every_skill_has_the_agent_skills_layout_and_names_only_commands_and_pages_tha
     assert_eq!(
         names,
         [
-            "typedpress-add-kind",
-            "typedpress-add-page",
-            "typedpress-connect-mcp",
-            "typedpress-deploy",
-            "typedpress-dev-site",
-            "typedpress-fix-diagnostic",
-            "typedpress-markdown-sync",
-            "typedpress-security-audit",
-            "typedpress-woocommerce",
-            "typedpress-write-action"
+            "spacepress-add-kind",
+            "spacepress-add-page",
+            "spacepress-connect-mcp",
+            "spacepress-deploy",
+            "spacepress-dev-site",
+            "spacepress-fix-diagnostic",
+            "spacepress-markdown-sync",
+            "spacepress-security-audit",
+            "spacepress-woocommerce",
+            "spacepress-write-action"
         ]
     );
 }
 
 /// The TypeScript in the skills is what an agent will copy, so it has to compile: every fenced
-/// block that names its file (`// tp/…`) is written to that path in a project, and `typedpress check`
+/// block that names its file (`// sp/…`) is written to that path in a project, and `spacepress check`
 /// accepts the project.
 #[test]
 fn the_code_in_the_skills_compiles_as_one_project() {
     let project = tempfile::tempdir().unwrap();
     std::fs::write(
-        project.path().join("typedpress.config.ts"),
-        "import { defineConfig } from \"typedpress\";\nexport default defineConfig({ name: \"skills\" });\n",
+        project.path().join("spacepress.config.ts"),
+        "import { defineConfig } from \"spacepress\";\nexport default defineConfig({ name: \"skills\" });\n",
     )
     .unwrap();
     let mut written = Vec::new();
@@ -3177,7 +3177,7 @@ fn the_code_in_the_skills_compiles_as_one_project() {
                     .next()
                     .and_then(|first| first.strip_prefix("<!-- "))
                     .and_then(|rest| rest.strip_suffix(" -->"))
-                    .filter(|path| path.starts_with("tp/"))
+                    .filter(|path| path.starts_with("sp/"))
                 else {
                     continue;
                 };
@@ -3189,7 +3189,7 @@ fn the_code_in_the_skills_compiles_as_one_project() {
                     .next()
                     .and_then(|first| first.strip_prefix("// "))
                     .map(|rest| rest.split([' ', ':']).next().unwrap())
-                    .filter(|path| path.starts_with("tp/"))
+                    .filter(|path| path.starts_with("sp/"))
                     .unwrap_or_else(|| panic!("{skill}: a ts block names its file in its first line:\n{code}"));
                 (path, code.clone())
             };
@@ -3224,18 +3224,18 @@ fn the_code_in_the_skills_compiles_as_one_project() {
     mcp.finish();
 }
 
-/// `npm create typedpress` ends with `typedpress init`: a new project has the agent files, written
+/// `npm create spacepress` ends with `spacepress init`: a new project has the agent files, written
 /// by the same generator from the template's own config. `--no-install` here, so the compiler is
-/// the one `TP_BIN` names.
+/// the one `SP_BIN` names.
 #[test]
 fn a_scaffolded_project_starts_with_the_agent_files_first_init_writes() {
     let dir = tempfile::tempdir().unwrap();
     let project = dir.path().join("Field Notes");
     let scaffolded = Command::new("node")
-        .arg(root().join("packages/create-typedpress/bin/create-typedpress.mjs"))
+        .arg(root().join("packages/create-spacepress/bin/create-spacepress.mjs"))
         .arg(&project)
         .arg("--no-install")
-        .env("TP_BIN", env!("CARGO_BIN_EXE_typedpress"))
+        .env("SP_BIN", env!("CARGO_BIN_EXE_spacepress"))
         .output()
         .expect("node");
     assert!(scaffolded.status.success(), "{}", text(&scaffolded.stderr));
@@ -3245,15 +3245,15 @@ fn a_scaffolded_project_starts_with_the_agent_files_first_init_writes() {
         said.contains("AGENTS.md, .mcp.json and the agent skills describe this project"),
         "{said}"
     );
-    assert!(!said.contains("npx typedpress init  "), "nothing left to run: {said}");
+    assert!(!said.contains("npx spacepress init  "), "nothing left to run: {said}");
     // The section is about this project: the name the scaffolder gave it and the template's kind.
     let agents = std::fs::read_to_string(project.join("AGENTS.md")).unwrap();
-    assert!(agents.starts_with("<!-- typedpress:begin -->\n"), "{agents}");
+    assert!(agents.starts_with("<!-- spacepress:begin -->\n"), "{agents}");
     assert!(
-        agents.contains("This project is the TypedPress app `field-notes`."),
+        agents.contains("This project is the SpacePress app `field-notes`."),
         "{agents}"
     );
-    assert!(agents.contains("`/wp-json/mcp/typedpress-field-notes`"), "{agents}");
+    assert!(agents.contains("`/wp-json/mcp/spacepress-field-notes`"), "{agents}");
     let schema = first().arg("check").arg(&project).arg("--json").output().unwrap();
     assert!(
         schema.status.success(),
@@ -3263,8 +3263,8 @@ fn a_scaffolded_project_starts_with_the_agent_files_first_init_writes() {
     let mcp: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(project.join(".mcp.json")).unwrap()).unwrap();
     assert_eq!(
-        mcp["mcpServers"]["typedpress"]["args"],
-        serde_json::json!(["--no-install", "typedpress", "mcp"])
+        mcp["mcpServers"]["spacepress"]["args"],
+        serde_json::json!(["--no-install", "spacepress", "mcp"])
     );
     assert_eq!(
         files_under(&project.join(".agents/skills")),
@@ -3274,11 +3274,11 @@ fn a_scaffolded_project_starts_with_the_agent_files_first_init_writes() {
         files_under(&project.join(".claude/skills")),
         files_under(&root().join("skills"))
     );
-    // Exactly what `typedpress init` writes: nothing is out of date.
+    // Exactly what `spacepress init` writes: nothing is out of date.
     let current = init(&project, &["--check"]);
     assert_eq!(current.status.code(), Some(0), "{}", text(&current.stderr));
     // The scaffolder's own files are as before.
-    assert!(project.join("typedpress.config.ts").is_file() && project.join("package.json").is_file());
+    assert!(project.join("spacepress.config.ts").is_file() && project.join("package.json").is_file());
 
     // A compiler that cannot do it (here: one that fails) does not undo the scaffold: the project
     // is created and the output says what to run.
@@ -3291,22 +3291,22 @@ fn a_scaffolded_project_starts_with_the_agent_files_first_init_writes() {
         std::fs::set_permissions(&failing, std::fs::Permissions::from_mode(0o755)).unwrap();
     }
     let scaffolded = Command::new("node")
-        .arg(root().join("packages/create-typedpress/bin/create-typedpress.mjs"))
+        .arg(root().join("packages/create-spacepress/bin/create-spacepress.mjs"))
         .arg(&other)
         .arg("--no-install")
-        .env("TP_BIN", &failing)
+        .env("SP_BIN", &failing)
         .output()
         .unwrap();
     assert!(scaffolded.status.success(), "{}", text(&scaffolded.stderr));
     assert!(
-        text(&scaffolded.stdout).contains("  npx typedpress init "),
+        text(&scaffolded.stdout).contains("  npx spacepress init "),
         "{}",
         text(&scaffolded.stdout)
     );
-    assert!(other.join("typedpress.config.ts").is_file() && !other.join("AGENTS.md").exists());
+    assert!(other.join("spacepress.config.ts").is_file() && !other.join("AGENTS.md").exists());
 }
 
-/// `typedpress init --github` writes the content sync workflow at the repository's root, with the
+/// `spacepress init --github` writes the content sync workflow at the repository's root, with the
 /// project's synced folders as its push paths; reruns keep it in step until its header line is
 /// deleted. With `ACTIONLINT` set (a path to actionlint), the file is also linted.
 #[test]
@@ -3324,18 +3324,18 @@ fn init_github_writes_the_sync_workflow_and_keeps_it_in_step() {
             })
             .collect();
         format!(
-            "import {{ defineConfig, collection, text, richText }} from \"typedpress\";\n{}export default defineConfig({{ name: \"gh\" }});\n",
+            "import {{ defineConfig, collection, text, richText }} from \"spacepress\";\n{}export default defineConfig({{ name: \"gh\" }});\n",
             kinds.concat()
         )
     };
-    std::fs::write(project.join("typedpress.config.ts"), config(&["content/posts"])).unwrap();
+    std::fs::write(project.join("spacepress.config.ts"), config(&["content/posts"])).unwrap();
     // Outside a git repository there is no root for GitHub to read the workflow from: refused.
     let out = init(&project, &["--github"]);
     assert_eq!(out.status.code(), Some(1));
     assert!(text(&out.stderr).contains("git repository"), "{}", text(&out.stderr));
     let git = Command::new("git").args(["init", "-q"]).arg(repo).output().unwrap();
     assert!(git.status.success());
-    let path = repo.join(".github/workflows/typedpress-sync.yml");
+    let path = repo.join(".github/workflows/spacepress-sync.yml");
 
     // Without --github: no workflow.
     let out = init(&project, &[]);
@@ -3348,7 +3348,7 @@ fn init_github_writes_the_sync_workflow_and_keeps_it_in_step() {
         text(&out.stdout).contains(&format!(
             "wrote {}",
             std::path::Path::new("..")
-                .join(".github/workflows/typedpress-sync.yml")
+                .join(".github/workflows/spacepress-sync.yml")
                 .display()
         )),
         "{}",
@@ -3356,15 +3356,15 @@ fn init_github_writes_the_sync_workflow_and_keeps_it_in_step() {
     );
     let workflow = std::fs::read_to_string(&path).unwrap();
     for expected in [
-        "# Written by `typedpress init --github` for site; delete this line to keep your own edits.\n",
+        "# Written by `spacepress init --github` for site; delete this line to keep your own edits.\n",
         "  push:\n    branches: [\"**\"]\n",
-        "    types: [typedpress-content-changed]\n",
+        "    types: [spacepress-content-changed]\n",
         "  schedule:\n",
         "      - \"site/content/posts/**\"\n",
         "        working-directory: \"site\"\n",
         "  contents: write\n  pull-requests: write\n",
-        "run: npx --no-install typedpress sync --pr --site \"$TP_SITE_URL\"\n",
-        "TP_APP_PASSWORD: ${{ secrets.TP_APP_PASSWORD }}\n",
+        "run: npx --no-install spacepress sync --pr --site \"$SP_SITE_URL\"\n",
+        "SP_APP_PASSWORD: ${{ secrets.SP_APP_PASSWORD }}\n",
     ] {
         assert!(workflow.contains(expected), "{expected:?} in\n{workflow}");
     }
@@ -3380,11 +3380,11 @@ fn init_github_writes_the_sync_workflow_and_keeps_it_in_step() {
 
     // In step: --check passes, and a rerun without --github writes nothing.
     assert!(init(&project, &["--check"]).status.success());
-    // A new synced folder: typedpress check says so, --check fails, and a plain rerun updates the paths.
-    std::fs::write(project.join("typedpress.config.ts"), config(&["content/posts", "docs"])).unwrap();
+    // A new synced folder: spacepress check says so, --check fails, and a plain rerun updates the paths.
+    std::fs::write(project.join("spacepress.config.ts"), config(&["content/posts", "docs"])).unwrap();
     let checked = first().arg("check").arg(&project).output().unwrap();
     assert!(
-        text(&checked.stderr).contains(".github/workflows/typedpress-sync.yml is out of date"),
+        text(&checked.stderr).contains(".github/workflows/spacepress-sync.yml is out of date"),
         "{}",
         text(&checked.stderr)
     );
@@ -3396,11 +3396,11 @@ fn init_github_writes_the_sync_workflow_and_keeps_it_in_step() {
             .contains("      - \"site/docs/**\"\n")
     );
 
-    // Another project in the same repository: its plain typedpress init and typedpress check leave this
+    // Another project in the same repository: its plain spacepress init and spacepress check leave this
     // project's workflow alone, and its --github refuses to take it.
     let other = repo.join("other");
     std::fs::create_dir_all(&other).unwrap();
-    std::fs::write(other.join("typedpress.config.ts"), config(&["notes"])).unwrap();
+    std::fs::write(other.join("spacepress.config.ts"), config(&["notes"])).unwrap();
     let ours = std::fs::read_to_string(&path).unwrap();
     assert!(init(&other, &[]).status.success());
     assert_eq!(
@@ -3410,7 +3410,7 @@ fn init_github_writes_the_sync_workflow_and_keeps_it_in_step() {
     );
     let checked = first().arg("check").arg(&other).output().unwrap();
     assert!(
-        !text(&checked.stderr).contains("typedpress-sync.yml"),
+        !text(&checked.stderr).contains("spacepress-sync.yml"),
         "{}",
         text(&checked.stderr)
     );
@@ -3430,7 +3430,7 @@ fn init_github_writes_the_sync_workflow_and_keeps_it_in_step() {
         .unwrap()
         .replacen("# Written by", "# Adapted from", 1);
     std::fs::write(&path, &mine).unwrap();
-    std::fs::write(project.join("typedpress.config.ts"), config(&["content/posts"])).unwrap();
+    std::fs::write(project.join("spacepress.config.ts"), config(&["content/posts"])).unwrap();
     assert!(init(&project, &[]).status.success());
     let refused = init(&project, &["--github"]);
     assert_eq!(refused.status.code(), Some(1));
@@ -3442,13 +3442,13 @@ fn init_github_writes_the_sync_workflow_and_keeps_it_in_step() {
     assert_eq!(std::fs::read_to_string(&path).unwrap(), mine);
     let checked = first().arg("check").arg(&project).output().unwrap();
     assert!(
-        !text(&checked.stderr).contains("typedpress-sync.yml"),
+        !text(&checked.stderr).contains("spacepress-sync.yml"),
         "{}",
         text(&checked.stderr)
     );
 }
 
-/// What `typedpress init` must leave alone: an author's prose that quotes a marker, the formatting of
+/// What `spacepress init` must leave alone: an author's prose that quotes a marker, the formatting of
 /// their `.mcp.json`, a link they made, the permissions of their files, a skills directory they
 /// removed, and anything outside the project.
 #[cfg(unix)]
@@ -3461,7 +3461,7 @@ fn init_keeps_the_authors_files_as_they_wrote_them_and_writes_only_inside_the_pr
     let read = |name: &str| std::fs::read_to_string(project.join(name)).unwrap();
 
     // A marker quoted in prose is text: the section goes after it, and a rerun keeps the prose.
-    let prose = "Do not edit below `<!-- typedpress:begin -->`.\n\n# Team notes\n\nRule A.\n";
+    let prose = "Do not edit below `<!-- spacepress:begin -->`.\n\n# Team notes\n\nRule A.\n";
     std::fs::write(project.join("AGENTS.md"), prose).unwrap();
     // The author's .mcp.json: its numbers and layout are theirs.
     let mcp =
@@ -3470,7 +3470,7 @@ fn init_keeps_the_authors_files_as_they_wrote_them_and_writes_only_inside_the_pr
     assert!(init(&project, &[]).status.success());
     let agents = read("AGENTS.md");
     assert!(agents.starts_with(prose), "{agents}");
-    assert_eq!(agents.matches("\n<!-- typedpress:begin -->\n").count(), 1);
+    assert_eq!(agents.matches("\n<!-- spacepress:begin -->\n").count(), 1);
     assert!(init(&project, &[]).status.success());
     assert!(read("AGENTS.md").starts_with(prose));
     let written = read(".mcp.json");
@@ -3480,14 +3480,14 @@ fn init_keeps_the_authors_files_as_they_wrote_them_and_writes_only_inside_the_pr
     );
     assert!(written.ends_with("\"x\": {\"command\": \"y\"}}}\n"), "{written}");
     let parsed: serde_json::Value = serde_json::from_str(&written).unwrap();
-    assert_eq!(parsed["mcpServers"]["typedpress"]["args"][2], "mcp");
+    assert_eq!(parsed["mcpServers"]["spacepress"]["args"][2], "mcp");
     assert_eq!(init(&project, &["--check"]).status.code(), Some(0));
 
     // Permissions: an existing file keeps its own; a new one gets what any new file gets.
     std::fs::set_permissions(project.join("AGENTS.md"), std::fs::Permissions::from_mode(0o664)).unwrap();
     std::fs::write(
-        project.join("tp/schema.ts"),
-        read("tp/schema.ts") + "\nexport const extra = table({ n: text() });\n",
+        project.join("sp/schema.ts"),
+        read("sp/schema.ts") + "\nexport const extra = table({ n: text() });\n",
     )
     .unwrap();
     assert!(init(&project, &[]).status.success());
@@ -3496,14 +3496,14 @@ fn init_keeps_the_authors_files_as_they_wrote_them_and_writes_only_inside_the_pr
     let fresh = dir.path().join("fresh");
     std::fs::write(&fresh, "").unwrap();
     let usual = std::fs::metadata(&fresh).unwrap().permissions().mode() & 0o777;
-    assert_eq!(mode(".agents/skills/typedpress-add-kind/SKILL.md"), usual);
+    assert_eq!(mode(".agents/skills/spacepress-add-kind/SKILL.md"), usual);
 
     // A skills directory the author deleted stays deleted, and nothing reports it out of date.
     std::fs::remove_dir_all(project.join(".claude")).unwrap();
     assert_eq!(init(&project, &["--check"]).status.code(), Some(0));
     let checked = first().arg("check").arg(&project).output().unwrap();
     assert!(
-        !text(&checked.stderr).contains("typedpress init"),
+        !text(&checked.stderr).contains("spacepress init"),
         "{}",
         text(&checked.stderr)
     );
@@ -3524,7 +3524,7 @@ fn init_keeps_the_authors_files_as_they_wrote_them_and_writes_only_inside_the_pr
     );
     let claude = std::fs::read_to_string(linked.join("CLAUDE.md")).unwrap();
     assert!(
-        claude.starts_with("# Mine\n") && claude.contains("<!-- typedpress:begin -->"),
+        claude.starts_with("# Mine\n") && claude.contains("<!-- spacepress:begin -->"),
         "{claude}"
     );
 
@@ -3564,7 +3564,7 @@ fn mcp_compiles_with_no_path() {
 #[test]
 fn mcp_killed_by_its_client_leaves_no_command_running() {
     let project = tempfile::tempdir().unwrap();
-    std::fs::write(project.path().join("typedpress.config.ts"), CONFIG).unwrap();
+    std::fs::write(project.path().join("spacepress.config.ts"), CONFIG).unwrap();
     let pids = tempfile::tempdir().unwrap();
     let wp = scripted_wp(&format!("sleep 600 & echo $! > {}/$$; wait", pids.path().display()));
     let mut mcp = Mcp::start(project.path(), &["--allow-remote-read"], |command| {
@@ -3602,10 +3602,10 @@ fn mcp_killed_by_its_client_leaves_no_command_running() {
 #[test]
 fn mcp_dev_status_is_bounded_by_the_servers_timeout() {
     let project = tempfile::tempdir().unwrap();
-    std::fs::write(project.path().join("typedpress.config.ts"), CONFIG).unwrap();
-    // A site `typedpress dev` created, from before the state file.
-    std::fs::create_dir_all(project.path().join(".tp/dev")).unwrap();
-    std::fs::write(project.path().join(".tp/dev/owner.json"), r#"{"created":true}"#).unwrap();
+    std::fs::write(project.path().join("spacepress.config.ts"), CONFIG).unwrap();
+    // A site `spacepress dev` created, from before the state file.
+    std::fs::create_dir_all(project.path().join(".sp/dev")).unwrap();
+    std::fs::write(project.path().join(".sp/dev/owner.json"), r#"{"created":true}"#).unwrap();
     let tools = tempfile::tempdir().unwrap();
     let npx = tools.path().join("npx");
     std::fs::write(&npx, "#!/bin/sh\nsleep 600\n").unwrap();
@@ -3615,7 +3615,7 @@ fn mcp_dev_status_is_bounded_by_the_servers_timeout() {
     }
     let mut mcp = Mcp::start(project.path(), &[], |command| {
         with_path(command, tools.path());
-        command.env("TP_MCP_TIMEOUT", "2");
+        command.env("SP_MCP_TIMEOUT", "2");
     });
     mcp.modern = true;
     let started = std::time::Instant::now();
@@ -3630,13 +3630,13 @@ fn mcp_dev_status_is_bounded_by_the_servers_timeout() {
     mcp.finish();
 }
 
-/// `typedpress build --diagnostics-file <path>` is `typedpress dev`'s: it is in no usage line, belongs to
+/// `spacepress build --diagnostics-file <path>` is `spacepress dev`'s: it is in no usage line, belongs to
 /// `build` alone, and writes the compile's envelope whether the project compiled or not. The
 /// terminal names the diagnostic's code, as the dev overlay does.
 #[test]
 fn build_writes_the_diagnostics_envelope_for_dev_on_success_and_on_failure() {
     let project = tempfile::tempdir().unwrap();
-    let config = project.path().join("typedpress.config.ts");
+    let config = project.path().join("spacepress.config.ts");
     let report = project.path().join("report/diagnostics.json");
     let build = || {
         first()
@@ -3655,10 +3655,10 @@ fn build_writes_the_diagnostics_envelope_for_dev_on_success_and_on_failure() {
     assert_eq!(failed.status.code(), Some(1));
     let said = text(&failed.stderr);
     let written = envelope();
-    assert_eq!(written["schema"], "typedpress-diagnostics");
+    assert_eq!(written["schema"], "spacepress-diagnostics");
     assert_eq!(written["ok"], false);
     let diagnostic = &written["diagnostics"][0];
-    assert_eq!(diagnostic["location"]["file"], "typedpress.config.ts");
+    assert_eq!(diagnostic["location"]["file"], "spacepress.config.ts");
     let code = diagnostic["code"].as_str().unwrap();
     assert!(
         said.starts_with(&format!("error[{code}]: {}", diagnostic["message"].as_str().unwrap())),
@@ -3683,7 +3683,7 @@ fn build_writes_the_diagnostics_envelope_for_dev_on_success_and_on_failure() {
         let out = first().args(help).output().unwrap();
         assert!(!text(&out.stdout).contains("diagnostics-file"), "{}", text(&out.stdout));
     }
-    let table = std::fs::read_to_string(root().join("runtime/TypedPress/Cli/commands.json")).unwrap();
+    let table = std::fs::read_to_string(root().join("runtime/SpacePress/Cli/commands.json")).unwrap();
     assert!(!table.contains("diagnostics-file"));
     let misplaced = first()
         .args(["check", "--diagnostics-file"])
@@ -3698,17 +3698,17 @@ fn build_writes_the_diagnostics_envelope_for_dev_on_success_and_on_failure() {
     assert!(text(&missing.stderr).starts_with("--diagnostics-file needs a path"));
 }
 
-/// `typedpress dev status --json` reports the watching process's failed build from the state file, and
+/// `spacepress dev status --json` reports the watching process's failed build from the state file, and
 /// says nothing of a process that is gone.
 #[test]
 fn dev_status_reports_the_failed_build_of_the_process_that_is_watching() {
     let project = tempfile::tempdir().unwrap();
-    let dev = project.path().join(".tp/dev");
+    let dev = project.path().join(".sp/dev");
     std::fs::create_dir_all(&dev).unwrap();
     std::fs::write(dev.join("owner.json"), r#"{"version":1,"created":true}"#).unwrap();
     let error = serde_json::json!({
         "message": "Unexpected token",
-        "diagnostics": [{ "code": "F1001", "message": "Unexpected token", "location": { "file": "tp/app/page.tsx", "line": 1, "column": 44 } }],
+        "diagnostics": [{ "code": "F1001", "message": "Unexpected token", "location": { "file": "sp/app/page.tsx", "line": 1, "column": 44 } }],
     });
     let state = |pid: u32| {
         serde_json::json!({

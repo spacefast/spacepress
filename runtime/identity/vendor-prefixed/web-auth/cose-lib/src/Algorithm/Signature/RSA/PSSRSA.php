@@ -2,18 +2,18 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Cose\Algorithm\Signature\RSA;
+namespace SpacePress\Identity\Vendor\Cose\Algorithm\Signature\RSA;
 
-use TypedPress\Identity\Vendor\Brick\Math\Exception\MathException;
+use SpacePress\Identity\Vendor\Brick\Math\Exception\MathException;
 use function chr;
-use TypedPress\Identity\Vendor\Cose\Algorithm\KeyRestrictionAware;
-use TypedPress\Identity\Vendor\Cose\Algorithm\KeyRestrictionEnforcement;
-use TypedPress\Identity\Vendor\Cose\Algorithm\Signature\Signature;
-use TypedPress\Identity\Vendor\Cose\BigInteger;
-use TypedPress\Identity\Vendor\Cose\Hash;
-use TypedPress\Identity\Vendor\Cose\Key\Key;
-use TypedPress\Identity\Vendor\Cose\Key\RsaKey;
-use TypedPress\Identity\Vendor\Cose\Key\RsaKeyValidator;
+use SpacePress\Identity\Vendor\Cose\Algorithm\KeyRestrictionAware;
+use SpacePress\Identity\Vendor\Cose\Algorithm\KeyRestrictionEnforcement;
+use SpacePress\Identity\Vendor\Cose\Algorithm\Signature\Signature;
+use SpacePress\Identity\Vendor\Cose\BigInteger;
+use SpacePress\Identity\Vendor\Cose\Hash;
+use SpacePress\Identity\Vendor\Cose\Key\Key;
+use SpacePress\Identity\Vendor\Cose\Key\RsaKey;
+use SpacePress\Identity\Vendor\Cose\Key\RsaKeyValidator;
 use function hash_equals;
 use function intdiv;
 use InvalidArgumentException;

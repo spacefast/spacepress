@@ -2,19 +2,19 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive;
+namespace SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive;
 
 use DateTimeImmutable;
 use DateTimeZone;
 use function intval;
 use function mb_strlen;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Component\Identifier;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Component\Length;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Exception\DecodeException;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Feature\ElementBase;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\BaseTime;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\PrimitiveType;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UniversalClass;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Component\Identifier;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Component\Length;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Exception\DecodeException;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Feature\ElementBase;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\BaseTime;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\PrimitiveType;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\UniversalClass;
 use Throwable;
 use UnexpectedValueException;
 

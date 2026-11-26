@@ -32,7 +32,7 @@ $schema = [
             ],
         ],
         'comments' => [
-            'primaryKey' => 'id', 'editor' => false, 'table' => 'tp_comments', 'uid' => false, 'sync' => null, 'access' => $editor, 'api' => $api, 'relations' => [], 'hooks' => [],
+            'primaryKey' => 'id', 'editor' => false, 'table' => 'sp_comments', 'uid' => false, 'sync' => null, 'access' => $editor, 'api' => $api, 'relations' => [], 'hooks' => [],
             'columns' => [
                 'id' => ['type' => 'integer', 'primaryKey' => true, 'autoIncrement' => true, 'notNull' => true],
                 'noteId' => ['type' => 'integer', 'notNull' => true, 'references' => ['collection' => 'notes', 'column' => 'id', 'onDelete' => 'cascade']],
@@ -44,7 +44,7 @@ $schema = [
 
 $wp = wpSite('sync-notrash', ['schema' => $schema, 'users' => ['ed' => 'editor']]);
 $app = $wp->app();
-$db = \TypedPress\db();
+$db = \SpacePress\db();
 
 $note = $db->insert('notes', ['title' => 'Keep me', 'body' => '<!-- wp:paragraph --><p>Hi</p><!-- /wp:paragraph -->'], true)[0];
 $db->insert('comments', ['noteId' => $note['id']]);

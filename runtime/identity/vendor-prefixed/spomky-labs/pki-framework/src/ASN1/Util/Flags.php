@@ -2,16 +2,16 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Util;
+namespace SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Util;
 
 use function assert;
-use TypedPress\Identity\Vendor\Brick\Math\BigInteger;
+use SpacePress\Identity\Vendor\Brick\Math\BigInteger;
 use function count;
 use function is_array;
 use function ord;
 use OutOfBoundsException;
 use RuntimeException;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\BitString;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\ASN1\Type\Primitive\BitString;
 
 /**
  * Class to handle a bit string as a field of flags.

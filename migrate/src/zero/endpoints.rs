@@ -1,12 +1,12 @@
-//! 0.8 `endpoints` become `tp/app/**/route.ts` handlers at the same method and path.
+//! 0.8 `endpoints` become `sp/app/**/route.ts` handlers at the same method and path.
 //!
 //! The request is rewritten call by call (`await req.text()` → `req.body`) in the handler pass, and
 //! every return passes through `__z08EndpointValue`, which applies 0.8's result rules: a
 //! `json`/`text`/`empty`/`redirect` response keeps its status and headers, `null` answers 204, a
 //! scalar answers text and anything else JSON. Anything else is refused with a pointer.
 use crate::config::{Failure, fail, pointer};
-use typedpress::diag::Span;
-use typedpress::ir::{FnBody, Func, Pat, Stmt};
+use spacepress::diag::Span;
+use spacepress::ir::{FnBody, Func, Pat, Stmt};
 
 pub(super) struct Route {
     pub method: String,
@@ -56,7 +56,7 @@ pub(super) fn route(method: &str, path: &str, read_only: Option<bool>, at: &str)
             v2.push("*splat".to_string());
             continue;
         }
-        // A literal is a `tp/app/` folder name: lowercase, and not a private (`_`, `.`) folder.
+        // A literal is a `sp/app/` folder name: lowercase, and not a private (`_`, `.`) folder.
         let ok = if let Some(name) = s.strip_prefix(':') {
             ident(name)
         } else {
@@ -73,11 +73,11 @@ pub(super) fn route(method: &str, path: &str, read_only: Option<bool>, at: &str)
         }
         v2.push((*s).to_string());
     }
-    if typedpress::app::RESERVED_TP.contains(&segments[0].to_ascii_lowercase().as_str()) {
+    if spacepress::app::RESERVED_SP.contains(&segments[0].to_ascii_lowercase().as_str()) {
         return Err(fail(
             &pointer(at, "path"),
             format!(
-                "/{} belongs to WordPress or TypedPress on v2; move the endpoint and its callers",
+                "/{} belongs to WordPress or SpacePress on v2; move the endpoint and its callers",
                 segments[0]
             ),
         ));

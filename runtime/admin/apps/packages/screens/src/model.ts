@@ -1,5 +1,5 @@
 /**
- * A screen declaration as `GET /wp-json/typedpress-admin/v1/screens/<id>` returns it
+ * A screen declaration as `GET /wp-json/spacepress-admin/v1/screens/<id>` returns it
  * (runtime/admin/lib/screens.php), and the pure steps both hosts share: reading
  * the items out of an ability's output and filling an action's input from an item.
  */

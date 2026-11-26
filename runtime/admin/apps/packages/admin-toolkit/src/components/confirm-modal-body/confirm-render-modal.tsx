@@ -1,7 +1,7 @@
 import { Button } from '@wordpress/ui';
-// eslint-disable-next-line @typedpress-admin/design-system/use-new-components
-import { Dialog } from '@typedpress-admin/design-system';
-import type { ActionModal } from '@typedpress-admin/dataviews';
+// eslint-disable-next-line @spacepress-admin/design-system/use-new-components
+import { Dialog } from '@spacepress-admin/design-system';
+import type { ActionModal } from '@spacepress-admin/dataviews';
 import { useState } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
 import styles from './style.module.css';
@@ -50,15 +50,15 @@ type ConfirmRenderModalProps< Item > = ConfirmRenderModalConfigProps< Item > &
 const getDefaultConfirmLabel = ( intent?: ConfirmModalIntent ) => {
 	switch ( intent ) {
 		case 'move-to-trash':
-			return __( 'Move to Trash', 'typedpress-admin' );
+			return __( 'Move to Trash', 'spacepress-admin' );
 		case 'delete-permanently':
-			return __( 'Delete permanently', 'typedpress-admin' );
+			return __( 'Delete permanently', 'spacepress-admin' );
 		case 'duplicate':
-			return __( 'Duplicate', 'typedpress-admin' );
+			return __( 'Duplicate', 'spacepress-admin' );
 		case 'restore':
-			return __( 'Restore', 'typedpress-admin' );
+			return __( 'Restore', 'spacepress-admin' );
 		default:
-			return __( 'Confirm', 'typedpress-admin' );
+			return __( 'Confirm', 'spacepress-admin' );
 	}
 };
 
@@ -78,7 +78,7 @@ export function ConfirmRenderModal< Item >( {
 		getDefaultConfirmLabel( intent );
 	const cancelLabel =
 		( 'cancelLabel' in props && props.cancelLabel ) ||
-		__( 'Cancel', 'typedpress-admin' );
+		__( 'Cancel', 'spacepress-admin' );
 	const isDestructive =
 		( 'isSubmitDestructive' in props && props.isSubmitDestructive ) ||
 		intent === 'delete-permanently';
@@ -107,7 +107,7 @@ export function ConfirmRenderModal< Item >( {
 					}
 					variant="solid"
 					loading={ isLoading }
-					loadingAnnouncement={ __( 'Processing', 'typedpress-admin' ) }
+					loadingAnnouncement={ __( 'Processing', 'spacepress-admin' ) }
 					onClick={ async () => {
 						await onSubmit( items, setIsLoading );
 						if ( onActionPerformed ) {

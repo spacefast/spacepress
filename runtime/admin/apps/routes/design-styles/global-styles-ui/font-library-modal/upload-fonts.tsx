@@ -83,9 +83,9 @@ function UploadFonts() {
 			const message = hasInvalidFiles
 				? __(
 						'Sorry, you are not allowed to upload this file type.',
-						'typedpress-admin'
+						'spacepress-admin'
 				  )
-				: __( 'No fonts found to install.', 'typedpress-admin' );
+				: __( 'No fonts found to install.', 'spacepress-admin' );
 
 			setNotice( {
 				type: 'error',
@@ -192,7 +192,7 @@ function UploadFonts() {
 				type: 'success',
 				message: __(
 					'Fonts were installed successfully.',
-					'typedpress-admin'
+					'spacepress-admin'
 				),
 			} );
 		} catch ( error ) {
@@ -249,7 +249,7 @@ function UploadFonts() {
 								className="font-library-modal__upload-area"
 								onClick={ openFileDialog }
 							>
-								{ __( 'Upload font', 'typedpress-admin' ) }
+								{ __( 'Upload font', 'spacepress-admin' ) }
 							</Button>
 						) }
 					/>
@@ -258,7 +258,7 @@ function UploadFonts() {
 				<Text className="font-library-modal__upload-area__text">
 					{ __(
 						'Uploaded fonts appear in your library and can be used in your theme. Supported formats: .ttf, .otf, .woff, and .woff2.',
-						'typedpress-admin'
+						'spacepress-admin'
 					) }
 				</Text>
 			</VStack>

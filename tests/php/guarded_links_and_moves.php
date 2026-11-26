@@ -14,7 +14,7 @@ $site = wpSite('guard-boundaries', ['wpContent' => $argv[1], 'muPlugins' => ['ca
     }, 10, 2);
     PHP]]);
 wp_set_current_user(1);
-$db = \TypedPress\db();
+$db = \SpacePress\db();
 $db->insert('notes', ['title' => 'Renamed note', 'slug' => 'old-note', 'status' => 'published']);
 $id = (int) $db->findFirst('notes', ['where' => ['slug' => 'old-note']])['id'];
 $db->update('notes', ['slug' => 'new-note'], ['id' => $id]);
@@ -78,20 +78,20 @@ $public = wp_insert_post(['post_type' => 'post', 'post_status' => 'publish', 'po
 $archive = wp_insert_post(['post_type' => 'page', 'post_status' => 'publish', 'post_title' => 'Directory archive']);
 update_option('show_on_front', 'page');
 update_option('page_for_posts', $archive);
-for ($i = 0; $i < \TypedPress\Wp\MarkdownTwins::LLMS_LIMIT; ++$i) {
+for ($i = 0; $i < \SpacePress\Wp\MarkdownTwins::LLMS_LIMIT; ++$i) {
     wp_insert_post(['post_type' => 'post', 'post_status' => 'publish', 'post_title' => "Hidden record $i"]);
 }
 $guardedPosts = static fn (string $url, WP_Post $post): string =>
     str_starts_with($post->post_title, 'Hidden record') ? home_url('/notes/' . $post->post_name . '/') : $url;
 add_filter('post_link', $guardedPosts, 10, 2);
-$llms = \TypedPress\Wp\MarkdownTwins::llms();
+$llms = \SpacePress\Wp\MarkdownTwins::llms();
 if (!str_contains($llms, '[Public directory record]') || !str_contains($llms, '[All Posts]') || str_contains($llms, 'Hidden record')) {
     throw new RuntimeException('llms.txt lost an eligible post or exposed a guarded entry.');
 }
 
 add_filter('pre_option_permalink_structure', static fn () => '', PHP_INT_MAX);
-$plain = \TypedPress\Wp\MarkdownTwins::twin(get_permalink($public));
-$llms = \TypedPress\Wp\MarkdownTwins::llms();
+$plain = \SpacePress\Wp\MarkdownTwins::twin(get_permalink($public));
+$llms = \SpacePress\Wp\MarkdownTwins::llms();
 if (!str_contains($plain, '?p=' . $public) || !str_contains($llms, "[Public directory record]($plain)") || str_contains($llms, 'the home page is')) {
     throw new RuntimeException('Plain-permalink posts must remain discoverable while the actual home stays guarded.');
 }
@@ -105,7 +105,7 @@ add_action('pre_get_posts', static function (WP_Query $query) use (&$batches): v
         $batches[] = $query->get('paged');
     }
 });
-$llms = \TypedPress\Wp\MarkdownTwins::llms();
+$llms = \SpacePress\Wp\MarkdownTwins::llms();
 if ($batches !== [1, 2, 3] || str_contains($llms, 'Hidden record') || str_contains($llms, '[Public directory record]')) {
     throw new RuntimeException('Guarded listings must stop after three batches: ' . json_encode($batches));
 }

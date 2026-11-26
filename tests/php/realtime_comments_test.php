@@ -5,12 +5,12 @@ declare(strict_types=1);
 /*
  * Change notices for core comments (`wp:comments`, docs/decisions/2026-11-14-live-regions.md), in-process
  * on WordPress (tests/php/wp.php): a notice only when the approved thread changes, never with ids,
- * through the same pending batch as TypedPress's own writes (discarded on rollback, flushed after the
+ * through the same pending batch as SpacePress's own writes (discarded on rollback, flushed after the
  * commit, at once with no transaction), and `changed()` refusing an app collection's key.
  */
 
-use TypedPress\Realtime\Module as Realtime;
-use TypedPress\Realtime\Publisher;
+use SpacePress\Realtime\Module as Realtime;
+use SpacePress\Realtime\Publisher;
 
 require __DIR__ . '/wp.php';
 require __DIR__ . '/harness.php';
@@ -55,7 +55,7 @@ eq('spam to approved announces once', $announced(static fn () => wp_set_comment_
 eq('trashing an approved comment announces once', $announced(static fn () => wp_trash_comment($held)), $one);
 eq('a comment saved approved announces once', $announced(static fn () => $comment(1, 'Straight in')), $one);
 
-// Outside any TypedPress transaction (core's REST route, wp-admin moderation): the notice goes out at once,
+// Outside any SpacePress transaction (core's REST route, wp-admin moderation): the notice goes out at once,
 // before the request ends, and the next request carries no leftover.
 $sent = [];
 $moderated = $comment(0, 'For the moderator');
@@ -72,7 +72,7 @@ $sent = [];
 $created = rest_do_request($request);
 eq('core REST: one notice, at once', [$created->get_status(), count($sent), $sent[0]['changes'] ?? null], [201, 1, [['collection' => 'wp:comments', 'ops' => ['update'], 'ids' => null]]]);
 
-// Inside a TypedPress transaction that rolls back: nothing.
+// Inside a SpacePress transaction that rolls back: nothing.
 $sent = [];
 $later = $comment(0, 'Approved then rolled back');
 Realtime::flush();
@@ -86,13 +86,13 @@ try {
 }
 Realtime::flush();
 eq('an approval in a rolled-back transaction announces nothing', $sent, []);
-// One notice batch with a TypedPress write: both changes, one notice.
+// One notice batch with a SpacePress write: both changes, one notice.
 $sent = [];
 $db->transaction(static function () use ($db, $post, $comment): void {
     $comment(1, 'With a post edit');
     $db->update('posts', ['title' => 'Commented, edited'], ['id' => $post]);
 });
-eq('one notice carries a comment change and a TypedPress write together', array_map(static fn ($c) => [$c['collection'], $c['ids']], $sent[0]['changes'] ?? []), [['posts', [$post]], ['wp:comments', null]]);
+eq('one notice carries a comment change and a SpacePress write together', array_map(static fn ($c) => [$c['collection'], $c['ids']], $sent[0]['changes'] ?? []), [['posts', [$post]], ['wp:comments', null]]);
 
 // The shared projection keeps ids null, and changed() refuses an app collection's key or table.
 eq('shared rooms keep a non-collection key and its null ids', Realtime::shared(['id' => 'x', 'at' => 'now', 'changes' => [['collection' => 'wp:comments', 'ops' => ['update'], 'ids' => null]]])['changes'], [['collection' => 'wp:comments', 'ops' => ['update'], 'ids' => null]]);

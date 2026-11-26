@@ -1,4 +1,4 @@
-import type { ActionModal } from '@typedpress-admin/dataviews';
+import type { ActionModal } from '@spacepress-admin/dataviews';
 import {
 	ConfirmRenderModal,
 	type ConfirmRenderModalConfigProps,

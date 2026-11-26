@@ -6,7 +6,7 @@ import { __ } from '@wordpress/i18n';
 import type {
 	GlobalStylesConfig,
 	StyleVariation,
-} from '@typedpress-admin/global-styles-engine';
+} from '@spacepress-admin/global-styles-engine';
 import PreviewStyles from './preview-styles';
 import Variation from './variations/variation';
 import { GlobalStylesContext } from './context';
@@ -49,7 +49,7 @@ function StyleVariationsContainer( {
 	const themeVariations = useMemo( () => {
 		const withEmptyVariation: StyleVariation[] = [
 			{
-				title: __( 'Default', 'typedpress-admin' ),
+				title: __( 'Default', 'spacepress-admin' ),
 				settings: {},
 				styles: {},
 			},
@@ -65,7 +65,7 @@ function StyleVariationsContainer( {
 				// when switching variations.
 				if ( userStyles?.blocks ) {
 					Object.keys( userStyles.blocks ).forEach( ( blockName ) => {
-						// TypedPress get any block specific custom CSS from the current user styles and merge with any custom CSS for
+						// SpacePress get any block specific custom CSS from the current user styles and merge with any custom CSS for
 						// that block in the variation.
 						if ( userStyles.blocks?.[ blockName ]?.css ) {
 							const variationBlockStyles =
@@ -122,7 +122,7 @@ function StyleVariationsContainer( {
 	return (
 		<Grid
 			columns={ 2 }
-			className="typedpress-admin-global-styles-style-variations-container"
+			className="spacepress-admin-global-styles-style-variations-container"
 			gap={ gap }
 		>
 			{ themeVariations.map(

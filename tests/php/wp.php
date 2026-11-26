@@ -10,14 +10,14 @@ declare(strict_types=1);
  * the runtime plugin assembled from runtime/, the identity plugin, and an app plugin built from a
  * fixture (schema.php, functions.php, a MySQL migration). A child PHP process installs the site and
  * activates the plugins; this process then loads WordPress with everything active, so `init`,
- * `acf/init` and `rest_api_init` fire as they do on a request. Tests drive TypedPress through the same
+ * `acf/init` and `rest_api_init` fire as they do on a request. Tests drive SpacePress through the same
  * seams the REST route and WP-CLI use: App::handle() as a WordPress user, App::cli(), and the
- * shared `TypedPress\db()`.
+ * shared `SpacePress\db()`.
  *
  *   $wp = wpSite('db', $fixture);        // $fixture: ['schema' => array, 'functions' => php, 'migration' => sql, ...]
  *   [$status, $data] = $wp->request('GET', '/items', as: 'editor');
  *
- * No Docker, no web server, no MySQL: the SQLite plugin is a supported TypedPress platform (Playground
+ * No Docker, no web server, no MySQL: the SQLite plugin is a supported SpacePress platform (Playground
  * runs on it), and the WordPress suites on MariaDB stay the reference for engine behaviour.
  */
 
@@ -49,7 +49,7 @@ final class WpSite
     private array $users = [];
     /** @var array<string, string> user name => `name:application password` */
     private array $passwords = [];
-    private ?\TypedPress\App $app = null;
+    private ?\SpacePress\App $app = null;
     /** Set once WordPress is loaded with the app active: the site is a suite's to keep or drop. */
     private bool $loaded = false;
     /** @var resource|null the php -S child that stands in for the web server (private-file probes) */
@@ -69,9 +69,9 @@ final class WpSite
 
     /**
      * @param array{schema: array, functions?: string, migration?: string, identity?: bool, users?: array<string, string>, server?: bool, akismet?: bool, muPlugins?: array<string, string>, plugins?: array<string, array{version: string, sha256: string}>} $fixture
-     *   schema: the app's schema.php array (name, collections, ...); functions: PHP after `namespace TypedPressApp;`;
+     *   schema: the app's schema.php array (name, collections, ...); functions: PHP after `namespace SpacePressApp;`;
      *   migration: MySQL DDL for the app's `editor: false` tables ({prefix} replaced);
-     *   identity: install typedpress-identity too; users: extra WordPress users (name => role);
+     *   identity: install spacepress-identity too; users: extra WordPress users (name => role);
      *   server: start a php -S that answers the private-files probe (needed for file buckets);
      *   akismet: activate the Akismet core ships (Jetpack's), with no key unless the suite sets one;
      *   plugins: extra pinned WordPress.org plugins, activated before the runtime;
@@ -81,11 +81,11 @@ final class WpSite
     public static function create(string $label, array $fixture): self
     {
         $repo = dirname(__DIR__, 2);
-        $dir = sys_get_temp_dir() . "/typedpress-wp-$label-" . bin2hex(random_bytes(4));
+        $dir = sys_get_temp_dir() . "/spacepress-wp-$label-" . bin2hex(random_bytes(4));
         $site = new self($dir);
         // Whatever fails below (download, install, activation, boot), the directory and server go.
         register_shutdown_function(static function () use ($site): void {
-            if (!$site->loaded && getenv('TP_WP_KEEP') !== '1') {
+            if (!$site->loaded && getenv('SP_WP_KEEP') !== '1') {
                 $site->destroy();
             }
         });
@@ -107,16 +107,16 @@ final class WpSite
                     copy($file, "$dir/content/mu-plugins/" . basename($file));
                 }
             }
-            // A `typedpress build` artifact: its plugins as built, activated in the manifest's order.
-            $manifest = json_decode((string) file_get_contents($fixture['wpContent'] . '/typedpress-manifest.json'), true, 512, JSON_THROW_ON_ERROR);
+            // A `spacepress build` artifact: its plugins as built, activated in the manifest's order.
+            $manifest = json_decode((string) file_get_contents($fixture['wpContent'] . '/spacepress-manifest.json'), true, 512, JSON_THROW_ON_ERROR);
             foreach (array_keys($manifest['plugins']) as $slug) {
-                if (is_dir($fixture['wpContent'] . "/plugins/$slug") && ($slug !== 'typedpress-identity' || ($fixture['identity'] ?? false))) {
+                if (is_dir($fixture['wpContent'] . "/plugins/$slug") && ($slug !== 'spacepress-identity' || ($fixture['identity'] ?? false))) {
                     wpCopy($fixture['wpContent'] . "/plugins/$slug", "$dir/content/plugins/$slug");
                     $activate[] = $slug;
                 }
             }
             // Dependencies first, then the runtime, then the app, as an installer would.
-            usort($activate, static fn (string $a, string $b): int => (str_starts_with($a, 'typedpress-') ? 1 + (int) str_starts_with($a, 'typedpress-app-') : 0) <=> (str_starts_with($b, 'typedpress-') ? 1 + (int) str_starts_with($b, 'typedpress-app-') : 0));
+            usort($activate, static fn (string $a, string $b): int => (str_starts_with($a, 'spacepress-') ? 1 + (int) str_starts_with($a, 'spacepress-app-') : 0) <=> (str_starts_with($b, 'spacepress-') ? 1 + (int) str_starts_with($b, 'spacepress-app-') : 0));
             $fixture['schema'] = ['name' => $manifest['app'], 'locales' => $manifest['locales'] ?? null];
         } else {
             $platform = json_decode((string) file_get_contents("$repo/tests/fixtures/platform.json"), true, 512, JSON_THROW_ON_ERROR);
@@ -139,23 +139,23 @@ final class WpSite
                 $activate[] = 'akismet';
             }
             $site->runtimePlugin($repo, $fixture);
-            $activate[] = 'typedpress-runtime';
+            $activate[] = 'spacepress-runtime';
             if ($fixture['identity'] ?? false) {
-                wpCopy("$repo/runtime/identity", "$dir/content/plugins/typedpress-identity", ['apps', 'composer.json', 'composer.lock']);
-                $activate[] = 'typedpress-identity';
+                wpCopy("$repo/runtime/identity", "$dir/content/plugins/spacepress-identity", ['apps', 'composer.json', 'composer.lock']);
+                $activate[] = 'spacepress-identity';
             }
             $name = (string) ($fixture['schema']['name'] ?? 'app');
             $site->appPlugin($repo, $name, $fixture);
-            $activate[] = "typedpress-app-$name";
+            $activate[] = "spacepress-app-$name";
         }
         // Test-only must-use plugin: no outgoing mail, isolated public symlink root, and the private-file probe goes to our server.
         $publicRoot = var_export("$dir/public-root", true);
-        file_put_contents("$dir/content/mu-plugins/typedpress-tests.php", <<<PHP
+        file_put_contents("$dir/content/mu-plugins/spacepress-tests.php", <<<PHP
             <?php
             add_filter('pre_wp_mail', static fn () => true);
-            add_filter('tp_public_root', static fn (): string => $publicRoot);
-            add_filter('tp_private_probe_url', static function (string \$url): string {
-                \$port = getenv('TP_TEST_SERVER_PORT');
+            add_filter('sp_public_root', static fn (): string => $publicRoot);
+            add_filter('sp_private_probe_url', static function (string \$url): string {
+                \$port = getenv('SP_TEST_SERVER_PORT');
                 return \$port ? preg_replace('#^https?://[^/]+#', "http://127.0.0.1:\$port", \$url) : \$url;
             });
             PHP);
@@ -189,31 +189,82 @@ final class WpSite
         return $site;
     }
 
-    /** typedpress-runtime as `typedpress build` lays it out: runtime/TypedPress under tp/, the plugin templates rendered. */
+    /**
+     * An existing site (a directory {@see create()} left, perhaps by an earlier release), updated as a
+     * site owner installs a renamed release: this checkout's runtime, identity and app plugins are
+     * written beside the site's own and activated in a child process, as from the Plugins screen,
+     * with `$replaced` (the earlier plugins' slugs) deactivated first and left on disk. The site then
+     * loads. `$fixture` is the same as for create().
+     *
+     * @param list<string> $replaced
+     */
+    public static function adopt(string $dir, array $fixture, array $replaced = []): self
+    {
+        $repo = dirname(__DIR__, 2);
+        $site = new self($dir);
+        $saved = json_decode((string) file_get_contents("$dir/site.json"), true, 512, JSON_THROW_ON_ERROR);
+        $site->port = (int) parse_url($saved['url'], PHP_URL_PORT);
+        $site->base = (string) ($saved['base'] ?? '');
+        $site->runtimePlugin($repo, $fixture);
+        $activate = ['spacepress-runtime'];
+        if ($fixture['identity'] ?? false) {
+            wpCopy("$repo/runtime/identity", "$dir/content/plugins/spacepress-identity", ['apps', 'composer.json', 'composer.lock']);
+            $activate[] = 'spacepress-identity';
+        }
+        $name = (string) ($fixture['schema']['name'] ?? 'app');
+        $site->appPlugin($repo, $name, $fixture);
+        $activate[] = "spacepress-app-$name";
+        // The web server first: the activation request may probe through it (the private files' move).
+        if ($fixture['server'] ?? false) {
+            $site->startServer();
+            $saved = json_decode((string) file_get_contents("$dir/site.json"), true, 512, JSON_THROW_ON_ERROR);
+        }
+        // Two requests, as from the Plugins screen: the earlier plugins are deactivated (their code
+        // still runs in that request), then the new ones activated in a request that loads only them.
+        foreach ([['activate' => [], 'deactivate' => $replaced], ['activate' => $activate, 'deactivate' => []]] as $step) {
+            file_put_contents("$dir/site.json", json_encode($step + $saved, JSON_THROW_ON_ERROR));
+            $out = [];
+            exec(escapeshellarg(PHP_BINARY) . ' -d memory_limit=512M ' . escapeshellarg(__FILE__) . ' activate ' . escapeshellarg($dir) . ' 2>&1', $out, $code);
+            if ($code !== 0) {
+                throw new RuntimeException("updating the plugins failed:\n" . implode("\n", $out));
+            }
+        }
+        file_put_contents("$dir/site.json", json_encode($saved, JSON_THROW_ON_ERROR));
+        $site->users = (array) ($saved['installedUsers'] ?? []);
+        $site->load($saved['core'], $fixture);
+        $site->loaded = true;
+        foreach (get_users(['fields' => ['ID', 'user_login']]) as $user) {
+            $site->users[$user->user_login] = (int) $user->ID;
+        }
+
+        return $site;
+    }
+
+    /** spacepress-runtime as `spacepress build` lays it out: runtime/SpacePress under sp/, the plugin templates rendered. */
     private function runtimePlugin(string $repo, array $fixture): void
     {
-        $plugin = "$this->content/plugins/typedpress-runtime";
-        wpCopy("$repo/runtime/TypedPress", "$plugin/tp");
-        foreach (['typedpress-runtime.php' => 'typedpress-runtime.php', 'typedpress-runtime-uninstall.php' => 'uninstall.php'] as $template => $file) {
+        $plugin = "$this->content/plugins/spacepress-runtime";
+        wpCopy("$repo/runtime/SpacePress", "$plugin/sp");
+        foreach (['spacepress-runtime.php' => 'spacepress-runtime.php', 'spacepress-runtime-uninstall.php' => 'uninstall.php'] as $template => $file) {
             file_put_contents("$plugin/$file", wpTemplate("$repo/runtime/wp-plugin/$template", $fixture));
         }
     }
 
     private function appPlugin(string $repo, string $name, array $fixture): void
     {
-        $plugin = "$this->content/plugins/typedpress-app-$name";
-        mkdir("$plugin/tp/app/migrations", 0777, true);
-        file_put_contents("$plugin/typedpress-app-$name.php", wpTemplate("$repo/runtime/wp-plugin/typedpress-app.php", $fixture));
-        file_put_contents("$plugin/uninstall.php", wpTemplate("$repo/runtime/wp-plugin/typedpress-app-uninstall.php", $fixture));
+        $plugin = "$this->content/plugins/spacepress-app-$name";
+        mkdir("$plugin/sp/app/migrations", 0777, true);
+        file_put_contents("$plugin/spacepress-app-$name.php", wpTemplate("$repo/runtime/wp-plugin/spacepress-app.php", $fixture));
+        file_put_contents("$plugin/uninstall.php", wpTemplate("$repo/runtime/wp-plugin/spacepress-app-uninstall.php", $fixture));
         $this->writeSchema($fixture['schema']);
         $functions = $fixture['functions'] ?? '';
         if (!str_starts_with(ltrim($functions), '<?php')) {
-            $functions = "<?php\n\ndeclare(strict_types=1);\n\nnamespace TypedPressApp;\n\n" . $functions;
+            $functions = "<?php\n\ndeclare(strict_types=1);\n\nnamespace SpacePressApp;\n\n" . $functions;
         }
-        file_put_contents("$plugin/tp/app/functions.php", $functions);
+        file_put_contents("$plugin/sp/app/functions.php", $functions);
         $migration = $fixture['migration'] ?? wpDdl($fixture['schema']);
         if ($migration !== '') {
-            $initDir = "$plugin/tp/app/migrations/20261121000000_000000_init";
+            $initDir = "$plugin/sp/app/migrations/20261121000000_000000_init";
             mkdir($initDir, 0777, true);
             file_put_contents("$initDir/migration.sql", $migration);
             file_put_contents("$initDir/ops.json", json_encode(['version' => 1, 'id' => '20261121000000_000000_init', 'ops' => []]));
@@ -224,7 +275,7 @@ final class WpSite
     public function writeSchema(array $schema): void
     {
         $name = (string) ($schema['name'] ?? 'app');
-        $schema += ['version' => 5, 'runtime' => wpConstant(dirname(__DIR__, 2) . '/runtime/TypedPress/Schema.php', 'SERIES'), 'name' => $name, 'site' => ['uidPrefix' => 'zr_'],
+        $schema += ['version' => 5, 'runtime' => wpConstant(dirname(__DIR__, 2) . '/runtime/SpacePress/Schema.php', 'SERIES'), 'name' => $name, 'site' => ['uidPrefix' => 'zr_'],
             'locales' => null, 'media' => ['sizes' => []], 'files' => [], 'jobs' => [], 'webhooks' => [], 'globals' => [], 'actions' => []];
         $schema['auth'] ??= ['collection' => null, 'guests' => true, 'accessTtl' => 300, 'refreshTtl' => 2592000];
         foreach ($schema['collections'] as $c => &$spec) {
@@ -232,17 +283,17 @@ final class WpSite
             // Hand-written fixtures are custom tables unless they say they're post-backed.
             $spec['editor'] ??= isset($spec['wp']);
             if ($spec['editor'] && !isset($spec['wp'])) {
-                $spec['wp'] = ['postType' => "tp_$c", 'groupKey' => "group_tp_$c", 'metaPrefix' => 'tp_', 'fieldKeyPrefix' => "field_tp_{$c}_"];
+                $spec['wp'] = ['postType' => "sp_$c", 'groupKey' => "group_sp_$c", 'metaPrefix' => 'sp_', 'fieldKeyPrefix' => "field_sp_{$c}_"];
             }
-            $spec['table'] ??= $spec['editor'] ? null : "tp_$c";
+            $spec['table'] ??= $spec['editor'] ? null : "sp_$c";
         }
         unset($spec);
         foreach ($schema['globals'] as $g => &$spec) {
-            $spec['wp'] ??= ['postId' => "tp_global_$g", 'menuSlug' => "typedpress-global-$g", 'groupKey' => "group_tp_global_$g", 'fieldKeyPrefix' => "field_tp_global_{$g}_", 'optionPrefix' => "tp_global_{$g}_"];
+            $spec['wp'] ??= ['postId' => "sp_global_$g", 'menuSlug' => "spacepress-global-$g", 'groupKey' => "group_sp_global_$g", 'fieldKeyPrefix' => "field_sp_global_{$g}_", 'optionPrefix' => "sp_global_{$g}_"];
             $spec += ['label' => $g, 'agents' => true, 'access' => ['read' => ['role' => 'anyone'], 'update' => ['role' => 'editor']]];
         }
         unset($spec);
-        file_put_contents("$this->content/plugins/typedpress-app-$name/tp/app/schema.php", '<?php return ' . var_export($schema, true) . ';');
+        file_put_contents("$this->content/plugins/spacepress-app-$name/sp/app/schema.php", '<?php return ' . var_export($schema, true) . ';');
     }
 
     /** The site's URL (WP_HOME); `startServer()` makes it answer. */
@@ -254,7 +305,7 @@ final class WpSite
     /**
      * `php -S` on this site with the WP-CLI style router: the web server for probes and clients. The
      * port was free when chosen; another process may have taken it since, so the server must answer
-     * for this site (the router's `/__tp_site`) before it counts as started, else another port is tried.
+     * for this site (the router's `/__sp_site`) before it counts as started, else another port is tried.
      */
     public function startServer(int $workers = 1): int
     {
@@ -263,7 +314,7 @@ final class WpSite
         }
         // Start workers in their own process group so stopping the fixture also stops every worker.
         $processGroup = $workers > 1 && function_exists('posix_setsid') && function_exists('pcntl_exec');
-        $environment = ['TP_TEST_SITE' => $this->dir];
+        $environment = ['SP_TEST_SITE' => $this->dir];
         $command = [PHP_BINARY];
         if ($processGroup) {
             $command = [PHP_BINARY, '-r', 'posix_setsid() < 0 && exit(1); pcntl_exec(PHP_BINARY, array_slice($argv, 1)); exit(1);', '--'];
@@ -271,7 +322,7 @@ final class WpSite
         }
         for ($attempt = 0; $attempt < 10; $attempt++) {
             $port = $this->port;
-            putenv("TP_TEST_SERVER_PORT=$port");
+            putenv("SP_TEST_SERVER_PORT=$port");
             $server = proc_open(
                 // A suite that rewrites schema.php (an app update) is served the new file by the next request.
                 // macOS counts lock-wait sleeps toward PHP's execution limit; each test client
@@ -287,7 +338,7 @@ final class WpSite
                 if (!(proc_get_status($server)['running'] ?? false)) {
                     break; // the port was taken: php -S exited
                 }
-                $answer = @file_get_contents("http://127.0.0.1:$port/__tp_site", false, stream_context_create(['http' => ['timeout' => 1, 'ignore_errors' => true]]));
+                $answer = @file_get_contents("http://127.0.0.1:$port/__sp_site", false, stream_context_create(['http' => ['timeout' => 1, 'ignore_errors' => true]]));
                 if ($answer === $this->dir) {
                     $this->server = $server;
                     $this->serverIsProcessGroup = $processGroup;
@@ -329,9 +380,9 @@ final class WpSite
                 exit(255);
             }
         });
-        $plugin = \TypedPress\Wp\Runtime::plugin() ?? throw new RuntimeException('the TypedPress app did not boot: ' . $this->debugLog());
+        $plugin = \SpacePress\Wp\Runtime::plugin() ?? throw new RuntimeException('the SpacePress app did not boot: ' . $this->debugLog());
         if ($plugin->unavailable() !== null) {
-            throw new RuntimeException('TypedPress storage is behind: ' . $plugin->unavailable() . "\n" . $this->debugLog());
+            throw new RuntimeException('SpacePress storage is behind: ' . $plugin->unavailable() . "\n" . $this->debugLog());
         }
         $this->app = $plugin->app();
     }
@@ -370,17 +421,17 @@ final class WpSite
 
     // ================================================================ driving the app
 
-    public function app(): \TypedPress\App
+    public function app(): \SpacePress\App
     {
         return $this->app ?? throw new LogicException('site not loaded');
     }
 
-    public function plugin(): \TypedPress\Wp\Plugin
+    public function plugin(): \SpacePress\Wp\Plugin
     {
-        return \TypedPress\Wp\Runtime::plugin() ?? throw new LogicException('no TypedPress app');
+        return \SpacePress\Wp\Runtime::plugin() ?? throw new LogicException('no SpacePress app');
     }
 
-    public function connection(): \TypedPress\Wp\Connection
+    public function connection(): \SpacePress\Wp\Connection
     {
         return $this->plugin()->connection();
     }
@@ -420,8 +471,8 @@ final class WpSite
         return $this->server !== null && (proc_get_status($this->server)['running'] ?? false);
     }
 
-    /** A new WordPress user; the role is one of TypedPress's (admin, editor, author, subscriber). */
-    public function addUser(string $name, string $role, string $password = 'typedpress-test-pass'): int
+    /** A new WordPress user; the role is one of SpacePress's (admin, editor, author, subscriber). */
+    public function addUser(string $name, string $role, string $password = 'spacepress-test-pass'): int
     {
         $id = wp_insert_user(['user_login' => $name, 'user_pass' => $password, 'user_email' => "$name@example.test", 'display_name' => $name,
             'role' => $role === 'admin' ? 'administrator' : $role]);
@@ -432,10 +483,10 @@ final class WpSite
         return $this->users[$name] = (int) $id;
     }
 
-    /** TypedPress's user array for a test user, as hooks and rules see it. */
+    /** SpacePress's user array for a test user, as hooks and rules see it. */
     public function user(string $name): array
     {
-        return \TypedPress\Wp\WpAuth::map(get_userdata($this->userId($name)));
+        return \SpacePress\Wp\WpAuth::map(get_userdata($this->userId($name)));
     }
 
     /** Make $who the current WordPress user (a test user name or a user id; null: anonymous), as the REST authentication would. */
@@ -479,7 +530,7 @@ final class WpSite
     }
 
     /**
-     * The `serveRoute` match for a `tp/app/` HTTP handler, as the app router finds it: the
+     * The `serveRoute` match for a `sp/app/` HTTP handler, as the app router finds it: the
      * route whose pattern takes `$path`, that file's `$method` handler, and its access rule.
      *
      * @return array{name: string, params: array<string, string>, route: array<string, mixed>}
@@ -487,7 +538,7 @@ final class WpSite
     public function route(string $method, string $path): array
     {
         $app = $this->plugin()->schema->app();
-        $match = \TypedPress\Wp\AppRouter::match($app['routes'], $path, $app['routeIndex']) ?? throw new \RuntimeException("no route takes $path");
+        $match = \SpacePress\Wp\AppRouter::match($app['routes'], $path, $app['routeIndex']) ?? throw new \RuntimeException("no route takes $path");
         $file = $app['files'][$match['route']['handler'] ?? $match['route']['page']];
         return [
             'name' => (string) $match['route']['id'],
@@ -502,7 +553,7 @@ final class WpSite
         return $this->uploads() . substr((string) parse_url($url, PHP_URL_PATH), strlen('/wp-content/uploads'));
     }
 
-    /** `wp typedpress <args>` as the trusted CLI runs it: [exit code, decoded JSON]. */
+    /** `wp spacepress <args>` as the trusted CLI runs it: [exit code, decoded JSON]. */
     public function cli(string ...$args): array
     {
         [$code, $out] = $this->app()->cli($args);
@@ -511,7 +562,7 @@ final class WpSite
     }
 
     /**
-     * `wp typedpress <args>` through the plugin's WP-CLI command (migrate included), with a WP_CLI stand-in
+     * `wp spacepress <args>` through the plugin's WP-CLI command (migrate included), with a WP_CLI stand-in
      * that records the output: [exit code, decoded JSON].
      */
     public function wpCli(array $args, array $assoc = []): array
@@ -561,12 +612,12 @@ function wpSite(string $label, array $fixture): WpSite
 {
     $site = WpSite::create($label, $fixture);
     register_shutdown_function(static function () use ($site): void {
-        // A failing suite shows WordPress's log (minus core's early-theme notices); TP_WP_KEEP=1 keeps the site.
-        if (($GLOBALS['failed'] ?? 0) > 0 || getenv('TP_WP_KEEP') === '1') {
+        // A failing suite shows WordPress's log (minus core's early-theme notices); SP_WP_KEEP=1 keeps the site.
+        if (($GLOBALS['failed'] ?? 0) > 0 || getenv('SP_WP_KEEP') === '1') {
             $log = array_filter(explode("\n", $site->debugLog()), static fn (string $l) => $l !== '' && !str_contains($l, 'wp_is_block_theme'));
             fwrite(STDERR, "--- {$site->dir}/content/debug.log\n" . implode("\n", $log) . "\n");
         }
-        if (getenv('TP_WP_KEEP') === '1') {
+        if (getenv('SP_WP_KEEP') === '1') {
             fwrite(STDERR, "site kept at {$site->dir}\n");
             return;
         }
@@ -577,7 +628,7 @@ function wpSite(string $label, array $fixture): WpSite
 }
 
 /**
- * The MySQL migration `typedpress build` would emit for a hand-written schema's custom tables (the type map
+ * The MySQL migration `spacepress build` would emit for a hand-written schema's custom tables (the type map
  * of src/migrate.rs): every `editor: false` collection, its unique keys and foreign keys between
  * custom tables, plus the shared revisions table when one of them keeps revisions.
  */
@@ -588,7 +639,7 @@ function wpDdl(array $schema): string
     $tables = [];
     foreach ($collections as $name => $spec) {
         if (!($spec['editor'] ?? isset($spec['wp'])) && !($spec['auth'] ?? false) && ($schema['auth']['collection'] ?? null) !== $name) {
-            $tables[$name] = $spec['table'] ?? "tp_$name";
+            $tables[$name] = $spec['table'] ?? "sp_$name";
         }
     }
     $autoPk = static fn (string $c) => (bool) ($collections[$c]['columns'][$collections[$c]['primaryKey'] ?? 'id']['autoIncrement'] ?? false);
@@ -609,8 +660,8 @@ function wpDdl(array $schema): string
                 // A many-ref's links live in its join table, with cascading keys between two custom tables.
                 $join = $def['references']['join'];
                 $fk = static fn (string $side, string $c) => isset($tables[$c]) && isset($tables[$def['references']['collection']])
-                    ? ",\n\tCONSTRAINT `tp_{$join}_{$side}_fk` FOREIGN KEY (`$side`) REFERENCES `{prefix}{$tables[$c]}` (`id`) ON DELETE CASCADE" : '';
-                $joins[] = "CREATE TABLE `{prefix}tp__join_$join` (\n\t`owner_id` BIGINT UNSIGNED NOT NULL,\n\t`target_id` BIGINT UNSIGNED NOT NULL,\n\t`position` BIGINT NOT NULL,"
+                    ? ",\n\tCONSTRAINT `sp_{$join}_{$side}_fk` FOREIGN KEY (`$side`) REFERENCES `{prefix}{$tables[$c]}` (`id`) ON DELETE CASCADE" : '';
+                $joins[] = "CREATE TABLE `{prefix}sp__join_$join` (\n\t`owner_id` BIGINT UNSIGNED NOT NULL,\n\t`target_id` BIGINT UNSIGNED NOT NULL,\n\t`position` BIGINT NOT NULL,"
                     . "\n\tPRIMARY KEY (`owner_id`, `target_id`),\n\tKEY `target_id` (`target_id`)" . $fk('owner_id', $name) . $fk('target_id', $def['references']['collection']) . "\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;";
                 continue;
             }
@@ -656,7 +707,7 @@ function wpDdl(array $schema): string
                 $keys[] = "UNIQUE KEY `{$col}_unique` (`$col`)";
             }
             if ($ref !== null && isset($tables[$ref['collection']])) {
-                $fk = "CONSTRAINT `tp_{$name}_{$col}_fk` FOREIGN KEY (`$col`) REFERENCES `{prefix}{$tables[$ref['collection']]}` (`{$ref['column']}`)";
+                $fk = "CONSTRAINT `sp_{$name}_{$col}_fk` FOREIGN KEY (`$col`) REFERENCES `{prefix}{$tables[$ref['collection']]}` (`{$ref['column']}`)";
                 if (isset($ref['onDelete'])) {
                     $fk .= ' ON DELETE ' . strtoupper($ref['onDelete']);
                 }
@@ -669,7 +720,7 @@ function wpDdl(array $schema): string
         $lines[] = 'PRIMARY KEY (`' . ($spec['primaryKey'] ?? 'id') . '`)';
         $statements[] = "CREATE TABLE `{prefix}$table` (\n\t" . implode(",\n\t", [...$lines, ...$keys, ...$fks]) . "\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;";
     }
-    // Post-backed owners' many-refs too: the join table is TypedPress's own whatever stores the sides.
+    // Post-backed owners' many-refs too: the join table is SpacePress's own whatever stores the sides.
     foreach ($collections as $name => $spec) {
         if (isset($tables[$name])) {
             continue;
@@ -678,14 +729,14 @@ function wpDdl(array $schema): string
             // A `terms` field's links are core's term relationships (`term:<taxonomy>`): no table.
             if (($def['type'] ?? null) === 'refList' && !str_starts_with($def['references']['join'], 'term:')) {
                 $join = $def['references']['join'];
-                $joins[] = "CREATE TABLE `{prefix}tp__join_$join` (\n\t`owner_id` BIGINT UNSIGNED NOT NULL,\n\t`target_id` BIGINT UNSIGNED NOT NULL,\n\t`position` BIGINT NOT NULL,"
+                $joins[] = "CREATE TABLE `{prefix}sp__join_$join` (\n\t`owner_id` BIGINT UNSIGNED NOT NULL,\n\t`target_id` BIGINT UNSIGNED NOT NULL,\n\t`position` BIGINT NOT NULL,"
                     . "\n\tPRIMARY KEY (`owner_id`, `target_id`),\n\tKEY `target_id` (`target_id`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;";
             }
         }
     }
     array_push($statements, ...$joins);
     if ($revisions) {
-        $statements[] = "CREATE TABLE `{prefix}tp__revisions` (\n\t`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,\n\t`collection` VARCHAR(64) NOT NULL,\n\t`pk` VARCHAR(191) NOT NULL,"
+        $statements[] = "CREATE TABLE `{prefix}sp__revisions` (\n\t`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,\n\t`collection` VARCHAR(64) NOT NULL,\n\t`pk` VARCHAR(191) NOT NULL,"
             . "\n\t`version` BIGINT UNSIGNED NOT NULL DEFAULT 1,\n\t`op` VARCHAR(16) NOT NULL DEFAULT 'update',"
             . "\n\t`at` CHAR(24) NOT NULL,\n\t`userId` BIGINT UNSIGNED NULL,\n\t`schemaMigration` VARCHAR(191) NULL,"
             . "\n\t`row` LONGTEXT NOT NULL,\n\t`changed` LONGTEXT NULL,\n\tPRIMARY KEY (`id`),\n\tKEY `row` (`collection`, `pk`),\n\tUNIQUE KEY `row_version` (`collection`, `pk`, `version`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;";
@@ -706,7 +757,7 @@ function wpFreePort(): int
 
 function wpCache(): string
 {
-    $cache = getenv('TP_WP_CACHE') ?: dirname(__DIR__) . '/wp/cache';
+    $cache = getenv('SP_WP_CACHE') ?: dirname(__DIR__) . '/wp/cache';
     if (!is_dir($cache) && !mkdir($cache, 0777, true) && !is_dir($cache)) {
         throw new RuntimeException("cannot create $cache");
     }
@@ -816,10 +867,10 @@ function wpCliRoot(string $dir): string
 function wpCore(): string
 {
     // The WordPress-ahead workflow (.github/workflows/wordpress-ahead.yml) boots a WordPress build other than the pinned one: a ZIP in the cache
-    // it downloaded itself (`TP_WP_CORE_ZIP`, with its SHA-256 in `TP_WP_CORE_SHA256`).
-    $other = getenv('TP_WP_CORE_ZIP');
+    // it downloaded itself (`SP_WP_CORE_ZIP`, with its SHA-256 in `SP_WP_CORE_SHA256`).
+    $other = getenv('SP_WP_CORE_ZIP');
     if (is_string($other) && $other !== '') {
-        return wpArchive($other, 'file://' . wpCache() . "/$other", (string) getenv('TP_WP_CORE_SHA256'), 'wordpress');
+        return wpArchive($other, 'file://' . wpCache() . "/$other", (string) getenv('SP_WP_CORE_SHA256'), 'wordpress');
     }
 
     return wpArchive('wordpress-' . WP_CORE_VERSION . '.zip', 'https://wordpress.org/wordpress-' . WP_CORE_VERSION . '.zip', WP_CORE_SHA256, 'wordpress');
@@ -865,7 +916,7 @@ function wpCopy(string $from, string $to, array $skip = []): void
     }
 }
 
-/** A plugin template rendered as `typedpress build` renders it (`{{key}}` placeholders). */
+/** A plugin template rendered as `spacepress build` renders it (`{{key}}` placeholders). */
 function wpTemplate(string $file, array $fixture): string
 {
     $repo = dirname(__DIR__, 2);
@@ -873,10 +924,10 @@ function wpTemplate(string $file, array $fixture): string
     $platform = json_decode((string) file_get_contents("$repo/tests/fixtures/platform.json"), true, 512, JSON_THROW_ON_ERROR);
     $localized = ($fixture['schema']['locales'] ?? null) !== null;
     $runtimeRequires = array_keys(array_filter($platform['plugins'], static fn (string $slug): bool => $slug !== 'polylang', ARRAY_FILTER_USE_KEY));
-    $requires = implode(', ', [...$runtimeRequires, ...($localized ? ['polylang'] : []), 'typedpress-runtime']);
-    $vars = ['name' => $name, 'slug' => "typedpress-app-$name", 'label' => ucfirst($name), 'Name' => ucfirst($name), 'requires' => $requires, 'runtimeRequires' => implode(', ', $runtimeRequires),
-        'wpVersion' => $platform['wordpress'], 'phpVersion' => $platform['php'], 'runtimeSeries' => wpConstant("$repo/runtime/TypedPress/Schema.php", 'SERIES'),
-        'tpVersion' => wpConstant("$repo/runtime/TypedPress/Wp/Runtime.php", 'VERSION'), 'version' => wpConstant("$repo/runtime/TypedPress/Wp/Runtime.php", 'VERSION'),
+    $requires = implode(', ', [...$runtimeRequires, ...($localized ? ['polylang'] : []), 'spacepress-runtime']);
+    $vars = ['name' => $name, 'slug' => "spacepress-app-$name", 'label' => ucfirst($name), 'Name' => ucfirst($name), 'requires' => $requires, 'runtimeRequires' => implode(', ', $runtimeRequires),
+        'wpVersion' => $platform['wordpress'], 'phpVersion' => $platform['php'], 'runtimeSeries' => wpConstant("$repo/runtime/SpacePress/Schema.php", 'SERIES'),
+        'spVersion' => wpConstant("$repo/runtime/SpacePress/Wp/Runtime.php", 'VERSION'), 'version' => wpConstant("$repo/runtime/SpacePress/Wp/Runtime.php", 'VERSION'),
         'schemaHash' => substr(hash('sha256', json_encode($fixture['schema'])), 0, 16), 'runtimeHash' => 'tests'];
     $out = (string) file_get_contents($file);
     foreach ($vars as $k => $v) {
@@ -917,17 +968,19 @@ function wpDefine(string $dir, string $url): void
     foreach (['DB_NAME' => 'wordpress', 'DB_USER' => '', 'DB_PASSWORD' => '', 'DB_HOST' => '', 'DB_CHARSET' => 'utf8mb4', 'DB_COLLATE' => ''] as $k => $v) {
         define($k, $v);
     }
+    // The site's own keys: a site another release's harness installed keeps the keys it was given
+    // (`salts` in site.json), as a real site keeps its wp-config.php across an update.
     foreach (['AUTH_KEY', 'SECURE_AUTH_KEY', 'LOGGED_IN_KEY', 'NONCE_KEY', 'AUTH_SALT', 'SECURE_AUTH_SALT', 'LOGGED_IN_SALT', 'NONCE_SALT'] as $k) {
-        define($k, "typedpress-test-$k");
+        define($k, ($site['salts'] ?? 'spacepress-test-') . $k);
     }
     $GLOBALS['table_prefix'] = 'wp_';
     define('WP_DEBUG', true);
     define('WP_DEBUG_DISPLAY', false);
     define('WP_DEBUG_LOG', "$dir/content/debug.log");
     // The front end (template_redirect, the theme) runs only for suites that serve pages.
-    define('WP_USE_THEMES', getenv('TP_WP_THEMES') === '1');
+    define('WP_USE_THEMES', getenv('SP_WP_THEMES') === '1');
     // The unminified Interactivity runtime, which is the only build that logs hydration warnings.
-    define('SCRIPT_DEBUG', getenv('TP_WP_SCRIPT_DEBUG') === '1');
+    define('SCRIPT_DEBUG', getenv('SP_WP_SCRIPT_DEBUG') === '1');
     define('WP_SITEURL', $url);
     define('WP_HOME', $url);
     define('DISABLE_WP_CRON', true);
@@ -946,12 +999,12 @@ if (PHP_SAPI === 'cli' && realpath($_SERVER['SCRIPT_FILENAME'] ?? '') === __FILE
     require_once ABSPATH . 'wp-settings.php';
     require_once ABSPATH . 'wp-admin/includes/upgrade.php';
     require_once ABSPATH . 'wp-admin/includes/plugin.php';
-    $installed = wp_install('TypedPress test site', 'admin', 'admin@example.test', true, '', 'typedpress-test-admin');
+    $installed = wp_install('SpacePress test site', 'admin', 'admin@example.test', true, '', 'spacepress-test-admin');
     // Pretty permalinks, so rest_url() is /wp-json/… (what the router serves) rather than ?rest_route=.
     update_option('permalink_structure', '/%postname%/');
     $users = ['admin' => (int) $installed['user_id']];
     foreach ($site['users'] as $name => $role) {
-        $id = wp_insert_user(['user_login' => $name, 'user_pass' => "typedpress-test-$name", 'user_email' => "$name@example.test", 'display_name' => $name,
+        $id = wp_insert_user(['user_login' => $name, 'user_pass' => "spacepress-test-$name", 'user_email' => "$name@example.test", 'display_name' => $name,
             'role' => $role === 'admin' ? 'administrator' : $role]);
         if ($id instanceof WP_Error) {
             fwrite(STDERR, $id->get_error_message() . "\n");
@@ -977,12 +1030,31 @@ if (PHP_SAPI === 'cli' && realpath($_SERVER['SCRIPT_FILENAME'] ?? '') === __FILE
     exit(0);
 }
 
+// ================================================================ the activate child (WpSite::adopt)
+
+if (PHP_SAPI === 'cli' && realpath($_SERVER['SCRIPT_FILENAME'] ?? '') === __FILE__ && ($argv[1] ?? '') === 'activate') {
+    $dir = $argv[2];
+    $site = json_decode((string) file_get_contents("$dir/site.json"), true, 512, JSON_THROW_ON_ERROR);
+    wpDefine($dir, $site['url']);
+    require_once ABSPATH . 'wp-settings.php';
+    require_once ABSPATH . 'wp-admin/includes/plugin.php';
+    deactivate_plugins(array_map(static fn (string $slug): string => "$slug/$slug.php", $site['deactivate']), true);
+    foreach ($site['activate'] as $slug) {
+        $error = activate_plugin("$slug/$slug.php");
+        if ($error instanceof WP_Error) {
+            fwrite(STDERR, "activating $slug: " . $error->get_error_message() . "\n");
+            exit(1);
+        }
+    }
+    exit(0);
+}
+
 // ================================================================ eval: run PHP on a site built from an artifact
 //
 //   php tests/php/wp.php eval <wp-content dir> <php code> [json argument] [name=role ...]
 //
-// Installs a site from a `typedpress build` artifact, loads it with the app active, and runs
-// the code with `$app` (the TypedPress\App), `$wp` (the WpSite), `$arg` (the decoded JSON argument) and
+// Installs a site from a `spacepress build` artifact, loads it with the app active, and runs
+// the code with `$app` (the SpacePress\App), `$wp` (the WpSite), `$arg` (the decoded JSON argument) and
 // `$site` bound; the site goes when the process ends. For Rust tests that drive compiled PHP.
 
 if (PHP_SAPI === 'cli' && realpath($_SERVER['SCRIPT_FILENAME'] ?? '') === __FILE__ && ($argv[1] ?? '') === 'eval') {
@@ -1003,9 +1075,9 @@ if (PHP_SAPI === 'cli' && realpath($_SERVER['SCRIPT_FILENAME'] ?? '') === __FILE
 //
 //   php tests/php/wp.php serve <wp-content dir> [name=role ...]
 //
-// Installs a site from a `typedpress build` artifact, starts its web server, prints one JSON
+// Installs a site from a `spacepress build` artifact, starts its web server, prints one JSON
 // line ({url, dir, users: {name: {id, appPassword}}}) and serves until killed (tests/sync.rs).
-// TP_WP_IDENTITY=1 activates typedpress-identity too; TP_WP_CLI=1 adds {wpCli: {phar, path}} (tests/cli.rs).
+// SP_WP_IDENTITY=1 activates spacepress-identity too; SP_WP_CLI=1 adds {wpCli: {phar, path}} (tests/cli.rs).
 
 if (PHP_SAPI === 'cli' && realpath($_SERVER['SCRIPT_FILENAME'] ?? '') === __FILE__ && ($argv[1] ?? '') === 'serve') {
     $users = [];
@@ -1013,10 +1085,10 @@ if (PHP_SAPI === 'cli' && realpath($_SERVER['SCRIPT_FILENAME'] ?? '') === __FILE
         [$name, $role] = explode('=', $pair, 2);
         $users[$name] = $role;
     }
-    $site = WpSite::create('serve', ['wpContent' => $argv[2], 'users' => $users, 'server' => true, 'identity' => getenv('TP_WP_IDENTITY') === '1']);
+    $site = WpSite::create('serve', ['wpContent' => $argv[2], 'users' => $users, 'server' => true, 'identity' => getenv('SP_WP_IDENTITY') === '1']);
     $out = ['url' => $site->url(), 'dir' => $site->dir, 'users' => $site->credentials()];
-    // TP_WP_CLI=1: also the pinned WP-CLI phar and a --path it can boot this site from.
-    if (getenv('TP_WP_CLI') === '1') {
+    // SP_WP_CLI=1: also the pinned WP-CLI phar and a --path it can boot this site from.
+    if (getenv('SP_WP_CLI') === '1') {
         $out['wpCli'] = ['phar' => wpCliPhar(), 'path' => wpCliRoot($site->dir)];
     }
     echo json_encode($out), "\n";

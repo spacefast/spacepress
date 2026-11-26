@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\PropertyAccess\Exception;
+namespace SpacePress\Identity\Vendor\Symfony\Component\PropertyAccess\Exception;
 
 /**
  * Base OutOfBoundsException for the PropertyAccess component.

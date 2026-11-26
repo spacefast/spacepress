@@ -10,9 +10,9 @@ publishedAt: 2026-11-21T09:02:00.000Z
 
 ```text
 my-app/
-├── typedpress.config.ts   # Entry point: defineConfig() + re-exports
-├── tsconfig.json          # Maps "typedpress", "typedpress/*", "typedpress:db"
-├── tp/
+├── spacepress.config.ts   # Entry point: defineConfig() + re-exports
+├── tsconfig.json          # Maps "spacepress", "spacepress/*", "spacepress:db"
+├── sp/
 │   ├── schema.ts          # Collections, SQL tables, globals, taxonomies, stores
 │   ├── server.ts          # Actions, background jobs, mail helpers
 │   ├── app/               # File-based TSX pages, layouts, and route.ts handlers
@@ -27,11 +27,11 @@ my-app/
 
 ## What to commit to Git
 
-Commit everything you author (`typedpress.config.ts`, `tp/schema.ts`, `tp/app/`, `content/`, `emails/`, `public/`) **plus** these compiler lock/ledger files:
+Commit everything you author (`spacepress.config.ts`, `sp/schema.ts`, `sp/app/`, `content/`, `emails/`, `public/`) **plus** these compiler lock/ledger files:
 
-- `tp/_generated/migrations/` (sortable folders containing `ops.json` and `migration.sql`) — tracks schema history for safe incremental deploys.
-- `tp/_generated/wp-plugins.lock.json` — locks WordPress plugin versions and SHA-256 checksums.
-- `tp/_generated/plugins.lock.json` — locks capability grants for `use` plugin packages.
-- `tp/_generated/abilities.json` & `tp/_generated/runtime-schema.json` — when using pulled WordPress Abilities or runtime schema versions.
+- `sp/_generated/migrations/` (sortable folders containing `ops.json` and `migration.sql`) — tracks schema history for safe incremental deploys.
+- `sp/_generated/wp-plugins.lock.json` — locks WordPress plugin versions and SHA-256 checksums.
+- `sp/_generated/plugins.lock.json` — locks capability grants for `use` plugin packages.
+- `sp/_generated/abilities.json` & `sp/_generated/runtime-schema.json` — when using pulled WordPress Abilities or runtime schema versions.
 
-`tp/dist/` is a build artifact and is typically git-ignored.
+`sp/dist/` is a build artifact and is typically git-ignored.

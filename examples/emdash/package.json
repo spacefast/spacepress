@@ -1,5 +1,5 @@
 {
-  "name": "typedpress-emdash-examples",
+  "name": "spacepress-emdash-examples",
   "private": true,
   "type": "module",
   "scripts": { "test": "node test.mjs" },

@@ -28,11 +28,11 @@ if (($argv[1] ?? '') === 'child') {
     };
 }
 
-// TP_WP_KEEP=1 keeps a suite's site on purpose; these children must clean up whatever the caller set.
-putenv('TP_WP_KEEP');
+// SP_WP_KEEP=1 keeps a suite's site on purpose; these children must clean up whatever the caller set.
+putenv('SP_WP_KEEP');
 foreach (['fatal' => 255, 'exception' => 255, 'done' => 0] as $case => $status) {
-    $report = tempnam(sys_get_temp_dir(), 'typedpress-harness-');
-    $errors = tempnam(sys_get_temp_dir(), 'typedpress-harness-');
+    $report = tempnam(sys_get_temp_dir(), 'spacepress-harness-');
+    $errors = tempnam(sys_get_temp_dir(), 'spacepress-harness-');
     $child = proc_open([PHP_BINARY, '-d', 'memory_limit=512M', __FILE__, 'child', $case, $report], [1 => ['file', '/dev/null', 'w'], 2 => ['file', $errors, 'w']], $pipes);
     $code = proc_close($child);
     $site = json_decode((string) file_get_contents($report), true);
@@ -47,8 +47,8 @@ foreach (['fatal' => 255, 'exception' => 255, 'done' => 0] as $case => $status) 
     clearstatcache();
     $kept = is_dir($site['dir']);
     check("$case: the site directory is removed", !$kept, ['dir' => $site['dir'], 'stderr' => substr($stderr, -2000)]);
-    // The server answers `/__tp_site` with its directory for as long as it runs.
-    $answer = @file_get_contents($site['url'] . '/__tp_site', false, stream_context_create(['http' => ['timeout' => 2]]));
+    // The server answers `/__sp_site` with its directory for as long as it runs.
+    $answer = @file_get_contents($site['url'] . '/__sp_site', false, stream_context_create(['http' => ['timeout' => 2]]));
     $serving = $answer === $site['dir'];
     check("$case: the site's web server is stopped", !$serving, $answer);
     if ($case !== 'done') {

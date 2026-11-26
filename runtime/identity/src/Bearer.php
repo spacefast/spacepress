@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity;
+namespace SpacePress\Identity;
 
 /**
  * `Authorization: Bearer <access token>` on WordPress: a `determine_current_user` filter at
@@ -12,7 +12,7 @@ namespace TypedPress\Identity;
  * A presented token that does not resolve is an authentication error, not an anonymous request:
  * `rest_authentication_errors` answers 401 `invalid_token` (403 `suspended` when the signature is
  * ours but the account is suspended or deleted). A consumer that renders its own errors can take
- * the reason through `failure()` and opt out with the `tp_identity_bearer_error` filter.
+ * the reason through `failure()` and opt out with the `sp_identity_bearer_error` filter.
  */
 final class Bearer
 {
@@ -77,7 +77,7 @@ final class Bearer
             $suspended ? "This account is suspended." : "The access token is invalid, expired or revoked.",
             ["status" => $suspended ? 403 : 401],
         );
-        return apply_filters("tp_identity_bearer_error", $wpError, self::$failure);
+        return apply_filters("sp_identity_bearer_error", $wpError, self::$failure);
     }
 
     /** Why the presented Bearer token failed this request: 'invalid_token', 'suspended' or null. */

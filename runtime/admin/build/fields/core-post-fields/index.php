@@ -2,7 +2,7 @@
 /**
  * Core post fields collection - applies to several post types
  *
- * @package TypedPress_Admin
+ * @package SpacePress_Admin
  */
 
 return array(

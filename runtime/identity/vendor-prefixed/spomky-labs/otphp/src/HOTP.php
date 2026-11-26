@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\OTPHP;
+namespace SpacePress\Identity\Vendor\OTPHP;
 
 use function is_int;
-use TypedPress\Identity\Vendor\OTPHP\Exception\InvalidParameterException;
+use SpacePress\Identity\Vendor\OTPHP\Exception\InvalidParameterException;
 
 /**
  * Note: This class is not marked as readonly because the verify() method

@@ -1,6 +1,6 @@
 import { __ } from '@wordpress/i18n';
 import { privateApis as componentsPrivateApis } from '@wordpress/components';
-import { unlock } from '@typedpress-admin/admin-toolkit';
+import { unlock } from '@spacepress-admin/admin-toolkit';
 import { ScreenHeader } from './screen-header';
 import ColorPalettePanel from './color-palette-panel';
 import GradientPalettePanel from './gradients-palette-panel';
@@ -11,19 +11,19 @@ function ScreenColorPalette( { name }: { name?: string } ) {
 	return (
 		<>
 			<ScreenHeader
-				title={ __( 'Edit palette', 'typedpress-admin' ) }
+				title={ __( 'Edit palette', 'spacepress-admin' ) }
 				description={ __(
 					'The combination of colors used across the site and in color pickers.',
-					'typedpress-admin'
+					'spacepress-admin'
 				) }
 			/>
 			<Tabs>
 				<Tabs.TabList>
 					<Tabs.Tab tabId="color">
-						{ __( 'Color', 'typedpress-admin' ) }
+						{ __( 'Color', 'spacepress-admin' ) }
 					</Tabs.Tab>
 					<Tabs.Tab tabId="gradient">
-						{ __( 'Gradient', 'typedpress-admin' ) }
+						{ __( 'Gradient', 'spacepress-admin' ) }
 					</Tabs.Tab>
 				</Tabs.TabList>
 				<Tabs.TabPanel tabId="color" focusable={ false }>

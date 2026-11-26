@@ -1,6 +1,6 @@
 <?php
 
-namespace TypedPress\Identity\Vendor\Firebase\JWT;
+namespace SpacePress\Identity\Vendor\Firebase\JWT;
 
 use DomainException;
 use InvalidArgumentException;
@@ -311,7 +311,7 @@ class JWK
 
     /**
      * Encodes a value into a DER object.
-     * Also defined in TypedPress\Identity\Vendor\Firebase\JWT\JWT
+     * Also defined in SpacePress\Identity\Vendor\Firebase\JWT\JWT
      *
      * @param   int     $type DER tag
      * @param   string  $value the value to encode

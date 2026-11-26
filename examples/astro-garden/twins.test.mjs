@@ -1,11 +1,11 @@
-// examples/garden and examples/astro-garden render the same site: one as a TypedPress app (tp/app/,
-// PHP in WordPress), one as an Astro site reading that TypedPress app with @typedpress/astro. This builds the
-// TypedPress app, seeds its plants from content/plants/ as a publish does, serves it on
+// examples/garden and examples/astro-garden render the same site: one as a SpacePress app (sp/app/,
+// PHP in WordPress), one as an Astro site reading that SpacePress app with @spacepress/astro. This builds the
+// SpacePress app, seeds its plants from content/plants/ as a publish does, serves it on
 // WordPress-on-SQLite, builds the Astro site against it, and reads both in Chromium: the same
 // list, the same plant pages, the same text. Then an editor's change shows on both, the Astro
 // side after a rebuild that pulls only the changed plant.
 //
-// Needs the `typedpress` binary (TP_BIN, default target/debug/typedpress), PHP 8.2+ with pdo_sqlite, Node
+// Needs the `spacepress` binary (SP_BIN, default target/debug/spacepress), PHP 8.2+ with pdo_sqlite, Node
 // 22.23.4+ (Astro 7.4), `npm ci` here and in tests/differential/client, and Chromium's headless
 // shell (npx --prefix tests/differential/client playwright-core install chromium-headless-shell).
 // Set CHROMIUM to use a different installed browser executable.
@@ -25,11 +25,11 @@ import { readFile } from "node:fs/promises";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = resolve(here, "../..");
-const bin = process.env.TP_BIN ?? join(repo, "target/debug/typedpress");
+const bin = process.env.SP_BIN ?? join(repo, "target/debug/spacepress");
 const { chromium } = createRequire(join(repo, "tests/differential/client/package.json"))("playwright-core");
 
-const work = mkdtempSync(join(tmpdir(), "typedpress-garden-"));
-let site; // the TypedPress app: { url, users }
+const work = mkdtempSync(join(tmpdir(), "spacepress-garden-"));
+let site; // the SpacePress app: { url, users }
 let server;
 let astro; // a static server for the Astro build: { url, close }
 let browser;
@@ -42,7 +42,7 @@ function first(...args) {
 function buildAstro() {
   const out = spawnSync(process.execPath, [join(here, "node_modules/astro/bin/astro.mjs"), "build", "--root", here], {
     cwd: here,
-    env: { ...process.env, TP_URL: site.url, ASTRO_TELEMETRY_DISABLED: "1", ASTRO_OUT_DIR: join(work, "astro/dist") },
+    env: { ...process.env, SP_URL: site.url, ASTRO_TELEMETRY_DISABLED: "1", ASTRO_OUT_DIR: join(work, "astro/dist") },
     encoding: "utf8",
   });
   assert.equal(out.status, 0, out.stdout + out.stderr);
@@ -70,7 +70,7 @@ async function serveStatic(root) {
 }
 
 before(async () => {
-  assert.ok(existsSync(bin), `build the compiler first (cargo build --bin typedpress), or set TP_BIN; ${bin} is missing`);
+  assert.ok(existsSync(bin), `build the compiler first (cargo build --bin spacepress), or set SP_BIN; ${bin} is missing`);
   const project = join(work, "garden");
   cpSync(join(repo, "examples/garden"), project, { recursive: true });
   first("build", project, "--quiet");
@@ -78,8 +78,8 @@ before(async () => {
   first("sources", project, "--out", join(work, "sources"));
   first("compile-sources", join(work, "sources"), join(work, "compiled"), project);
 
-  server = spawn("php", ["-d", "memory_limit=512M", join(repo, "tests/php/wp.php"), "serve", join(project, "tp/dist/wp-content")], {
-    env: { ...process.env, TP_WP_THEMES: "1" },
+  server = spawn("php", ["-d", "memory_limit=512M", join(repo, "tests/php/wp.php"), "serve", join(project, "sp/dist/wp-content")], {
+    env: { ...process.env, SP_WP_THEMES: "1" },
     stdio: ["ignore", "pipe", "inherit"],
   });
   site = JSON.parse(await new Promise((ok, fail) => {
@@ -87,7 +87,7 @@ before(async () => {
     server.once("exit", (code) => fail(new Error(`wp.php serve exited ${code}`)));
   }));
   // Seed the plants as the publish's seed step does, through the site's own WP-CLI-free seam.
-  const seed = spawnSync("php", ["-d", "memory_limit=512M", "-r", "require $argv[1]; wpLoad($argv[2]); \\TypedPress\\Sync\\Seed::run(\\TypedPress\\Wp\\Runtime::plugin(), $argv[3]);",
+  const seed = spawnSync("php", ["-d", "memory_limit=512M", "-r", "require $argv[1]; wpLoad($argv[2]); \\SpacePress\\Sync\\Seed::run(\\SpacePress\\Wp\\Runtime::plugin(), $argv[3]);",
     join(repo, "tests/php/wp.php"), site.dir, join(work, "compiled/seed")], { encoding: "utf8" });
   assert.equal(seed.status, 0, seed.stdout + seed.stderr);
   // Give this fixture a non-default Site Editor color, so inheritance cannot pass by coincidence.
@@ -144,15 +144,15 @@ async function read(base) {
     };
     const styles = await page.$eval(".masthead a", (a) => {
       const accent = getComputedStyle(a).color;
-      if (!getComputedStyle(a).getPropertyValue("--tp--color--link").trim()) return { accent, themeLink: null };
+      if (!getComputedStyle(a).getPropertyValue("--sp--color--link").trim()) return { accent, themeLink: null };
       const probe = document.createElement("span");
-      probe.style.color = "var(--tp--color--link)";
+      probe.style.color = "var(--sp--color--link)";
       a.parentElement.append(probe);
       const themeLink = getComputedStyle(probe).color;
       probe.remove();
       return { accent, themeLink };
     });
-    // After a full load: TypedPress's region navigation swaps the title, not the other head tags.
+    // After a full load: SpacePress's region navigation swaps the title, not the other head tags.
     await page.goto(`${base}/plants/lavender`, { waitUntil: "networkidle" });
     lavender.description = await page.$eval("meta[name=description]", (m) => m.content);
     await page.click("text=← All plants");
@@ -165,7 +165,7 @@ async function read(base) {
   }
 }
 
-test("the TypedPress app and the Astro site render the same content with their own styles", async () => {
+test("the SpacePress app and the Astro site render the same content with their own styles", async () => {
   const { styles: nativeStyles, ...native } = await read(site.url);
   const { styles: astroStyles, ...onAstro } = await read(astro.url);
   assert.notEqual(nativeStyles.themeLink, null, "the native app must receive WordPress theme colors");
@@ -196,10 +196,10 @@ test("the TypedPress app and the Astro site render the same content with their o
   assert.deepEqual(onAstro, native, "the Astro twin reads the same");
 });
 
-test("an editor's change shows on the TypedPress app at once, and on the Astro site after a rebuild that pulls only that plant", async () => {
+test("an editor's change shows on the SpacePress app at once, and on the Astro site after a rebuild that pulls only that plant", async () => {
   const auth = { authorization: `Basic ${btoa(site.users.admin.appPassword)}`, "content-type": "application/json" };
-  const [plant] = (await (await fetch(`${site.url}/wp-json/typedpress/v1/plants?where=${encodeURIComponent('{"slug":"rosemary"}')}`)).json()).data;
-  const patched = await fetch(`${site.url}/wp-json/typedpress/v1/plants/${plant.id}`, { method: "PATCH", headers: auth, body: JSON.stringify({ summary: "Edited in wp-admin." }) });
+  const [plant] = (await (await fetch(`${site.url}/wp-json/spacepress/v1/plants?where=${encodeURIComponent('{"slug":"rosemary"}')}`)).json()).data;
+  const patched = await fetch(`${site.url}/wp-json/spacepress/v1/plants/${plant.id}`, { method: "PATCH", headers: auth, body: JSON.stringify({ summary: "Edited in wp-admin." }) });
   assert.equal(patched.status, 200);
   const summary = async (base) => {
     const page = await browser.newPage();

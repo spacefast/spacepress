@@ -16,26 +16,26 @@ const paths = [
   "content/drives/seagate-exos-x16.md",
   "content/drives/wd-red-plus-4tb.md",
   "package.json",
-  "tp/app/_lib/format.ts",
-  "tp/app/drives/[slug]/page.tsx",
-  "tp/app/layout.tsx",
-  "tp/app/login.tsx",
-  "tp/app/not-found.tsx",
+  "sp/app/_lib/format.ts",
+  "sp/app/drives/[slug]/page.tsx",
+  "sp/app/layout.tsx",
+  "sp/app/login.tsx",
+  "sp/app/not-found.tsx",
   "public/drive-cart.js",
-  "tp/app/cart/page.tsx",
-  "tp/app/checkout/page.md",
-  "tp/app/page.tsx",
-  "tp/app/site.css",
-  "tp/app/source/page.tsx",
-  "tp/app/source/source.css",
-  "tp/app/staff/layout.tsx",
-  "tp/app/staff/page.tsx",
-  "tp/lib/catalog.ts",
-  "tp/schema.ts",
-  "tp/server.ts",
-  "tp/wp-hooks/typedpress_woo_order_stock.ts",
+  "sp/app/cart/page.tsx",
+  "sp/app/checkout/page.md",
+  "sp/app/page.tsx",
+  "sp/app/site.css",
+  "sp/app/source/page.tsx",
+  "sp/app/source/source.css",
+  "sp/app/staff/layout.tsx",
+  "sp/app/staff/page.tsx",
+  "sp/lib/catalog.ts",
+  "sp/schema.ts",
+  "sp/server.ts",
+  "sp/wp-hooks/spacepress_woo_order_stock.ts",
   "tsconfig.json",
-  "typedpress.config.ts",
+  "spacepress.config.ts",
 ];
 const files = await Promise.all(paths.map(async (path) => {
   const file = resolve(root, path);
@@ -48,7 +48,7 @@ const options = {
   themeType: "system",
   overflow: "scroll",
 };
-const defaultPath = "tp/schema.ts";
+const defaultPath = "sp/schema.ts";
 const rendered = await Promise.all(files.map(async ([name, contents]) => {
   const { prerenderedHTML } = await preloadFile({ file: { name, contents }, options });
   return [name, prerenderedHTML];

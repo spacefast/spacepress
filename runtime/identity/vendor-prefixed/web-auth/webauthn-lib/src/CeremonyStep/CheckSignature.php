@@ -2,27 +2,27 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Webauthn\CeremonyStep;
+namespace SpacePress\Identity\Vendor\Webauthn\CeremonyStep;
 
-use TypedPress\Identity\Vendor\CBOR\Decoder;
-use TypedPress\Identity\Vendor\CBOR\Normalizable;
-use TypedPress\Identity\Vendor\Cose\Algorithm\Manager;
-use TypedPress\Identity\Vendor\Cose\Algorithm\Signature\ECDSA\ES256;
-use TypedPress\Identity\Vendor\Cose\Algorithm\Signature\RSA\RS256;
-use TypedPress\Identity\Vendor\Cose\Algorithm\Signature\Signature;
-use TypedPress\Identity\Vendor\Cose\Key\Key;
+use SpacePress\Identity\Vendor\CBOR\Decoder;
+use SpacePress\Identity\Vendor\CBOR\Normalizable;
+use SpacePress\Identity\Vendor\Cose\Algorithm\Manager;
+use SpacePress\Identity\Vendor\Cose\Algorithm\Signature\ECDSA\ES256;
+use SpacePress\Identity\Vendor\Cose\Algorithm\Signature\RSA\RS256;
+use SpacePress\Identity\Vendor\Cose\Algorithm\Signature\Signature;
+use SpacePress\Identity\Vendor\Cose\Key\Key;
 use function is_array;
-use function typedpress_identity_vendor_trigger_deprecation as trigger_deprecation;
-use TypedPress\Identity\Vendor\Webauthn\AuthenticatorAssertionResponse;
-use TypedPress\Identity\Vendor\Webauthn\AuthenticatorAttestationResponse;
-use TypedPress\Identity\Vendor\Webauthn\CredentialRecord;
-use TypedPress\Identity\Vendor\Webauthn\Exception\AuthenticatorResponseVerificationException;
-use TypedPress\Identity\Vendor\Webauthn\PublicKeyCredentialCreationOptions;
-use TypedPress\Identity\Vendor\Webauthn\PublicKeyCredentialRequestOptions;
-use TypedPress\Identity\Vendor\Webauthn\PublicKeyCredentialSource;
-use TypedPress\Identity\Vendor\Webauthn\StringStream;
-use TypedPress\Identity\Vendor\Webauthn\U2FPublicKey;
-use TypedPress\Identity\Vendor\Webauthn\Util\CoseSignatureFixer;
+use function spacepress_identity_vendor_trigger_deprecation as trigger_deprecation;
+use SpacePress\Identity\Vendor\Webauthn\AuthenticatorAssertionResponse;
+use SpacePress\Identity\Vendor\Webauthn\AuthenticatorAttestationResponse;
+use SpacePress\Identity\Vendor\Webauthn\CredentialRecord;
+use SpacePress\Identity\Vendor\Webauthn\Exception\AuthenticatorResponseVerificationException;
+use SpacePress\Identity\Vendor\Webauthn\PublicKeyCredentialCreationOptions;
+use SpacePress\Identity\Vendor\Webauthn\PublicKeyCredentialRequestOptions;
+use SpacePress\Identity\Vendor\Webauthn\PublicKeyCredentialSource;
+use SpacePress\Identity\Vendor\Webauthn\StringStream;
+use SpacePress\Identity\Vendor\Webauthn\U2FPublicKey;
+use SpacePress\Identity\Vendor\Webauthn\Util\CoseSignatureFixer;
 
 final readonly class CheckSignature implements CeremonyStep
 {
@@ -41,7 +41,7 @@ final readonly class CheckSignature implements CeremonyStep
         string $host
     ): void {
         if ($credentialRecord instanceof PublicKeyCredentialSource) {
-            typedpress_identity_vendor_trigger_deprecation(
+            spacepress_identity_vendor_trigger_deprecation(
                 'web-auth/webauthn-lib',
                 '5.3',
                 'Passing a PublicKeyCredentialSource to "%s::process()" is deprecated, pass a CredentialRecord instead.',

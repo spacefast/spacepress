@@ -2,23 +2,23 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Cose\Structure;
+namespace SpacePress\Identity\Vendor\Cose\Structure;
 
-use TypedPress\Identity\Vendor\CBOR\ByteStringObject;
-use TypedPress\Identity\Vendor\CBOR\CBORObject;
-use TypedPress\Identity\Vendor\CBOR\Decoder;
-use TypedPress\Identity\Vendor\CBOR\DecoderInterface;
-use TypedPress\Identity\Vendor\CBOR\IndefiniteLengthByteStringObject;
-use TypedPress\Identity\Vendor\CBOR\IndefiniteLengthListObject;
-use TypedPress\Identity\Vendor\CBOR\IndefiniteLengthMapObject;
-use TypedPress\Identity\Vendor\CBOR\IndefiniteLengthTextStringObject;
-use TypedPress\Identity\Vendor\CBOR\ListObject;
-use TypedPress\Identity\Vendor\CBOR\MapObject;
-use TypedPress\Identity\Vendor\CBOR\NegativeIntegerObject;
-use TypedPress\Identity\Vendor\CBOR\OtherObject\OtherObjectInterface;
-use TypedPress\Identity\Vendor\CBOR\StringStream;
-use TypedPress\Identity\Vendor\CBOR\TextStringObject;
-use TypedPress\Identity\Vendor\CBOR\UnsignedIntegerObject;
+use SpacePress\Identity\Vendor\CBOR\ByteStringObject;
+use SpacePress\Identity\Vendor\CBOR\CBORObject;
+use SpacePress\Identity\Vendor\CBOR\Decoder;
+use SpacePress\Identity\Vendor\CBOR\DecoderInterface;
+use SpacePress\Identity\Vendor\CBOR\IndefiniteLengthByteStringObject;
+use SpacePress\Identity\Vendor\CBOR\IndefiniteLengthListObject;
+use SpacePress\Identity\Vendor\CBOR\IndefiniteLengthMapObject;
+use SpacePress\Identity\Vendor\CBOR\IndefiniteLengthTextStringObject;
+use SpacePress\Identity\Vendor\CBOR\ListObject;
+use SpacePress\Identity\Vendor\CBOR\MapObject;
+use SpacePress\Identity\Vendor\CBOR\NegativeIntegerObject;
+use SpacePress\Identity\Vendor\CBOR\OtherObject\OtherObjectInterface;
+use SpacePress\Identity\Vendor\CBOR\StringStream;
+use SpacePress\Identity\Vendor\CBOR\TextStringObject;
+use SpacePress\Identity\Vendor\CBOR\UnsignedIntegerObject;
 use function in_array;
 use InvalidArgumentException;
 use function is_int;
@@ -32,7 +32,7 @@ use function strlen;
  * recipient lists.
  *
  * These are deliberately static functions over plain CBOR objects rather than methods on a message class. Since
- * spomky-labs/cbor-php 3.4.0 the six COSE structures live upstream, as TypedPress\Identity\Vendor\CBOR\Tag\CoseSign1Tag and its siblings: that
+ * spomky-labs/cbor-php 3.4.0 the six COSE structures live upstream, as SpacePress\Identity\Vendor\CBOR\Tag\CoseSign1Tag and its siblings: that
  * library owns the shape of a message, this one owns what RFC 9052 says the shape means. Everything here therefore
  * applies to an upstream message, to the deprecated Cose\...Tag classes, and to a header map a caller assembled
  * itself.

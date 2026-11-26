@@ -2,7 +2,7 @@
 /**
  * Core media fields collection - applies to attachment post type
  *
- * @package TypedPress_Admin
+ * @package SpacePress_Admin
  */
 
 return array(

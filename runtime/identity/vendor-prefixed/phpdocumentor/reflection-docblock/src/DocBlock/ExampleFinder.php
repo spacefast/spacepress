@@ -11,9 +11,9 @@ declare(strict_types=1);
  * @link      http://phpdoc.org
  */
 
-namespace TypedPress\Identity\Vendor\phpDocumentor\Reflection\DocBlock;
+namespace SpacePress\Identity\Vendor\phpDocumentor\Reflection\DocBlock;
 
-use TypedPress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\Example;
+use SpacePress\Identity\Vendor\phpDocumentor\Reflection\DocBlock\Tags\Example;
 
 use function array_slice;
 use function file;

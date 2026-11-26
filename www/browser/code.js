@@ -28,19 +28,19 @@ function fileOf(node) {
 }
 
 function drawCode(node) {
-  if (node.classList.contains("tp-drawn")) return;
+  if (node.classList.contains("sp-drawn")) return;
   const file = fileOf(node);
   const titled = node.hasAttribute("file");
   const note = node.getAttribute("note");
   node.replaceChildren();
   new File({ ...options, disableFileHeader: !titled, disableLineNumbers: !titled }).render({ file, containerWrapper: node });
   if (note) {
-    const meta = Object.assign(document.createElement("span"), { slot: "header-metadata", className: "tp-note", textContent: note });
+    const meta = Object.assign(document.createElement("span"), { slot: "header-metadata", className: "sp-note", textContent: note });
     node.querySelector("diffs-container")?.append(meta);
   }
   const copy = Object.assign(document.createElement("button"), {
     type: "button",
-    className: "tp-copy-btn",
+    className: "sp-copy-btn",
     textContent: "Copy",
   });
   copy.setAttribute("aria-label", `Copy ${file.name}`);
@@ -57,15 +57,15 @@ function drawCode(node) {
     }, () => {});
   };
   node.append(copy);
-  node.classList.add("tp-drawn");
+  node.classList.add("sp-drawn");
 }
 
 function drawDiff(node) {
-  const [before, after] = [...node.querySelectorAll(":scope > tp-code")].map(fileOf);
+  const [before, after] = [...node.querySelectorAll(":scope > sp-code")].map(fileOf);
   if (!before || !after) return;
   node.replaceChildren();
   new FileDiff({ ...options, diffStyle: "unified", hunkSeparators: "simple" }).render({ oldFile: before, newFile: after, containerWrapper: node });
-  node.classList.add("tp-drawn");
+  node.classList.add("sp-drawn");
 }
 
 function tree(host, paths, notes, selected, onSelect, fixedHeight = false) {
@@ -109,23 +109,23 @@ function drawTree(node) {
   }
   node.replaceChildren();
   tree(node, paths, notes);
-  node.classList.add("tp-drawn");
+  node.classList.add("sp-drawn");
 }
 
 function drawExample(node) {
-  const files = [...node.querySelectorAll(":scope > tp-code")];
+  const files = [...node.querySelectorAll(":scope > sp-code")];
   const byPath = new Map(files.map((f) => [f.getAttribute("file"), f]));
   const notes = Object.fromEntries(files.filter((f) => f.hasAttribute("label")).map((f) => [f.getAttribute("file"), f.getAttribute("label")]));
   const show = (path) => {
     const file = byPath.get(path);
     if (!file) return;
-    for (const f of files) f.classList.toggle("tp-open", f === file);
+    for (const f of files) f.classList.toggle("sp-open", f === file);
     drawCode(file);
   };
   const first = byPath.has(node.getAttribute("open")) ? node.getAttribute("open") : files[0]?.getAttribute("file");
-  const host = Object.assign(document.createElement("div"), { className: "tp-example-tree" });
+  const host = Object.assign(document.createElement("div"), { className: "sp-example-tree" });
   node.prepend(host);
-  node.classList.add("tp-drawn");
+  node.classList.add("sp-drawn");
   tree(host, [...byPath.keys()], notes, first, show, true);
   show(first);
 }
@@ -165,7 +165,7 @@ function parseAsciiTree(text) {
 }
 
 function enhanceProsePre(pre) {
-  if (pre.classList.contains("tp-drawn")) return;
+  if (pre.classList.contains("sp-drawn")) return;
   const codeEl = pre.querySelector("code");
   const rawText = (codeEl ?? pre).textContent.replace(/^\n+/, "").replace(/\n+$/, "");
   const classes = `${pre.className} ${codeEl?.className ?? ""}`;
@@ -175,15 +175,15 @@ function enhanceProsePre(pre) {
   if (lang === "tree" || isAsciiTree(rawText)) {
     const { paths, notes } = parseAsciiTree(rawText);
     if (paths.length > 0) {
-      const host = document.createElement("tp-tree");
+      const host = document.createElement("sp-tree");
       pre.replaceWith(host);
       tree(host, paths, notes);
-      host.classList.add("tp-drawn");
+      host.classList.add("sp-drawn");
       return;
     }
   }
 
-  const host = document.createElement("tp-code");
+  const host = document.createElement("sp-code");
   if (lang) host.setAttribute("lang", lang);
   host.textContent = rawText;
   pre.replaceWith(host);
@@ -193,14 +193,14 @@ function enhanceProsePre(pre) {
 let pendingTimer = null;
 
 function collectJobs(root = document) {
-  const prosePres = [...root.querySelectorAll(".sp-prose pre, pre.typedpress-code, pre.wp-block-code")]
-    .filter((n) => !n.classList.contains("tp-drawn") && !n.closest("tp-code, tp-diff, tp-tree, tp-example, tp-sandbox, tp-play"));
+  const prosePres = [...root.querySelectorAll(".sp-prose pre, pre.spacepress-code, pre.wp-block-code")]
+    .filter((n) => !n.classList.contains("sp-drawn") && !n.closest("sp-code, sp-diff, sp-tree, sp-example, sp-sandbox, sp-play"));
 
   return [
-    ...[...root.querySelectorAll("tp-example:not(.tp-drawn)")].map((n) => () => drawExample(n)),
-    ...[...root.querySelectorAll("tp-diff:not(.tp-drawn)")].map((n) => () => drawDiff(n)),
-    ...[...root.querySelectorAll("tp-tree:not(.tp-drawn)")].map((n) => () => drawTree(n)),
-    ...[...root.querySelectorAll("tp-code:not(.tp-drawn)")].filter((n) => !n.closest("tp-example, tp-diff")).map((n) => () => drawCode(n)),
+    ...[...root.querySelectorAll("sp-example:not(.sp-drawn)")].map((n) => () => drawExample(n)),
+    ...[...root.querySelectorAll("sp-diff:not(.sp-drawn)")].map((n) => () => drawDiff(n)),
+    ...[...root.querySelectorAll("sp-tree:not(.sp-drawn)")].map((n) => () => drawTree(n)),
+    ...[...root.querySelectorAll("sp-code:not(.sp-drawn)")].filter((n) => !n.closest("sp-example, sp-diff")).map((n) => () => drawCode(n)),
     ...prosePres.map((n) => () => enhanceProsePre(n)),
   ];
 }

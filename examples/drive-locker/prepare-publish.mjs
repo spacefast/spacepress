@@ -3,8 +3,8 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 const root = fileURLToPath(new URL("./", import.meta.url));
-const destination = path.join(root, ".tp/publish");
-const inputs = ["typedpress.config.ts", "lib", "tp/_generated/migrations", "public"];
+const destination = path.join(root, ".sp/publish");
+const inputs = ["spacepress.config.ts", "lib", "sp/_generated/migrations", "public"];
 
 async function rejectSymlinks(file) {
   const stat = await lstat(file);
@@ -19,15 +19,15 @@ for (const input of inputs) await rejectSymlinks(path.join(root, input));
 await mkdir(destination, { recursive: true });
 // Preserve the CLI's Space selection across later builds.
 for (const entry of await readdir(destination)) {
-  if (!["typedpress.config.ts", "lib", "tp", "public", ".spacefast"].includes(entry)) {
+  if (!["spacepress.config.ts", "lib", "sp", "public", ".spacefast"].includes(entry)) {
     throw new Error(`Unexpected publish input: ${entry}`);
   }
 }
-for (const directory of ["lib", "tp", "public"]) {
+for (const directory of ["lib", "sp", "public"]) {
   await rm(path.join(destination, directory), { recursive: true, force: true });
 }
 for (const input of inputs) {
   await mkdir(path.dirname(path.join(destination, input)), { recursive: true });
   await cp(path.join(root, input), path.join(destination, input), { recursive: true });
 }
-console.log("Prepared .tp/publish with config, lib, migrations and built public assets only.");
+console.log("Prepared .sp/publish with config, lib, migrations and built public assets only.");

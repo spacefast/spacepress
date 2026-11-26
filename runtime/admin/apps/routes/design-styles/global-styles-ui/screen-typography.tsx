@@ -14,16 +14,16 @@ function ScreenTypography() {
 	return (
 		<>
 			<ScreenHeader
-				title={ __( 'Typography', 'typedpress-admin' ) }
+				title={ __( 'Typography', 'spacepress-admin' ) }
 				description={ __(
 					'Available fonts, typographic styles, and the application of those styles.',
-					'typedpress-admin'
+					'spacepress-admin'
 				) }
 			/>
-			<div className="typedpress-admin-global-styles-screen">
+			<div className="spacepress-admin-global-styles-screen">
 				<VStack spacing={ 7 }>
 					<TypographyVariations
-						title={ __( 'Typesets', 'typedpress-admin' ) }
+						title={ __( 'Typesets', 'spacepress-admin' ) }
 					/>
 					{ fontLibraryEnabled && <FontFamilies /> }
 					<TypographyElements />

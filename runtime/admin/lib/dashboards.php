@@ -1,16 +1,16 @@
 <?php
 /**
- * Composable dashboards and widgets for TypedPress Admin.
+ * Composable dashboards and widgets for SpacePress Admin.
  *
  * Replaces upstream stub demonstration widgets with real SpacePress widgets and registers
  * declarative `adminWidget()` and `adminDashboard()` exports from the active app.
  *
- * @package TypedPress_Admin
+ * @package SpacePress_Admin
  */
 
-global $tp_admin_declarative_widgets, $tp_admin_dashboards;
-$tp_admin_declarative_widgets = array();
-$tp_admin_dashboards          = array();
+global $sp_admin_declarative_widgets, $sp_admin_dashboards;
+$sp_admin_declarative_widgets = array();
+$sp_admin_dashboards          = array();
 
 /**
  * Register a declarative widget (`adminWidget()`).
@@ -18,15 +18,15 @@ $tp_admin_dashboards          = array();
  * @param string $id   Kebab-case widget id.
  * @param array  $args Widget declaration.
  */
-function tp_admin_register_declarative_widget( $id, $args ) {
-	global $tp_admin_declarative_widgets;
+function sp_admin_register_declarative_widget( $id, $args ) {
+	global $sp_admin_declarative_widgets;
 	if ( ! is_string( $id ) || '' === $id || ! is_array( $args ) ) {
 		return;
 	}
-	$tp_admin_declarative_widgets[ $id ] = array_merge(
+	$sp_admin_declarative_widgets[ $id ] = array_merge(
 		array(
 			'id'         => $id,
-			'type'       => 'tp-widget/' . $id,
+			'type'       => 'sp-widget/' . $id,
 			'title'      => $id,
 			'capability' => 'manage_options',
 			'display'    => 'summary',
@@ -41,12 +41,12 @@ function tp_admin_register_declarative_widget( $id, $args ) {
  * @param string $id   Kebab-case dashboard id.
  * @param array  $args Dashboard declaration.
  */
-function tp_admin_register_dashboard( $id, $args ) {
-	global $tp_admin_dashboards;
+function sp_admin_register_dashboard( $id, $args ) {
+	global $sp_admin_dashboards;
 	if ( ! is_string( $id ) || '' === $id || ! is_array( $args ) ) {
 		return;
 	}
-	$tp_admin_dashboards[ $id ] = array_merge(
+	$sp_admin_dashboards[ $id ] = array_merge(
 		array(
 			'id'          => $id,
 			'title'       => $id,
@@ -64,11 +64,11 @@ function tp_admin_register_dashboard( $id, $args ) {
 /**
  * Collect declarative widgets and dashboards once per request.
  */
-function tp_admin_collect_dashboards() {
+function sp_admin_collect_dashboards() {
 	static $collected = false;
 	if ( ! $collected && did_action( 'init' ) ) {
 		$collected = true;
-		do_action( 'tp_admin_dashboards' );
+		do_action( 'sp_admin_dashboards' );
 	}
 }
 
@@ -77,11 +77,11 @@ function tp_admin_collect_dashboards() {
  *
  * @return array<int, array>
  */
-function tp_admin_get_declarative_widgets() {
-	global $tp_admin_declarative_widgets;
-	tp_admin_collect_dashboards();
+function sp_admin_get_declarative_widgets() {
+	global $sp_admin_declarative_widgets;
+	sp_admin_collect_dashboards();
 	$allowed = array();
-	foreach ( $tp_admin_declarative_widgets as $widget ) {
+	foreach ( $sp_admin_declarative_widgets as $widget ) {
 		$cap = (string) ( $widget['capability'] ?? 'manage_options' );
 		if ( current_user_can( $cap ) ) {
 			$allowed[] = $widget;
@@ -95,11 +95,11 @@ function tp_admin_get_declarative_widgets() {
  *
  * @return array<int, array>
  */
-function tp_admin_get_dashboards() {
-	global $tp_admin_dashboards;
-	tp_admin_collect_dashboards();
+function sp_admin_get_dashboards() {
+	global $sp_admin_dashboards;
+	sp_admin_collect_dashboards();
 	$allowed = array();
-	foreach ( $tp_admin_dashboards as $dashboard ) {
+	foreach ( $sp_admin_dashboards as $dashboard ) {
 		$cap = (string) ( $dashboard['capability'] ?? 'manage_options' );
 		if ( current_user_can( $cap ) ) {
 			$allowed[] = $dashboard;
@@ -113,7 +113,7 @@ function tp_admin_get_dashboards() {
  * `core-recent-posts`) from the active widget list so only real SpacePress & custom widgets appear.
  */
 add_filter(
-	'tp_admin_registered_widgets',
+	'sp_admin_registered_widgets',
 	static function ( $widgets ) {
 		$stubs = array( 'core-weather', 'core-quick-stats', 'core-recent-posts', 'core/weather', 'core/quick-stats', 'core/recent-posts' );
 		return array_values(
@@ -131,12 +131,12 @@ add_filter(
  * An `adminDashboard({ home: true })` declaration overrides this default when the viewer may open it.
  */
 add_filter(
-	'tp_admin_dashboard_widgets',
+	'sp_admin_dashboard_widgets',
 	static function ( $committed ) {
 		if ( is_array( $committed ) && ! empty( $committed ) ) {
 			return $committed;
 		}
-		foreach ( tp_admin_get_dashboards() as $dashboard ) {
+		foreach ( sp_admin_get_dashboards() as $dashboard ) {
 			if ( ! empty( $dashboard['home'] ) && ! empty( $dashboard['widgets'] ) ) {
 				return $dashboard['widgets'];
 			}
@@ -145,8 +145,8 @@ add_filter(
 		$layout = array();
 		$order  = 0;
 
-		$readable = function_exists( 'tp_admin_navigation' ) ? tp_admin_navigation() : array();
-		$plugin   = class_exists( '\\TypedPress\\Wp\\Runtime' ) ? \TypedPress\Wp\Runtime::plugin() : null;
+		$readable = function_exists( 'sp_admin_navigation' ) ? sp_admin_navigation() : array();
+		$plugin   = class_exists( '\\SpacePress\\Wp\\Runtime' ) ? \SpacePress\Wp\Runtime::plugin() : null;
 		$has_post_collections = false;
 		if ( $plugin ) {
 			foreach ( $readable as $name ) {
@@ -160,15 +160,15 @@ add_filter(
 
 		if ( ! empty( $readable ) || current_user_can( 'edit_posts' ) ) {
 			$layout[] = array(
-				'uid'    => 'tp-default-content-overview',
-				'type'   => 'tp/content-overview',
+				'uid'    => 'sp-default-content-overview',
+				'type'   => 'sp/content-overview',
 				'width'  => 2,
 				'height' => 2,
 				'order'  => $order++,
 			);
 			$layout[] = array(
-				'uid'    => 'tp-default-recent-activity',
-				'type'   => 'tp/recent-activity',
+				'uid'    => 'sp-default-recent-activity',
+				'type'   => 'sp/recent-activity',
 				'width'  => 2,
 				'height' => 2,
 				'order'  => $order++,
@@ -177,8 +177,8 @@ add_filter(
 
 		if ( ( $has_post_collections || current_user_can( 'edit_posts' ) ) && current_user_can( 'edit_posts' ) ) {
 			$layout[] = array(
-				'uid'    => 'tp-default-drafts-queue',
-				'type'   => 'tp/drafts-queue',
+				'uid'    => 'sp-default-drafts-queue',
+				'type'   => 'sp/drafts-queue',
 				'width'  => 2,
 				'height' => 2,
 				'order'  => $order++,
@@ -187,8 +187,8 @@ add_filter(
 
 		if ( $plugin && $plugin->schema->commerce() !== null && current_user_can( 'manage_options' ) ) {
 			$layout[] = array(
-				'uid'    => 'tp-default-store-pulse',
-				'type'   => 'tp/store-pulse',
+				'uid'    => 'sp-default-store-pulse',
+				'type'   => 'sp/store-pulse',
 				'width'  => 2,
 				'height' => 2,
 				'order'  => $order++,
@@ -197,8 +197,8 @@ add_filter(
 
 		if ( current_user_can( 'manage_options' ) ) {
 			$layout[] = array(
-				'uid'    => 'tp-default-app-status',
-				'type'   => 'tp/app-status',
+				'uid'    => 'sp-default-app-status',
+				'type'   => 'sp/app-status',
 				'width'  => 2,
 				'height' => 2,
 				'order'  => $order++,
@@ -214,15 +214,15 @@ add_filter(
  * Register custom non-home dashboards in the sidebar under `Home`.
  */
 add_action(
-	'tp_admin_init',
+	'sp_admin_init',
 	static function () {
 		$pos = 20;
-		foreach ( tp_admin_get_dashboards() as $dashboard ) {
+		foreach ( sp_admin_get_dashboards() as $dashboard ) {
 			if ( ! empty( $dashboard['home'] ) || false === ( $dashboard['menu'] ?? array() ) ) {
 				continue;
 			}
 			$menu = is_array( $dashboard['menu'] ?? null ) ? $dashboard['menu'] : array();
-			tp_admin_register_menu_item(
+			sp_admin_register_menu_item(
 				'dashboard-' . $dashboard['id'],
 				array(
 					'to'       => '/dashboards/' . rawurlencode( $dashboard['id'] ),

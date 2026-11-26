@@ -1,14 +1,14 @@
-//! `typedpress sync` (design §5.4).
+//! `spacepress sync` (design §5.4).
 //!
 //! ```text
-//! typedpress sync [dir] [--site <url>] [--only c1,c2] [--check] [--no-commit] [--json]
-//! typedpress sync --pr [dir] [--site <url>] [--repo owner/name] [--base branch]
-//! typedpress sync status [dir] --site …     what a sync would do; writes nothing
-//! typedpress sync resolve <uid> [dir] --site …
+//! spacepress sync [dir] [--site <url>] [--only c1,c2] [--check] [--no-commit] [--json]
+//! spacepress sync --pr [dir] [--site <url>] [--repo owner/name] [--base branch]
+//! spacepress sync status [dir] --site …     what a sync would do; writes nothing
+//! spacepress sync resolve <uid> [dir] --site …
 //! ```
 //!
-//! Without `--site`, the project's running dev site. The credential is the one `typedpress login`
-//! stored for the site, or `TP_APP_PASSWORD` / `TP_TOKEN` in the environment (`remote::sign_in`).
+//! Without `--site`, the project's running dev site. The credential is the one `spacepress login`
+//! stored for the site, or `SP_APP_PASSWORD` / `SP_TOKEN` in the environment (`remote::sign_in`).
 //!
 //! `--pr` runs on a fresh worktree of the default branch and opens or updates one pull request with
 //! the result (see `sync::pr`); it needs `GITHUB_TOKEN`.
@@ -22,7 +22,7 @@ use serde_json::json;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-const USAGE: &str = "usage: typedpress sync [status | resolve <uid>] [dir] [--site <url>] [--only c1,c2] [--check] [--no-commit] [--json]\n       typedpress sync --pr [dir] [--site <url>] [--repo owner/name] [--base branch] [--json]";
+const USAGE: &str = "usage: spacepress sync [status | resolve <uid>] [dir] [--site <url>] [--only c1,c2] [--check] [--no-commit] [--json]\n       spacepress sync --pr [dir] [--site <url>] [--repo owner/name] [--base branch] [--json]";
 
 struct Flags {
     mode: Mode,
@@ -78,7 +78,7 @@ fn parse(args: &[String]) -> Result<Flags, String> {
             "--repo" => flags.repo = Some(value("--repo")?),
             "--base" => flags.base = Some(value("--base")?),
             "--watch" => {
-                return Err("--watch is not available yet; run typedpress sync again, or from a scheduler".into());
+                return Err("--watch is not available yet; run spacepress sync again, or from a scheduler".into());
             }
             other if other.starts_with("--") => return Err(format!("unknown flag {other}")),
             other => positional.push(other.to_string()),
@@ -100,7 +100,7 @@ fn parse(args: &[String]) -> Result<Flags, String> {
         return Err("too many arguments".into());
     }
     if flags.check && matches!(flags.mode, Mode::Resolve(_)) {
-        return Err("resolve writes both sides; it has no --check (typedpress sync --check shows the conflict)".into());
+        return Err("resolve writes both sides; it has no --check (spacepress sync --check shows the conflict)".into());
     }
     if flags.pr && (flags.check || !flags.commit || !matches!(flags.mode, Mode::Sync)) {
         return Err(
@@ -203,7 +203,7 @@ pub fn run(args: &[String]) -> ExitCode {
     if result.is_ok() && !check && flags.commit && !flags.pr && !report.written.is_empty() {
         let paths = report.written.clone();
         let message = format!(
-            "typedpress sync: {} applied, {} conflicts",
+            "spacepress sync: {} applied, {} conflicts",
             report.applied,
             report.conflicts.len()
         );

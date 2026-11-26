@@ -5,9 +5,9 @@ declare(strict_types=1);
 /*
  * The script modules a page loads, and the cache header of a content-hashed client file, over HTTP
  * (tests/app_router.rs `fixed_script_modules_carry_a_build_version`). Prints one JSON object: every
- * module script and import map URL under the TypedPress plugins, by file name, with its `ver`.
+ * module script and import map URL under the SpacePress plugins, by file name, with its `ver`.
  *
- *   TP_WP_THEMES=1 php tests/php/script_versions.php <wp-content dir>
+ *   SP_WP_THEMES=1 php tests/php/script_versions.php <wp-content dir>
  */
 
 require __DIR__ . '/wp.php';
@@ -28,7 +28,7 @@ if (preg_match('#<script[^>]*type="importmap"[^>]*>(.*?)</script>#s', $body, $ma
 }
 $out = [];
 foreach ($urls as $u) {
-    if (!preg_match('#/plugins/(typedpress-[a-z0-9-]+)/(.*?)(?:\?(.*))?$#', $u, $m)) {
+    if (!preg_match('#/plugins/(spacepress-[a-z0-9-]+)/(.*?)(?:\?(.*))?$#', $u, $m)) {
         continue;
     }
     parse_str($m[3] ?? '', $query);

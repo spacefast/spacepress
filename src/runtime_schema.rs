@@ -1,6 +1,6 @@
-//! The runtime schema lock (`tp/_generated/runtime-schema.json`, docs/spec/spec.md §2.10).
+//! The runtime schema lock (`sp/_generated/runtime-schema.json`, docs/spec/spec.md §2.10).
 //!
-//! A site with `runtimeSchema: true` can add fields to its collections while it runs; `typedpress pull`
+//! A site with `runtimeSchema: true` can add fields to its collections while it runs; `spacepress pull`
 //! writes the site's active version here. This module declares those fields in the build, as if
 //! they were authored, so a build made after a pull contains them.
 //!
@@ -8,7 +8,7 @@
 //! Each one is turned into the builder call an author would write (`text().optional().max(80)`)
 //! and goes through the evaluator's and the extractor's own rules, so a lock field is checked by
 //! the code that checks an authored one and nothing here restates a rule. The same definitions are
-//! checked on the site by `TypedPress\RuntimeSchema\Validator`; `tests/runtime-schema/corpus.json` runs
+//! checked on the site by `SpacePress\RuntimeSchema\Validator`; `tests/runtime-schema/corpus.json` runs
 //! against both.
 
 use crate::diag::{Code, Diag, Span};
@@ -21,8 +21,8 @@ use indexmap::IndexMap;
 use serde_json::{Map, Value as Json};
 use std::path::Path;
 
-/// Relative to the directory that holds `typedpress.config.ts`.
-pub const LOCK: &str = "tp/_generated/runtime-schema.json";
+/// Relative to the directory that holds `spacepress.config.ts`.
+pub const LOCK: &str = "sp/_generated/runtime-schema.json";
 /// The stored format this compiler reads and the runtime writes.
 pub const FORMAT: u64 = 1;
 
@@ -114,7 +114,7 @@ pub fn declare(program: &Program, ev: &mut Evaluator<'_>, config: &Value) -> Res
                 top.get("format").unwrap_or(&Json::Null)
             ),
         )
-        .help("run `typedpress pull` with this TypedPress version to rewrite the lock"));
+        .help("run `spacepress pull` with this SpacePress version to rewrite the lock"));
     }
     keys(
         top,
@@ -259,7 +259,7 @@ pub fn declare(program: &Program, ev: &mut Evaluator<'_>, config: &Value) -> Res
     Ok(Some(out))
 }
 
-/// A `collection()` or `global()` value for a kind the lock adds. The lock holds what `typedpress pull`
+/// A `collection()` or `global()` value for a kind the lock adds. The lock holds what `spacepress pull`
 /// wrote, so a few shapes are fixed here rather than inferred: a collection's `title` is its
 /// required text field and `content`, when present, is its body.
 fn kind(
@@ -348,7 +348,7 @@ pub fn apply(lock: Option<&Lock>, ev: &mut Evaluator<'_>, ext: &mut Extracted) -
             let what = if *global { "global" } else { "collection" };
             return Err(
                 refuse(kind, format!("this project declares no {what} with that name")).help(format!(
-                    "declare `{kind}` in the project's schema, or run `typedpress pull` again if the site no longer has it"
+                    "declare `{kind}` in the project's schema, or run `spacepress pull` again if the site no longer has it"
                 )),
             );
         }
@@ -375,7 +375,7 @@ pub fn apply(lock: Option<&Lock>, ev: &mut Evaluator<'_>, ext: &mut Extracted) -
             Some(_) => {
                 return Err(
                     refuse(&at, format!("`{name}` is already a field of `{kind}`")).help(format!(
-                        "the project's source declares `{name}` differently; keep one definition, then run `typedpress pull`"
+                        "the project's source declares `{name}` differently; keep one definition, then run `spacepress pull`"
                     )),
                 );
             }
@@ -410,7 +410,7 @@ pub fn apply(lock: Option<&Lock>, ev: &mut Evaluator<'_>, ext: &mut Extracted) -
         };
         if !exists {
             return Err(refuse(kind, "an override names a kind this project doesn't declare")
-                .help("run `typedpress pull` again, or remove the entry from the lock"));
+                .help("run `spacepress pull` again, or remove the entry from the lock"));
         }
         if !global && !ext.schema.collections[kind].editor {
             return Err(refuse(
@@ -563,7 +563,7 @@ fn prefixed(prefix: &str, keys: Vec<KeyPattern>) -> Vec<KeyPattern> {
 
 /// A field the lock adds stores its values under keys no other field of its storage uses: a
 /// collection's meta keys, and the one option name space every global shares
-/// (`tp_global_<global>_<field>`). Fields declared in source are checked against each other by
+/// (`sp_global_<global>_<field>`). Fields declared in source are checked against each other by
 /// nothing here: this rule is about what a runtime change may add.
 fn storage_collisions(lock: &Lock, ext: &Extracted) -> Result<(), Diag> {
     let added = |global: bool, kind: &str, name: &str| {
@@ -601,9 +601,9 @@ fn storage_collisions(lock: &Lock, ext: &Extracted) -> Result<(), Diag> {
             }
             if let Some(key) = shared(own, theirs) {
                 let place = if *global {
-                    format!("the option tp_global_{key}")
+                    format!("the option sp_global_{key}")
                 } else {
-                    format!("the post meta key tp_{key}")
+                    format!("the post meta key sp_{key}")
                 };
                 return Err(refuse(
                     &format!("{kind}.{name}"),
@@ -814,7 +814,7 @@ fn value(json: &Json) -> Value {
     }
 }
 
-/// Which of the build's fields its compiled code can name: `tp/app/references.php`.
+/// Which of the build's fields its compiled code can name: `sp/app/references.php`.
 ///
 /// The compiler keeps no record of which row fields a hook, action, job or page reads, so this is
 /// the safe approximation: a field is "referenced" when its name occurs as a word anywhere in a
@@ -829,7 +829,7 @@ fn value(json: &Json) -> Value {
 /// the build it runs, never otherwise.
 pub fn references(schema: &crate::schema::Schema, root: &Path) -> Json {
     let lock = root.join(LOCK);
-    let generated = root.join("tp/_generated");
+    let generated = root.join("sp/_generated");
     let sources = crate::diag::sources(|path| !path.starts_with(&generated) && path != lock);
     let mut words = std::collections::HashSet::new();
     for source in &sources {
@@ -1021,8 +1021,8 @@ mod tests {
     use std::rc::Rc;
 
     const CORPUS: &str = include_str!("../tests/runtime-schema/corpus.json");
-    const CONFIG: &str = include_str!("../tests/runtime-schema/base/typedpress.config.ts");
-    const SCHEMA: &str = include_str!("../tests/runtime-schema/base/tp/schema.ts");
+    const CONFIG: &str = include_str!("../tests/runtime-schema/base/spacepress.config.ts");
+    const SCHEMA: &str = include_str!("../tests/runtime-schema/base/sp/schema.ts");
 
     /// Compiles the corpus base project with `lock` (None: no lock file).
     fn build(lock: Option<&Json>) -> Result<crate::schema::Schema, Diag> {
@@ -1032,15 +1032,15 @@ mod tests {
     fn built(lock: Option<&Json>) -> Result<pipeline::Built, Diag> {
         let project = Path::new("/rtschema");
         let mut files = BTreeMap::from([
-            (project.join("typedpress.config.ts"), CONFIG.to_string()),
-            (project.join("tp/schema.ts"), SCHEMA.to_string()),
+            (project.join("spacepress.config.ts"), CONFIG.to_string()),
+            (project.join("sp/schema.ts"), SCHEMA.to_string()),
         ]);
         if let Some(lock) = lock {
             files.insert(project.join(LOCK), lock.to_string());
         }
         crate::diag::isolated(|| {
             let fs = Rc::new(crate::wasm::Memory::new(files));
-            let program = crate::loader::load_from(fs, &project.join("typedpress.config.ts"))
+            let program = crate::loader::load_from(fs, &project.join("spacepress.config.ts"))
                 .map_err(|diagnostics| diagnostics.into_iter().next().expect("a diagnostic"))?;
             pipeline::build(project, &program, || Ok(Previous::none()), |_| None)
         })
@@ -1142,14 +1142,14 @@ mod tests {
             crate::schema_php::render(&schema),
             include_str!("../tests/runtime-schema/kinds.schema.php"),
             "tests/runtime-schema/kinds.schema.php drifted: copy tests/runtime-schema/kinds.lock.json to \
-             tp/_generated/runtime-schema.json in a copy of tests/runtime-schema/base, run `typedpress build` there, \
-             and copy tp/dist/wp-content/plugins/typedpress-app-rtschema/tp/app/schema.php over it"
+             sp/_generated/runtime-schema.json in a copy of tests/runtime-schema/base, run `spacepress build` there, \
+             and copy sp/dist/wp-content/plugins/spacepress-app-rtschema/sp/app/schema.php over it"
         );
     }
 
     #[test]
     fn the_runtimes_copy_of_the_reserved_global_names_is_the_compilers() {
-        let php = include_str!("../runtime/TypedPress/RuntimeSchema/ReservedNames.php");
+        let php = include_str!("../runtime/SpacePress/RuntimeSchema/ReservedNames.php");
         let listed: Vec<&str> = php
             .split_once("CLIENT_TYPES = [")
             .and_then(|(_, rest)| rest.split_once("];"))
@@ -1168,7 +1168,7 @@ mod tests {
         let lock = lock_adding(
             false,
             "articles",
-            // What `typedpress pull` writes for a collection the site added: its title, and here its body.
+            // What `spacepress pull` writes for a collection the site added: its title, and here its body.
             &serde_json::json!({ "fields": {
                 "title": { "type": "text", "notNull": true },
                 "body": { "type": "richText" },
@@ -1208,8 +1208,8 @@ mod tests {
     #[test]
     fn a_lock_field_is_refused_where_a_source_field_would_write_its_keys() {
         // The site stores `seo_title` and `page_layout_meta` as fields of their own; source declares
-        // a group `seo` and a blocks field `page`, which write `tp_seo_title` and
-        // `_tp_page_layout_meta`. Keys differ only in case on MySQL's collation too.
+        // a group `seo` and a blocks field `page`, which write `sp_seo_title` and
+        // `_sp_page_layout_meta`. Keys differ only in case on MySQL's collation too.
         for field in ["seo_title", "page_layout_meta", "SEO_TITLE", "Rating"] {
             let lock = serde_json::json!({ "format": FORMAT, "version": 1, "hash": "h", "collections": {
                 "articles": { "columns": { field: { "type": "integer" } } } } });
@@ -1278,8 +1278,8 @@ mod tests {
         assert_eq!(
             crate::schema_php::render(&schema),
             include_str!("../tests/runtime-schema/base.schema.php"),
-            "tests/runtime-schema/base.schema.php drifted: run `typedpress build` on a copy of tests/runtime-schema/base \
-             and copy tp/dist/wp-content/plugins/typedpress-app-rtschema/tp/app/schema.php over it"
+            "tests/runtime-schema/base.schema.php drifted: run `spacepress build` on a copy of tests/runtime-schema/base \
+             and copy sp/dist/wp-content/plugins/spacepress-app-rtschema/sp/app/schema.php over it"
         );
     }
 
@@ -1288,16 +1288,16 @@ mod tests {
         let project = PathBuf::from("/rtschema");
         let files = BTreeMap::from([
             (
-                project.join("typedpress.config.ts"),
+                project.join("spacepress.config.ts"),
                 CONFIG.replace("runtimeSchema: true", "runtimeSchema: false"),
             ),
-            (project.join("tp/schema.ts"), SCHEMA.to_string()),
+            (project.join("sp/schema.ts"), SCHEMA.to_string()),
             (project.join(LOCK), "not json".to_string()),
         ]);
         let schema = crate::diag::isolated(|| {
             let program = crate::loader::load_from(
                 Rc::new(crate::wasm::Memory::new(files)),
-                &project.join("typedpress.config.ts"),
+                &project.join("spacepress.config.ts"),
             )
             .map_err(|d| d.into_iter().next().expect("a diagnostic"))?;
             pipeline::build(&project, &program, || Ok(Previous::none()), |_| None).map(|built| built.schema)
@@ -1382,21 +1382,21 @@ mod tests {
     fn a_lock_field_named_like_a_relation_of_its_kind_is_refused() {
         let project = PathBuf::from("/rtschema");
         // `ref(articles)` on a table gives `articles` the reverse relation `votes`.
-        let schema = "import { collection, table, text, ref } from \"typedpress\";\n\
+        let schema = "import { collection, table, text, ref } from \"spacepress\";\n\
             export const articles = collection({ title: text() });\n\
             export const votes = table({ article: ref(articles) });\n";
-        let config = "import { defineConfig } from \"typedpress\";\n\
+        let config = "import { defineConfig } from \"spacepress\";\n\
             export default defineConfig({ name: \"rtschema\", runtimeSchema: true });\n";
         let lock = lock_of("articles", "votes", &serde_json::json!({ "type": "text" }));
         let files = BTreeMap::from([
-            (project.join("typedpress.config.ts"), config.to_string()),
-            (project.join("tp/schema.ts"), schema.to_string()),
+            (project.join("spacepress.config.ts"), config.to_string()),
+            (project.join("sp/schema.ts"), schema.to_string()),
             (project.join(LOCK), lock.to_string()),
         ]);
         let refused = crate::diag::isolated(|| {
             let program = crate::loader::load_from(
                 Rc::new(crate::wasm::Memory::new(files)),
-                &project.join("typedpress.config.ts"),
+                &project.join("spacepress.config.ts"),
             )
             .map_err(|d| d.into_iter().next().expect("a diagnostic"))?;
             pipeline::build(&project, &program, || Ok(Previous::none()), |_| None).map(|built| built.schema)

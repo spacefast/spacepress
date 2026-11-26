@@ -11,4 +11,4 @@ SpacePress integrates deeply with both the WordPress ecosystem and modern TypeSc
 - **[Two-Way Markdown & Git Sync](/docs/integrations/markdown-sync)** — keep `content/**/*.md` and WordPress in step with 3-way merges.
 - **[WooCommerce Native Storefront](/docs/integrations/woocommerce)** — declarative `store()`, `product()`, `order()`, and optimistic cart hooks.
 - **[React Email Templates](/docs/integrations/react-email)** — render `.tsx` emails and deliver them transactionally.
-- **[Astro & Typed Clients](/docs/integrations/astro-and-clients)** — generated `createClient()`, `createHooks(React)`, and `@typedpress/astro`.
+- **[Astro & Typed Clients](/docs/integrations/astro-and-clients)** — generated `createClient()`, `createHooks(React)`, and `@spacepress/astro`.

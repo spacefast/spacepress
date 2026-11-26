@@ -3,7 +3,7 @@
 // registration, assertion, assertion replay, a foreign origin and a removed credential.
 declare(strict_types=1);
 require __DIR__ . '/bootstrap.php';
-use TypedPress\Identity\{Plugin, Passkeys};
+use SpacePress\Identity\{Plugin, Passkeys};
 
 ob_start(); // options() sets the binding cookie as a browser response would.
 $b64 = static fn (string $s): string => rtrim(strtr(base64_encode($s), '+/', '-_'), '=');
@@ -54,8 +54,8 @@ $passkeys = new Passkeys(Plugin::$db, Plugin::$security);
 $bind = static function (string $challengeId): void {
     // options() sent its binding in a cookie the CLI can't read back; give the challenge a
     // known binding and present it the way the browser would.
-    $_COOKIE['zi_passkey'] = \TypedPress\Identity\Security::token();
-    Plugin::$db->run('UPDATE ' . Plugin::$db->prefix . 'challenges SET secret_hash=%s WHERE id=%s', \TypedPress\Identity\Security::hash($_COOKIE['zi_passkey']), $challengeId);
+    $_COOKIE['zi_passkey'] = \SpacePress\Identity\Security::token();
+    Plugin::$db->run('UPDATE ' . Plugin::$db->prefix . 'challenges SET secret_hash=%s WHERE id=%s', \SpacePress\Identity\Security::hash($_COOKIE['zi_passkey']), $challengeId);
 };
 
 $options = $passkeys->options($session);

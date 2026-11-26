@@ -1,5 +1,5 @@
 {
-  "name": "typedpress-react-email-spike",
+  "name": "spacepress-react-email-spike",
   "version": "1.0.0",
   "scripts": {
     "test": "tsx verify.ts",

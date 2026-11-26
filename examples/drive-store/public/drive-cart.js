@@ -1,4 +1,4 @@
-import { cart } from "@typedpress/client";
+import { cart } from "@spacepress/client";
 
 function element(tag, text) {
   const node = document.createElement(tag);

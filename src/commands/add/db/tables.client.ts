@@ -1,9 +1,9 @@
-// A typed client for the tables in tp/tables.ts, added by `typedpress add db`. Import these
-// functions from your frontend, or copy the calls. `typedpress build` regenerates the client's types
+// A typed client for the tables in sp/tables.ts, added by `spacepress add db`. Import these
+// functions from your frontend, or copy the calls. `spacepress build` regenerates the client's types
 // from your schema, so a renamed field is a type error here.
-import { createClient } from "./tp/_generated/client/index.ts";
+import { createClient } from "./sp/_generated/client/index.ts";
 
-const first = createClient({ url: "/wp-json/typedpress/v1" });
+const first = createClient({ url: "/wp-json/spacepress/v1" });
 
 /** The open tasks of one project by due date; tasks with no date come first. At most 50 unless you pass `limit`. */
 export function openTasks(project: number) {

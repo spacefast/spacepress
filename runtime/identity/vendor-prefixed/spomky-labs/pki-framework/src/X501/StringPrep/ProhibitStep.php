@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\StringPrep;
+namespace SpacePress\Identity\Vendor\SpomkyLabs\Pki\X501\StringPrep;
 
 use function preg_match;
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X501\StringPrep\Exception\StringPreparationException;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X501\StringPrep\Exception\StringPreparationException;
 
 /**
  * Implements 'Prohibit' step of the Internationalized String Preparation as specified by RFC 4518.

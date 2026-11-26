@@ -1,8 +1,8 @@
 import clsx from 'clsx';
 import type { ReactNode } from 'react';
 import { Icon } from '@wordpress/ui';
-// eslint-disable-next-line @typedpress-admin/design-system/use-new-components
-import { Stack } from '@typedpress-admin/design-system';
+// eslint-disable-next-line @spacepress-admin/design-system/use-new-components
+import { Stack } from '@spacepress-admin/design-system';
 import {
 	FlexBlock,
 	__experimentalItem as Item,
@@ -12,7 +12,7 @@ import {
 import { chevronDownSmall } from '@wordpress/icons';
 import { useReducedMotion } from '@wordpress/compose';
 import { useSelect } from '@wordpress/data';
-import { store as tpAdminStore } from '../../store';
+import { store as spAdminStore } from '../../store';
 import SidebarNavigationItem from '../sidebar-navigation-item';
 import { wrapIcon } from '../items';
 import MenuBadge from '../sidebar/menu-badge';
@@ -67,17 +67,17 @@ export default function SidebarDropdownItem( {
 	onToggle,
 }: SidebarDropdownItemProps ) {
 	const menuItems = useSelect(
-		( select ) => select( tpAdminStore ).getMenuItems(),
+		( select ) => select( spAdminStore ).getMenuItems(),
 		[]
 	);
 	const items = menuItems.filter( ( item ) => item.parent === id );
 	const disableMotion = useReducedMotion();
 	const childHasRealIcons = items.some( ( item ) => !! item.icon );
 	return (
-		<div className="typedpress-admin-sidebar-dropdown-item">
+		<div className="spacepress-admin-sidebar-dropdown-item">
 			<Item
 				className={ clsx(
-					'typedpress-admin-sidebar-navigation-item',
+					'spacepress-admin-sidebar-navigation-item',
 					className
 				) }
 				onClick={ ( e ) => {
@@ -100,7 +100,7 @@ export default function SidebarDropdownItem( {
 					<Icon
 						icon={ chevronDownSmall }
 						className={ clsx(
-							'typedpress-admin-sidebar-dropdown-item__chevron',
+							'spacepress-admin-sidebar-dropdown-item__chevron',
 							{ 'is-up': isExpanded }
 						) }
 					/>
@@ -117,7 +117,7 @@ export default function SidebarDropdownItem( {
 							duration: disableMotion ? 0 : ANIMATION_DURATION,
 							ease: 'easeOut',
 						} }
-						className="typedpress-admin-sidebar-dropdown-item__children"
+						className="spacepress-admin-sidebar-dropdown-item__children"
 						role="list"
 					>
 						{ items.map( ( item, index ) => (

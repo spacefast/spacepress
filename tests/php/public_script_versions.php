@@ -6,13 +6,13 @@ require __DIR__ . '/wp.php';
 
 function metadataScripts(string $html): array
 {
-    preg_match_all('#<script id="typedpress-app-script-[0-9a-f]+-js-module" src="([^"]*)" type="module">#', $html, $matches);
+    preg_match_all('#<script id="spacepress-app-script-[0-9a-f]+-js-module" src="([^"]*)" type="module">#', $html, $matches);
     return array_map('html_entity_decode', $matches[1]);
 }
 
 function moduleResponse(string $url, bool $managed = false, string $method = 'GET'): array
 {
-    $headers = $managed ? ['X-TP-Test-Managed: 1'] : [];
+    $headers = $managed ? ['X-SP-Test-Managed: 1'] : [];
     $out = [];
     $c = curl_init($url);
     curl_setopt_array($c, [CURLOPT_RETURNTRANSFER => true, CURLOPT_NOBODY => $method === 'HEAD', CURLOPT_HTTPHEADER => $headers,
@@ -27,7 +27,7 @@ function moduleResponse(string $url, bool $managed = false, string $method = 'GE
     return [curl_getinfo($c, CURLINFO_RESPONSE_CODE), $out, $body];
 }
 
-// Mirror the compiled store tree into wp-content/typedpress-assets, as TypedPressPlugin\Trees::mirror does.
+// Mirror the compiled store tree into wp-content/spacepress-assets, as SpacePressPlugin\Trees::mirror does.
 $mirror = static function (string $store, string $assets, string $appHash): void {
     $src = "$store/app/$appHash/plugins";
     $dst = "$assets/app/$appHash/plugins";
@@ -35,24 +35,24 @@ $mirror = static function (string $store, string $assets, string $appHash): void
 };
 
 // Boot and initialize the loose copy normally. Requests with the fixture header mount the
-// immutable compiler output through the real Loader with `url` pointing at wp-content/typedpress-assets.
+// immutable compiler output through the real Loader with `url` pointing at wp-content/spacepress-assets.
 $mount = sprintf(<<<'PHP'
     <?php
-    if (!isset($_SERVER['HTTP_X_TP_TEST_MANAGED'])) {
+    if (!isset($_SERVER['HTTP_X_SP_TEST_MANAGED'])) {
         return;
     }
     add_filter('option_active_plugins', static fn (array $plugins): array => array_values(array_filter(
-        $plugins, static fn (string $plugin): bool => !str_starts_with($plugin, 'typedpress-'),
+        $plugins, static fn (string $plugin): bool => !str_starts_with($plugin, 'spacepress-'),
     )));
     $root = %s;
-    require $root . '/runtime/' . %s . '/typedpress-loader.php';
-    \TypedPress\Loader\Loader::load($root, %s, [
-        'url' => content_url('typedpress-assets'),
-        'assetsDir' => WP_CONTENT_DIR . '/typedpress-assets',
+    require $root . '/runtime/' . %s . '/spacepress-loader.php';
+    \SpacePress\Loader\Loader::load($root, %s, [
+        'url' => content_url('spacepress-assets'),
+        'assetsDir' => WP_CONTENT_DIR . '/spacepress-assets',
     ]);
     header_register_callback(static function (): void {
         foreach (get_included_files() as $file) {
-            if (str_ends_with($file, '/tp/app/functions.php')) {
+            if (str_ends_with($file, '/sp/app/functions.php')) {
                 header('X-Test-App-Code-Loaded: 1');
                 break;
             }
@@ -61,7 +61,7 @@ $mount = sprintf(<<<'PHP'
     PHP, var_export($argv[2], true), var_export($argv[3], true), var_export($argv[4], true));
 $site = wpSite('public-script-versions', ['wpContent' => $argv[1], 'muPlugins' => ['managed-preview' => $mount]]);
 $manifest = json_decode((string) file_get_contents($argv[2] . '/build/' . $argv[4] . '.json'), true, 16, JSON_THROW_ON_ERROR);
-$mirror($argv[2], $site->content . '/typedpress-assets', (string) $manifest['app']);
+$mirror($argv[2], $site->content . '/spacepress-assets', (string) $manifest['app']);
 $site->startServer();
 $base = $site->url();
 

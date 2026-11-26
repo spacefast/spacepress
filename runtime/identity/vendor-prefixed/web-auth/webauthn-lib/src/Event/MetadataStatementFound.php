@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\Webauthn\Event;
+namespace SpacePress\Identity\Vendor\Webauthn\Event;
 
-use TypedPress\Identity\Vendor\Webauthn\MetadataService\Statement\MetadataStatement;
+use SpacePress\Identity\Vendor\Webauthn\MetadataService\Statement\MetadataStatement;
 
 final readonly class MetadataStatementFound implements WebauthnEvent
 {

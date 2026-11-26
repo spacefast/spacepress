@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import { Button, IconButton, Stack } from '@wordpress/ui';
 import { Modal } from '@wordpress/components';
-import { DataForm, type Form } from '@typedpress-admin/dataviews';
+import { DataForm, type Form } from '@spacepress-admin/dataviews';
 import { __, sprintf } from '@wordpress/i18n';
 import { settings } from '@wordpress/icons';
 import type { DashboardWidgetType, DashboardWidget } from '../../types';
@@ -56,17 +56,17 @@ export default function DashboardWidgetSettings( {
 	const settingsTitle = widgetType.title
 		? sprintf(
 				/* translators: %s: Widget title */
-				__( '%s settings', 'typedpress-admin' ),
+				__( '%s settings', 'spacepress-admin' ),
 				widgetType.title
 		  )
-		: __( 'Settings', 'typedpress-admin' );
+		: __( 'Settings', 'spacepress-admin' );
 
 	return (
 		<Stack
 			direction="row"
 			gap="sm"
 			align="center"
-			className="typedpress-admin-dashboard-widget__settings"
+			className="spacepress-admin-dashboard-widget__settings"
 		>
 			<IconButton
 				icon={ settings }
@@ -96,10 +96,10 @@ export default function DashboardWidgetSettings( {
 								variant="minimal"
 								onClick={ () => setIsEditMode( false ) }
 							>
-								{ __( 'Cancel', 'typedpress-admin' ) }
+								{ __( 'Cancel', 'spacepress-admin' ) }
 							</Button>
 							<Button variant="solid" onClick={ handleSave }>
-								{ __( 'Save', 'typedpress-admin' ) }
+								{ __( 'Save', 'spacepress-admin' ) }
 							</Button>
 						</Stack>
 					</Stack>

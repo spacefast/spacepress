@@ -9,7 +9,7 @@ import {
 import { isRTL, __ } from '@wordpress/i18n';
 import { Icon, chevronLeft, chevronRight } from '@wordpress/icons';
 import { useMemo } from '@wordpress/element';
-import type { Color } from '@typedpress-admin/global-styles-engine';
+import type { Color } from '@spacepress-admin/global-styles-engine';
 import { Subtitle } from './subtitle';
 import { NavigationButtonAsItem } from './navigation-button';
 import ColorIndicatorWrapper from './color-indicator-wrapper';
@@ -57,7 +57,7 @@ function Palette( { name }: PaletteProps ) {
 
 	return (
 		<VStack spacing={ 3 }>
-			<Subtitle level={ 3 }>{ __( 'Palette', 'typedpress-admin' ) }</Subtitle>
+			<Subtitle level={ 3 }>{ __( 'Palette', 'spacepress-admin' ) }</Subtitle>
 			<ItemGroup isBordered isSeparated>
 				<NavigationButtonAsItem path={ screenPath }>
 					<HStack direction="row">
@@ -77,12 +77,12 @@ function Palette( { name }: PaletteProps ) {
 										) ) }
 								</ZStack>
 								<FlexItem isBlock>
-									{ __( 'Edit palette', 'typedpress-admin' ) }
+									{ __( 'Edit palette', 'spacepress-admin' ) }
 								</FlexItem>
 							</>
 						) : (
 							<FlexItem>
-								{ __( 'Add colors', 'typedpress-admin' ) }
+								{ __( 'Add colors', 'spacepress-admin' ) }
 							</FlexItem>
 						) }
 						<Icon icon={ isRTL() ? chevronLeft : chevronRight } />

@@ -2,12 +2,12 @@
 /**
  * Home URL field definition for core plugins fields collection
  *
- * @package TypedPress_Admin
+ * @package SpacePress_Admin
  */
 
 return array(
 	'type'         => 'text',
-	'label'        => __( 'Plugin homepage', 'typedpress-admin' ),
+	'label'        => __( 'Plugin homepage', 'spacepress-admin' ),
 	'enableHiding' => true,
 	'filterBy'     => false,
 );

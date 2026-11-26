@@ -41,13 +41,13 @@
       "npm --prefix examples/emdash ci",
       "npm --prefix examples/emdash exec -- playwright install chromium",
       "Native WordPress Studio 2.2.0 downloads/runtime available",
-      "Rust toolchain for the default cargo build --locked, or a matching existing binary supplied with TP_BIN",
+      "Rust toolchain for the default cargo build --locked, or a matching existing binary supplied with SP_BIN",
       "npm --prefix examples/emdash/official-sites ci --ignore-scripts when selecting official-source; the runner performs this automatically"
     ],
     "cwd": "repository root",
     "commands": {
       "blank": {
-        "command": "TP_BIN=\"$PWD/target/debug/typedpress\" node --test examples/emdash/starter/acceptance.test.mjs",
+        "command": "SP_BIN=\"$PWD/target/debug/spacepress\" node --test examples/emdash/starter/acceptance.test.mjs",
         "testPath": "examples/emdash/starter/acceptance.test.mjs",
         "availability": "present",
         "status": "proven",
@@ -57,7 +57,7 @@
         "scope": "Only executedRuns.publishing.scope is qualified; this suite result does not promote every mapped upstream behavior."
       },
       "starter": {
-        "command": "TP_BIN=\"$PWD/target/debug/typedpress\" node --test examples/emdash/starter/acceptance.test.mjs",
+        "command": "SP_BIN=\"$PWD/target/debug/spacepress\" node --test examples/emdash/starter/acceptance.test.mjs",
         "testPath": "examples/emdash/starter/acceptance.test.mjs",
         "availability": "present",
         "status": "proven",
@@ -67,7 +67,7 @@
         "scope": "Only executedRuns.publishing.scope is qualified; this suite result does not promote every mapped upstream behavior."
       },
       "blog": {
-        "command": "TP_BIN=\"$PWD/target/debug/typedpress\" node --test examples/emdash/starter/acceptance.test.mjs",
+        "command": "SP_BIN=\"$PWD/target/debug/spacepress\" node --test examples/emdash/starter/acceptance.test.mjs",
         "testPath": "examples/emdash/starter/acceptance.test.mjs",
         "availability": "present",
         "status": "proven",
@@ -77,7 +77,7 @@
         "scope": "Only executedRuns.publishing.scope is qualified; this suite result does not promote every mapped upstream behavior."
       },
       "marketing": {
-        "command": "TP_BIN=\"$PWD/target/debug/typedpress\" node --test examples/emdash/marketing/acceptance.test.mjs",
+        "command": "SP_BIN=\"$PWD/target/debug/spacepress\" node --test examples/emdash/marketing/acceptance.test.mjs",
         "testPath": "examples/emdash/marketing/acceptance.test.mjs",
         "availability": "present",
         "status": "proven",
@@ -87,7 +87,7 @@
         "scope": "Only executedRuns.marketing.scope is qualified; this suite result does not promote every mapped upstream behavior."
       },
       "portfolio": {
-        "command": "TP_BIN=\"$PWD/target/debug/typedpress\" node --test examples/emdash/portfolio/acceptance.test.mjs",
+        "command": "SP_BIN=\"$PWD/target/debug/spacepress\" node --test examples/emdash/portfolio/acceptance.test.mjs",
         "testPath": "examples/emdash/portfolio/acceptance.test.mjs",
         "availability": "present",
         "status": "proven",
@@ -97,7 +97,7 @@
         "scope": "Only executedRuns.portfolio.scope is qualified; this suite result does not promote every mapped upstream behavior."
       },
       "plugins": {
-        "command": "TP_BIN=\"$PWD/target/debug/typedpress\" node --test examples/emdash/plugins/acceptance.test.mjs",
+        "command": "SP_BIN=\"$PWD/target/debug/spacepress\" node --test examples/emdash/plugins/acceptance.test.mjs",
         "testPath": "examples/emdash/plugins/acceptance.test.mjs",
         "availability": "present",
         "status": "proven",
@@ -107,7 +107,7 @@
         "scope": "Only executedRuns.plugins.scope is qualified. Form builder/delivery, complete widgets/marketplace, remote embeds and AI/PDS/Worker isolation remain gaps."
       },
       "agents": {
-        "command": "TP_BIN=\"$PWD/target/debug/typedpress\" node --test examples/emdash/agents/acceptance.test.mjs",
+        "command": "SP_BIN=\"$PWD/target/debug/spacepress\" node --test examples/emdash/agents/acceptance.test.mjs",
         "testPath": "examples/emdash/agents/acceptance.test.mjs",
         "availability": "present",
         "status": "proven",
@@ -117,7 +117,7 @@
         "scope": "Only executedRuns.agents.scope is qualified; this suite result does not promote every mapped upstream behavior."
       },
       "platform": {
-        "command": "TP_BIN=\"$PWD/target/debug/typedpress\" node --test examples/emdash/platform/acceptance.test.mjs",
+        "command": "SP_BIN=\"$PWD/target/debug/spacepress\" node --test examples/emdash/platform/acceptance.test.mjs",
         "testPath": "examples/emdash/platform/acceptance.test.mjs",
         "availability": "present",
         "status": "proven",
@@ -131,17 +131,17 @@
         "testPath": "examples/emdash/official-sites/acceptance.test.mjs",
         "availability": "present",
         "status": "proven",
-        "scope": "Original pinned blank/starter/blog Astro sources against compiled TypedPress/native WordPress, including the official reading-time helper as compiled PHP. Full source acceptance is separate from earlier PHP frontend counterparts; provider and inline-editor gaps remain.",
+        "scope": "Original pinned blank/starter/blog Astro sources against compiled SpacePress/native WordPress, including the official reading-time helper as compiled PHP. Full source acceptance is separate from earlier PHP frontend counterparts; provider and inline-editor gaps remain.",
         "evidence": [
           "official-source"
         ]
       }
     },
-    "lifecycleCommand": "TP_BIN=\"$PWD/target/debug/typedpress\" node --test scripts/dev/acceptance.test.mjs",
+    "lifecycleCommand": "SP_BIN=\"$PWD/target/debug/spacepress\" node --test scripts/dev/acceptance.test.mjs",
     "lifecycleStatus": "proven",
     "resourceContract": [
       "Unique disposable project per run",
-      "Dynamically allocated port and project .tp/dev ownership receipt",
+      "Dynamically allocated port and project .sp/dev ownership receipt",
       "Dedicated database/uploads and exact Studio site registration",
       "Stop only owned project; delete only owned exact Studio path; retain cleanup evidence",
       "Full native admin/plugins/settings, credentials, data and unrelated plugins preserved"
@@ -152,7 +152,7 @@
       "Mocks presented as live provider proof"
     ],
     "scopeWarning": "These suites cover selected cross-surface seams; even when every suite passes, mapped upstream gaps remain gaps. Prior compiler/JS semantics and lower-level WordPress regressions still belong to their existing owners.",
-    "publicationBrowserCommand": "TP_BIN=\"$PWD/target/debug/typedpress\" node --test examples/emdash/starter/browser.test.mjs",
+    "publicationBrowserCommand": "SP_BIN=\"$PWD/target/debug/spacepress\" node --test examples/emdash/starter/browser.test.mjs",
     "publicationBrowserStatus": "proven",
     "runner": {
       "command": "node examples/emdash/test.mjs",
@@ -168,19 +168,19 @@
       ],
       "selectionExample": "node examples/emdash/test.mjs marketing portfolio",
       "optionalLifecycle": "node examples/emdash/test.mjs lifecycle",
-      "build": "Runs cargo build --locked unless TP_BIN selects an existing matching binary.",
+      "build": "Runs cargo build --locked unless SP_BIN selects an existing matching binary.",
       "execution": "Sequential; each suite owns its disposable Studio resources.",
       "lastCombinedResult": "All eight default suites passed on the integrated compiler. The combined run used Astro 7.3.2 and Zod 4.3.6 installed before the dependency patch. All four original-source application tests then passed again on patched Astro 7.4.5/Zod 4.6.7; their source bytes and compiler binary were unchanged.",
-      "receipt": "typedpress-emdash-suite-kuMcTd/results.json",
+      "receipt": "spacepress-emdash-suite-kuMcTd/results.json",
       "binarySha256": "121d4b310cbfa5057e28177339ea6ebb42f94f805c99168a06a1e736c97da467",
       "revision": "c3925fe5ec511063ae7487470b6fba8185a71dbd",
       "combinedDependencies": {
         "astro": "7.3.2",
         "zod": "4.3.6"
       },
-      "previousTargetedReceipt": "typedpress-emdash-suite-XCi02S/results.json",
+      "previousTargetedReceipt": "spacepress-emdash-suite-XCi02S/results.json",
       "previousTargetedBinarySha256": "b70f243e5c4af45ddf4eacd6da162d03b922d4edeb007adb805fce0d2d773fe7",
-      "finalTargetedReceipt": "typedpress-emdash-suite-Pfve5p/results.json",
+      "finalTargetedReceipt": "spacepress-emdash-suite-Pfve5p/results.json",
       "finalTargetedBinarySha256": "121d4b310cbfa5057e28177339ea6ebb42f94f805c99168a06a1e736c97da467",
       "finalTargetedScope": "Original-source applications on patched frontend dependencies; prior native suites retain their exact integrated receipt."
     },
@@ -188,9 +188,9 @@
       "publishing": {
         "status": "proven",
         "date": "2026-11-03",
-        "runtime": "Native typedpress dev; WordPress Studio 2.1.1, PHP and SQLite; Chromium for browser checks.",
-        "command": "TP_BIN=\"$PWD/target/debug/typedpress\" node --test examples/emdash/starter/acceptance.test.mjs",
-        "artifact": "typedpress-emdash-publishing-evidence-5wTIhg",
+        "runtime": "Native spacepress dev; WordPress Studio 2.1.1, PHP and SQLite; Chromium for browser checks.",
+        "command": "SP_BIN=\"$PWD/target/debug/spacepress\" node --test examples/emdash/starter/acceptance.test.mjs",
+        "artifact": "spacepress-emdash-publishing-evidence-5wTIhg",
         "result": "4 tests passed; 0 failed",
         "files": [
           "results.json",
@@ -207,18 +207,18 @@
         ],
         "cleanup": "Run output confirms exact project stop, Studio unregister and project removal for blank, starter and blog.",
         "previousArtifacts": [
-          "typedpress-emdash-publishing-evidence-BSweL8",
-          "typedpress-emdash-publishing-evidence-uzjS3j"
+          "spacepress-emdash-publishing-evidence-BSweL8",
+          "spacepress-emdash-publishing-evidence-uzjS3j"
         ],
         "binarySha256": "dbd0bb65c1318347991c4845e67198979b32256ec896fd088e70a8d2c288e901",
-        "runnerReceipt": "typedpress-emdash-suite-elxR7b/results.json"
+        "runnerReceipt": "spacepress-emdash-suite-elxR7b/results.json"
       },
       "publishing-browser": {
         "status": "proven",
         "date": "2026-11-03",
-        "runtime": "Native typedpress dev; WordPress Studio 2.1.1, PHP and SQLite; Chromium for browser checks.",
-        "command": "TP_BIN=\"$PWD/target/debug/typedpress\" node --test examples/emdash/starter/browser.test.mjs",
-        "artifact": "typedpress-emdash-publishing-browser-l9kdQ5",
+        "runtime": "Native spacepress dev; WordPress Studio 2.1.1, PHP and SQLite; Chromium for browser checks.",
+        "command": "SP_BIN=\"$PWD/target/debug/spacepress\" node --test examples/emdash/starter/browser.test.mjs",
+        "artifact": "spacepress-emdash-publishing-browser-l9kdQ5",
         "result": "1 test passed; 0 failed",
         "files": [
           "results.json",
@@ -236,18 +236,18 @@
         ],
         "cleanup": "cleanup.json records exact owned-site cleanup.",
         "previousArtifacts": [
-          "typedpress-emdash-publishing-browser-ccXHSk",
-          "typedpress-emdash-publishing-browser-H6WRJC"
+          "spacepress-emdash-publishing-browser-ccXHSk",
+          "spacepress-emdash-publishing-browser-H6WRJC"
         ],
         "binarySha256": "dbd0bb65c1318347991c4845e67198979b32256ec896fd088e70a8d2c288e901",
-        "runnerReceipt": "typedpress-emdash-suite-elxR7b/results.json"
+        "runnerReceipt": "spacepress-emdash-suite-elxR7b/results.json"
       },
       "marketing": {
         "status": "proven",
         "date": "2026-11-03",
-        "runtime": "Native typedpress dev; WordPress Studio 2.1.1, PHP and SQLite; Chromium for browser checks.",
-        "command": "TP_BIN=\"$PWD/target/debug/typedpress\" node --test examples/emdash/marketing/acceptance.test.mjs",
-        "artifact": "typedpress-emdash-marketing-o5N2dU",
+        "runtime": "Native spacepress dev; WordPress Studio 2.1.1, PHP and SQLite; Chromium for browser checks.",
+        "command": "SP_BIN=\"$PWD/target/debug/spacepress\" node --test examples/emdash/marketing/acceptance.test.mjs",
+        "artifact": "spacepress-emdash-marketing-o5N2dU",
         "result": "1 test passed; 0 failed",
         "files": [
           "evidence/results.json",
@@ -265,7 +265,7 @@
         "cleanup": "cleanup.json confirms exact owned-site stop/unregister; project removed.",
         "additionalEvidence": [
           {
-            "artifact": "typedpress-emdash-marketing-browser-gIbAzr",
+            "artifact": "spacepress-emdash-marketing-browser-gIbAzr",
             "files": [
               "evidence/browser-results.json",
               "evidence/cleanup.json"
@@ -277,18 +277,18 @@
           }
         ],
         "previousArtifacts": [
-          "typedpress-emdash-marketing-z9zCnI",
-          "typedpress-emdash-marketing-ruwV5j"
+          "spacepress-emdash-marketing-z9zCnI",
+          "spacepress-emdash-marketing-ruwV5j"
         ],
-        "runnerReceipt": "typedpress-emdash-suite-elxR7b/results.json",
+        "runnerReceipt": "spacepress-emdash-suite-elxR7b/results.json",
         "binarySha256": "dbd0bb65c1318347991c4845e67198979b32256ec896fd088e70a8d2c288e901"
       },
       "portfolio": {
         "status": "proven",
         "date": "2026-11-03",
-        "runtime": "Native typedpress dev; WordPress Studio 2.1.1, PHP and SQLite; Chromium for browser checks.",
-        "command": "TP_BIN=\"$PWD/target/debug/typedpress\" node --test examples/emdash/portfolio/acceptance.test.mjs",
-        "artifact": "typedpress-portfolio-evidence-wJXFW3",
+        "runtime": "Native spacepress dev; WordPress Studio 2.1.1, PHP and SQLite; Chromium for browser checks.",
+        "command": "SP_BIN=\"$PWD/target/debug/spacepress\" node --test examples/emdash/portfolio/acceptance.test.mjs",
+        "artifact": "spacepress-portfolio-evidence-wJXFW3",
         "result": "1 test passed; 0 failed",
         "files": [
           "PASS.txt",
@@ -306,7 +306,7 @@
         "cleanup": "Deleted receipt plus cleanup audit confirm exact site unregistered and owned root removed.",
         "additionalEvidence": [
           {
-            "artifact": "typedpress-portfolio-official-media",
+            "artifact": "spacepress-portfolio-official-media",
             "files": [
               "official-media-manifest.json",
               "browser.json",
@@ -319,18 +319,18 @@
           }
         ],
         "previousArtifacts": [
-          "typedpress-portfolio-acceptance-complete",
-          "typedpress-portfolio-evidence-KR63J8"
+          "spacepress-portfolio-acceptance-complete",
+          "spacepress-portfolio-evidence-KR63J8"
         ],
-        "runnerReceipt": "typedpress-emdash-suite-elxR7b/results.json",
+        "runnerReceipt": "spacepress-emdash-suite-elxR7b/results.json",
         "binarySha256": "dbd0bb65c1318347991c4845e67198979b32256ec896fd088e70a8d2c288e901"
       },
       "agents": {
         "status": "proven",
         "date": "2026-11-03",
-        "runtime": "Native typedpress dev; WordPress Studio 2.1.1, PHP and SQLite; Chromium for browser checks.",
-        "command": "TP_BIN=\"$PWD/target/debug/typedpress\" node --test examples/emdash/agents/acceptance.test.mjs",
-        "artifact": "typedpress-emdash-agents-UJoDyI",
+        "runtime": "Native spacepress dev; WordPress Studio 2.1.1, PHP and SQLite; Chromium for browser checks.",
+        "command": "SP_BIN=\"$PWD/target/debug/spacepress\" node --test examples/emdash/agents/acceptance.test.mjs",
+        "artifact": "spacepress-emdash-agents-UJoDyI",
         "result": "1 test passed; 0 failed",
         "files": [
           "evidence.json",
@@ -347,18 +347,18 @@
         ],
         "cleanup": "evidence.json confirms exact Studio registration deleted, site offline and project removed.",
         "previousArtifacts": [
-          "typedpress-emdash-agents-AYnTFW",
-          "typedpress-emdash-agents-dB85UD"
+          "spacepress-emdash-agents-AYnTFW",
+          "spacepress-emdash-agents-dB85UD"
         ],
-        "runnerReceipt": "typedpress-emdash-suite-elxR7b/results.json",
+        "runnerReceipt": "spacepress-emdash-suite-elxR7b/results.json",
         "binarySha256": "dbd0bb65c1318347991c4845e67198979b32256ec896fd088e70a8d2c288e901"
       },
       "platform": {
         "status": "proven",
         "date": "2026-11-03",
-        "runtime": "Native typedpress dev; WordPress Studio 2.1.1, PHP and SQLite; Chromium for browser checks.",
-        "command": "TP_BIN=\"$PWD/target/debug/typedpress\" node --test examples/emdash/platform/acceptance.test.mjs",
-        "artifact": "typedpress-emdash-platform-X2tWAK-evidence",
+        "runtime": "Native spacepress dev; WordPress Studio 2.1.1, PHP and SQLite; Chromium for browser checks.",
+        "command": "SP_BIN=\"$PWD/target/debug/spacepress\" node --test examples/emdash/platform/acceptance.test.mjs",
+        "artifact": "spacepress-emdash-platform-X2tWAK-evidence",
         "result": "1 test passed; all nine journeys passed; 0 failed",
         "files": [
           "results.json",
@@ -372,23 +372,23 @@
           "real PNG upload, original bytes and a served image transform",
           "outbound/inbound HMAC effects using an owned local HTTP receiver",
           "Markdown CLI push/pull, additive/rejected destructive migration and restart persistence",
-          "public locale/relations/media browser rendering and native/TypedPress admin access"
+          "public locale/relations/media browser rendering and native/SpacePress admin access"
         ],
         "cleanup": "cleanup.json records stopped=true, registrationDeleted=true and filesDeleted=true.",
         "previousArtifacts": [
-          "typedpress-emdash-platform-vovpOc-evidence",
-          "typedpress-emdash-platform-LdwgT5-evidence",
-          "typedpress-emdash-platform-C97Oqq-evidence"
+          "spacepress-emdash-platform-vovpOc-evidence",
+          "spacepress-emdash-platform-LdwgT5-evidence",
+          "spacepress-emdash-platform-C97Oqq-evidence"
         ],
-        "runnerReceipt": "typedpress-emdash-suite-XCi02S/results.json",
+        "runnerReceipt": "spacepress-emdash-suite-XCi02S/results.json",
         "binarySha256": "b70f243e5c4af45ddf4eacd6da162d03b922d4edeb007adb805fce0d2d773fe7"
       },
       "lifecycle": {
         "status": "proven",
         "date": "2026-11-03",
-        "runtime": "Native typedpress dev; WordPress Studio 2.1.1, PHP and SQLite; Chromium for browser checks.",
-        "command": "TP_BIN=\"$PWD/target/debug/typedpress\" node --test scripts/dev/acceptance.test.mjs",
-        "artifact": "typedpress-numeric-preservation-KzA5IF",
+        "runtime": "Native spacepress dev; WordPress Studio 2.1.1, PHP and SQLite; Chromium for browser checks.",
+        "command": "SP_BIN=\"$PWD/target/debug/spacepress\" node --test scripts/dev/acceptance.test.mjs",
+        "artifact": "spacepress-numeric-preservation-KzA5IF",
         "result": "1 test passed; 0 failed",
         "files": [
           "acceptance.log"
@@ -404,8 +404,8 @@
       "plugins-prior": {
         "status": "partial",
         "date": "2026-11-03",
-        "command": "TP_BIN=\"$PWD/target/debug/typedpress\" node --test examples/emdash/plugins/acceptance.test.mjs",
-        "artifact": "typedpress-official-plugins-Lv7szC-evidence",
+        "command": "SP_BIN=\"$PWD/target/debug/spacepress\" node --test examples/emdash/plugins/acceptance.test.mjs",
+        "artifact": "spacepress-official-plugins-Lv7szC-evidence",
         "files": [
           "results.json",
           "cleanup.json"
@@ -415,7 +415,7 @@
         "binarySha256": "b55d5cca9760c7259ebe8a7f266bf1283fc0db6fcb649d66ed4e99b2ebdcec32",
         "runtime": "Native WordPress Studio 2.1.1, PHP, SQLite, SCF and Action Scheduler; actual local HTTP receiver.",
         "scope": [
-          "native TypedPress/REST/SCF structured saves and persisted color/object/list/grid/tag data",
+          "native SpacePress/REST/SCF structured saves and persisted color/object/list/grid/tag data",
           "options/table/action/taxonomy and scheduled diagnostics",
           "actual Abilities and MCP echo/discovery with anonymous denial",
           "public multi-page form submission, conditional validation, honeypot, media upload and private persisted inbox",
@@ -431,8 +431,8 @@
       "plugins": {
         "status": "proven",
         "date": "2026-11-03",
-        "command": "TP_BIN=\"$PWD/target/debug/typedpress\" node --test examples/emdash/plugins/acceptance.test.mjs",
-        "artifact": "typedpress-official-plugins-VIXf1f-evidence",
+        "command": "SP_BIN=\"$PWD/target/debug/spacepress\" node --test examples/emdash/plugins/acceptance.test.mjs",
+        "artifact": "spacepress-official-plugins-VIXf1f-evidence",
         "files": [
           "results.json",
           "cleanup.json",
@@ -444,12 +444,12 @@
         "binarySha256": "b70f243e5c4af45ddf4eacd6da162d03b922d4edeb007adb805fce0d2d773fe7",
         "runtime": "Native WordPress Studio 2.1.1, PHP, SQLite, SCF and Action Scheduler; actual local HTTP receiver.",
         "scope": [
-          "native TypedPress/REST/SCF structured saves and persisted color/object/list/grid/tag data",
+          "native SpacePress/REST/SCF structured saves and persisted color/object/list/grid/tag data",
           "options/table/action/taxonomy and scheduled diagnostics",
           "actual Abilities and MCP echo/discovery with anonymous denial",
           "public multi-page form submission, conditional validation, honeypot, media upload and private persisted inbox",
           "public YouTube/Vimeo markup from saved fields; no remote playback/provider proof",
-          "local notifier sends Bearer authorization plus x-typedpress-signature HMAC; real HTTP 503/retry observed",
+          "local notifier sends Bearer authorization plus x-spacepress-signature HMAC; real HTTP 503/retry observed",
           "plugin lifecycle/uninstall, unrelated-plugin coexistence and unchanged bounded-field restart persistence",
           "native password protection gates workshop detail/list/search/export",
           "optional empty browser email, URL, date and number fields submit successfully",
@@ -461,18 +461,18 @@
         ],
         "cleanup": "cleanup.json and passing run output confirm exact owned site stopped/unregistered and project deleted.",
         "previousArtifacts": [
-          "typedpress-official-plugins-5m1GnF-evidence",
-          "typedpress-official-plugins-5BVhak-evidence",
-          "typedpress-official-plugins-BFA744-evidence"
+          "spacepress-official-plugins-5m1GnF-evidence",
+          "spacepress-official-plugins-5BVhak-evidence",
+          "spacepress-official-plugins-BFA744-evidence"
         ],
-        "runnerReceipt": "typedpress-emdash-suite-XCi02S/results.json"
+        "runnerReceipt": "spacepress-emdash-suite-XCi02S/results.json"
       },
       "official-source": {
         "status": "proven",
         "date": "2026-11-03",
         "runtime": "Native WordPress Studio 2.1.1/PHP/SQLite with original Astro Node frontends and Chromium.",
         "command": "node examples/emdash/test.mjs official-source",
-        "artifact": "typedpress-official-full-app-pi9HkO",
+        "artifact": "spacepress-official-full-app-pi9HkO",
         "result": "4 tests passed; 0 failed; 0 skipped",
         "files": [
           "results.json",
@@ -491,8 +491,8 @@
           "Original reading-time algorithm executes as compiled PHP over native HTTP"
         ],
         "cleanup": "Exact three final projects and all earlier owned projects absent; frontends/backends offline; no owned Studio registrations remain.",
-        "boundaries": "Astro compiles to Node/browser JavaScript. TypedPress backend and selected helper TS compile to PHP. Provider infrastructure, plugin contributions, staged inline edits and sandbox parity are not qualified.",
-        "runnerReceipt": "typedpress-emdash-suite-Pfve5p/results.json",
+        "boundaries": "Astro compiles to Node/browser JavaScript. SpacePress backend and selected helper TS compile to PHP. Provider infrastructure, plugin contributions, staged inline edits and sandbox parity are not qualified.",
+        "runnerReceipt": "spacepress-emdash-suite-Pfve5p/results.json",
         "binarySha256": "121d4b310cbfa5057e28177339ea6ebb42f94f805c99168a06a1e736c97da467",
         "dependencies": {
           "astro": "7.4.5",
@@ -513,11 +513,11 @@
       "sourceCommit": "3097db014cec5aed81c7c4e69650d5cddc657bc2",
       "binarySha256": "b70f243e5c4af45ddf4eacd6da162d03b922d4edeb007adb805fce0d2d773fe7",
       "command": "tests/php/run.sh",
-      "result": "All fifteen PHP suites passed; native REST, TypedPress REST and public-page leak reproductions passed for marketing and portfolio.",
+      "result": "All fifteen PHP suites passed; native REST, SpacePress REST and public-page leak reproductions passed for marketing and portfolio.",
       "artifacts": [
-        "typedpress-native-password-param-final.log",
-        "typedpress-official-plugins-cIvnG3-marketing-password-evidence",
-        "typedpress-official-plugins-JMiEUm-portfolio-password-evidence"
+        "spacepress-native-password-param-final.log",
+        "spacepress-official-plugins-cIvnG3-marketing-password-evidence",
+        "spacepress-official-plugins-JMiEUm-portfolio-password-evidence"
       ],
       "scope": [
         "Hidden rows cannot leak through filters, projections, pagination, relation matching, HTTP or Abilities.",
@@ -617,7 +617,7 @@
     },
     "webhooks": {
       "owner": "plugins",
-      "contract": "Configured content/media webhook delivery with optional Bearer-token authorization, delivery history, retries and URL safety. TypedPress built-in webhooks use HMAC; preserve and document that different wire contract.",
+      "contract": "Configured content/media webhook delivery with optional Bearer-token authorization, delivery history, retries and URL safety. SpacePress built-in webhooks use HMAC; preserve and document that different wire contract.",
       "requiredProof": "Deliver actual event bytes to an owned real HTTP receiver, verify the declared Bearer-token or HMAC contract, inspect persisted attempts, and retry failure. Local transport is not external SaaS evidence.",
       "firstCounterpart": "examples/emdash/plugins",
       "acceptanceCommand": "plugins",
@@ -764,7 +764,7 @@
       "acceptanceCommand": "agents",
       "status": "gap",
       "evidence": [],
-      "limitation": "TypedPress models live in compiled typedpress.config.ts. Editing config and rebuilding is a supported different workflow, not EmDash runtime schema-mutation MCP parity."
+      "limitation": "SpacePress models live in compiled spacepress.config.ts. Editing config and rebuilding is a supported different workflow, not EmDash runtime schema-mutation MCP parity."
     },
     "editorial": {
       "owner": "platform",
@@ -824,11 +824,11 @@
       "acceptanceCommand": "platform",
       "status": "gap",
       "evidence": [],
-      "limitation": "TypedPress locales are disabled; the platform journal is single-language and languages are not covered."
+      "limitation": "SpacePress locales are disabled; the platform journal is single-language and languages are not covered."
     },
     "app-data": {
       "owner": "platform",
-      "contract": "Tables, collections, user projections, relations, transactions, hooks, jobs, signed incoming/outgoing webhooks and access rules retain prior TypedPress behavior.",
+      "contract": "Tables, collections, user projections, relations, transactions, hooks, jobs, signed incoming/outgoing webhooks and access rules retain prior SpacePress behavior.",
       "requiredProof": "Drive real persisted rows/relations, hook normalization, queued job completion and signed HTTP effects; exercise a rejected operation with no mutation.",
       "firstCounterpart": "examples/emdash/platform",
       "acceptanceCommand": "platform",
@@ -847,7 +847,7 @@
     "sync": {
       "owner": "platform",
       "contract": "Markdown sync, stable IDs and conflicting native changes preserve data.",
-      "requiredProof": "Run typedpress sync against owned native WordPress, make an actual native edit, pull/push and inspect canonical content and conflict result.",
+      "requiredProof": "Run spacepress sync against owned native WordPress, make an actual native edit, pull/push and inspect canonical content and conflict result.",
       "firstCounterpart": "examples/emdash/platform",
       "acceptanceCommand": "platform",
       "status": "partial",
@@ -995,7 +995,7 @@
       "acceptanceCommand": "platform",
       "status": "gap",
       "evidence": [],
-      "limitation": "TypedPress identity is a framework alternative. Atmosphere/Cloudflare Access and each external OAuth flow require their actual providers and separate proof."
+      "limitation": "SpacePress identity is a framework alternative. Atmosphere/Cloudflare Access and each external OAuth flow require their actual providers and separate proof."
     },
     "email": {
       "owner": "plugins",
@@ -1025,7 +1025,7 @@
       "acceptanceCommand": "agents",
       "status": "gap",
       "evidence": [],
-      "limitation": "echo and CRUD/Abilities prove connectivity only. TypedPress does not thereby implement BuilderAgent, AI Gateway, Sandbox, Artifacts restoration, or Workers for Platforms publishing."
+      "limitation": "echo and CRUD/Abilities prove connectivity only. SpacePress does not thereby implement BuilderAgent, AI Gateway, Sandbox, Artifacts restoration, or Workers for Platforms publishing."
     },
     "content-import": {
       "owner": "platform",
@@ -1035,7 +1035,7 @@
       "acceptanceCommand": "platform",
       "status": "gap",
       "evidence": [],
-      "limitation": "TypedPress already stores Gutenberg directly; EmDash Portable Text converter equivalence and Contentful import are separate unimplemented claims."
+      "limitation": "SpacePress already stores Gutenberg directly; EmDash Portable Text converter equivalence and Contentful import are separate unimplemented claims."
     },
     "fts": {
       "owner": "blog",
@@ -7382,7 +7382,7 @@
         "kind": "tree"
       },
       "classification": "test-infrastructure",
-      "reason": "Upstream acceptance harnesses are evidence of intended behavior, not TypedPress proof."
+      "reason": "Upstream acceptance harnesses are evidence of intended behavior, not SpacePress proof."
     },
     {
       "source": {
@@ -7431,7 +7431,7 @@
     },
     {
       "upstream": "Webhook notifier optionally sends Authorization: Bearer <token>",
-      "first": "Built-in webhooks use typedpress-signature HMAC; an adaptation must state its wire contract",
+      "first": "Built-in webhooks use spacepress-signature HMAC; an adaptation must state its wire contract",
       "status": "gap"
     },
     {
@@ -7450,7 +7450,7 @@
       "status": "gap"
     }
   ],
-  "snippetLocator": "Use the enclosing source.url plus #L<startLine>-L<endLine>; sha256 hashes the fenced body with LF and one trailing newline. Snippets are source inventory, not runnable TypedPress proof.",
+  "snippetLocator": "Use the enclosing source.url plus #L<startLine>-L<endLine>; sha256 hashes the fenced body with LF and one trailing newline. Snippets are source inventory, not runnable SpacePress proof.",
   "agentReferences": [
     {
       "id": "agent-reference:skills/building-emdash-site/SKILL.md",
@@ -9417,10 +9417,10 @@
       "owner": "plugins; shared runtime/SCF owner for fix",
       "status": "fixed",
       "reportedBy": "Reproduced in native platform/marketing campaigns, then repaired in shared runtime.",
-      "command": "TP_BIN=\"$PWD/target/debug/typedpress\" TP_PLUGINS_REPRO_SCF_FALSE=1 node --test examples/emdash/plugins/acceptance.test.mjs",
+      "command": "SP_BIN=\"$PWD/target/debug/spacepress\" SP_PLUGINS_REPRO_SCF_FALSE=1 node --test examples/emdash/plugins/acceptance.test.mjs",
       "expected": "Native REST/SCF save of nullable group boolean false reads back as false.",
       "reportedObserved": "Group profile.featured reads null on baseline.",
-      "recommendation": "Trace native REST/SCF boolean decoding; distinguish explicit false/tp from missing nullable input. Strengthen the existing behavioral owner; do not patch common runtime from a docs owner.",
+      "recommendation": "Trace native REST/SCF boolean decoding; distinguish explicit false/first from missing nullable input. Strengthen the existing behavioral owner; do not patch common runtime from a docs owner.",
       "evidence": [
         "platform"
       ],

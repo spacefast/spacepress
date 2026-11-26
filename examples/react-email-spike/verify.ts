@@ -29,49 +29,49 @@ const messages = await Promise.all(cases.map(async (props) => {
 console.log("Upstream React Email rendered and escaped both invitations.");
 
 const target = new URL("../../target/", import.meta.url);
-const binary = readFileSync(new URL("wasm32-unknown-unknown/wasm/typedpress.wasm", target));
+const binary = readFileSync(new URL("wasm32-unknown-unknown/wasm/spacepress.wasm", target));
 let exports: WebAssembly.Exports;
 const { instance } = await WebAssembly.instantiate(binary, { host: hostFs(() => exports) });
 exports = instance.exports;
 // CI discovers working examples by their config filename. Keep the intentional failure in a temporary app.
-const project = mkdtempSync(join(tmpdir(), "typedpress-react-email-direct-import-"));
+const project = mkdtempSync(join(tmpdir(), "spacepress-react-email-direct-import-"));
 try {
-  copyFileSync(new URL("direct-import-probe.ts", import.meta.url), join(project, "typedpress.config.ts"));
+  copyFileSync(new URL("direct-import-probe.ts", import.meta.url), join(project, "spacepress.config.ts"));
   mkdirSync(join(project, "emails"));
   copyFileSync(new URL("emails/invitation.tsx", import.meta.url), join(project, "emails/invitation.tsx"));
   symlinkSync(fileURLToPath(new URL("node_modules/", import.meta.url)), join(project, "node_modules"), "dir");
-  const native = spawnSync(fileURLToPath(new URL("debug/typedpress", target)), ["check", project], { encoding: "utf8" });
+  const native = spawnSync(fileURLToPath(new URL("debug/spacepress", target)), ["check", project], { encoding: "utf8" });
   if (native.error) throw native.error;
   assert.equal(native.status, 1, native.stderr);
   assert.match(native.stderr, /implicit arguments can alias parameters/);
   assert.match(native.stderr, /node_modules\/react\/cjs\/react.production.js/);
-  const { check } = call(exports, "tp_check", { project });
+  const { check } = call(exports, "sp_check", { project });
   assert.match(JSON.stringify(check.diagnostics), /implicit arguments can alias parameters/);
 } finally {
   rmSync(project, { recursive: true, force: true });
 }
 console.log("Native and WASM compilers hit the same upstream React CommonJS blocker.");
 
-const layout = call(exports, "tp_check", {
+const layout = call(exports, "sp_check", {
   project: "/email-layout-probe",
   files: {
-    "typedpress.config.ts": `import { defineConfig } from "typedpress";
+    "spacepress.config.ts": `import { defineConfig } from "spacepress";
 import "./emails/probe";
 export default defineConfig({});`,
     "emails/probe.ts": "export const sample = 1;",
   },
 });
 assert.equal(layout.check.diagnostics[0]?.code, "F1210");
-assert.match(layout.check.diagnostics[0]?.message, /emails\/probe.ts.*outside tp\//);
+assert.match(layout.check.diagnostics[0]?.message, /emails\/probe.ts.*outside sp\//);
 console.log("An isolated app-root email import hits the source boundary.");
 
 const appFiles = Object.fromEntries(
-  ["typedpress.config.ts", "emails/welcome.tsx", "emails/_components/Footer.tsx"]
+  ["spacepress.config.ts", "emails/welcome.tsx", "emails/_components/Footer.tsx"]
     .map((path) => [path, readFileSync(new URL(`transport/${path}`, import.meta.url), "utf8")]),
 );
-const { output } = call(exports, "tp_compile", { name: "react-email-transport", files: appFiles });
+const { output } = call(exports, "sp_compile", { name: "react-email-transport", files: appFiles });
 assert.ok(output?.schemaPhp && output.functionsPhp, "WASM must compile the transport control");
-const temp = mkdtempSync(join(tmpdir(), "typedpress-email-spike-"));
+const temp = mkdtempSync(join(tmpdir(), "spacepress-email-spike-"));
 try {
   writeFileSync(join(temp, "schema.php"), output.schemaPhp);
   writeFileSync(join(temp, "functions.php"), output.functionsPhp);
@@ -89,7 +89,7 @@ const welcomeCases = [
   { email: "ada@example.test", ...Welcome.PreviewProps },
   { email: "b@example.test", name: "A & <B>", dashboardUrl: "https://example.test/dashboard?team=2&tab=billing", siteName: "Example site" },
 ].map(({ siteName, ...input }) => input);
-const welcomeTemp = mkdtempSync(join(tmpdir(), "typedpress-email-welcome-"));
+const welcomeTemp = mkdtempSync(join(tmpdir(), "spacepress-email-welcome-"));
 try {
   writeFileSync(join(welcomeTemp, "schema.php"), output.schemaPhp);
   writeFileSync(join(welcomeTemp, "functions.php"), output.functionsPhp);
@@ -113,7 +113,7 @@ console.log("An action rendered emails/welcome.tsx with live props and WordPress
 
 const templatePath = "emails/identity/organization-invite.tsx";
 const invitationProject = fileURLToPath(new URL("transport/", import.meta.url));
-const nativeInvite = spawnSync(fileURLToPath(new URL("debug/typedpress", target)), ["check", invitationProject], { encoding: "utf8" });
+const nativeInvite = spawnSync(fileURLToPath(new URL("debug/spacepress", target)), ["check", invitationProject], { encoding: "utf8" });
 if (nativeInvite.error) throw nativeInvite.error;
 assert.equal(nativeInvite.status, 0, nativeInvite.stderr);
 
@@ -121,7 +121,7 @@ const invitationFiles = {
   ...appFiles,
   [templatePath]: readFileSync(new URL(`transport/${templatePath}`, import.meta.url), "utf8"),
 };
-const checkTemplate = (source: string) => call(exports, "tp_check", {
+const checkTemplate = (source: string) => call(exports, "sp_check", {
   project: "/email-diagnostic-probe",
   files: { ...invitationFiles, [templatePath]: source },
 }).check.diagnostics;
@@ -133,12 +133,12 @@ assert.match(checkTemplate('import * as Email from "react-email";\n' + source)[0
 assert.match(checkTemplate(source.replace("siteName: string", "siteName: number"))[0]?.message,
   /number/);
 
-const invitation = call(exports, "tp_compile", { name: "react-email-transport", files: invitationFiles });
+const invitation = call(exports, "sp_compile", { name: "react-email-transport", files: invitationFiles });
 assert.ok(invitation.output?.schemaPhp && invitation.output.functionsPhp, JSON.stringify(invitation.check));
-const capture = call(exports, "tp_sources", { project: invitationProject, packages: false });
+const capture = call(exports, "sp_sources", { project: invitationProject, packages: false });
 assert.ok(JSON.parse(capture.app).files[templatePath], "hosted source capture must include the template");
 
-const inviteTemp = mkdtempSync(join(tmpdir(), "typedpress-organization-invite-"));
+const inviteTemp = mkdtempSync(join(tmpdir(), "spacepress-organization-invite-"));
 try {
   for (const [kind, compiled] of [["override", invitation.output], ["fallback", output]] as const) {
     writeFileSync(join(inviteTemp, "schema.php"), compiled.schemaPhp);

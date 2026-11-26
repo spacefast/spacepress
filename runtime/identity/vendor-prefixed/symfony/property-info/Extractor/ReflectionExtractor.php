@@ -9,30 +9,30 @@
  * file that was distributed with this source code.
  */
 
-namespace TypedPress\Identity\Vendor\Symfony\Component\PropertyInfo\Extractor;
+namespace SpacePress\Identity\Vendor\Symfony\Component\PropertyInfo\Extractor;
 
-use TypedPress\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyAccessExtractorInterface;
-use TypedPress\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyInitializableExtractorInterface;
-use TypedPress\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyListExtractorInterface;
-use TypedPress\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyReadInfo;
-use TypedPress\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyReadInfoExtractorInterface;
-use TypedPress\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyTypeExtractorInterface;
-use TypedPress\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyWriteInfo;
-use TypedPress\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyWriteInfoExtractorInterface;
-use TypedPress\Identity\Vendor\Symfony\Component\PropertyInfo\Type as LegacyType;
-use TypedPress\Identity\Vendor\Symfony\Component\String\Inflector\EnglishInflector;
-use TypedPress\Identity\Vendor\Symfony\Component\String\Inflector\InflectorInterface;
-use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Exception\UnsupportedException;
-use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Type;
-use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\Type\CollectionType;
-use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\TypeContext\TypeContextFactory;
-use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\TypeIdentifier;
-use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\TypeResolver\ReflectionParameterTypeResolver;
-use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\TypeResolver\ReflectionPropertyTypeResolver;
-use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\TypeResolver\ReflectionReturnTypeResolver;
-use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\TypeResolver\ReflectionTypeResolver;
-use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\TypeResolver\TypeResolver;
-use TypedPress\Identity\Vendor\Symfony\Component\TypeInfo\TypeResolver\TypeResolverInterface;
+use SpacePress\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyAccessExtractorInterface;
+use SpacePress\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyInitializableExtractorInterface;
+use SpacePress\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyListExtractorInterface;
+use SpacePress\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyReadInfo;
+use SpacePress\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyReadInfoExtractorInterface;
+use SpacePress\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyTypeExtractorInterface;
+use SpacePress\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyWriteInfo;
+use SpacePress\Identity\Vendor\Symfony\Component\PropertyInfo\PropertyWriteInfoExtractorInterface;
+use SpacePress\Identity\Vendor\Symfony\Component\PropertyInfo\Type as LegacyType;
+use SpacePress\Identity\Vendor\Symfony\Component\String\Inflector\EnglishInflector;
+use SpacePress\Identity\Vendor\Symfony\Component\String\Inflector\InflectorInterface;
+use SpacePress\Identity\Vendor\Symfony\Component\TypeInfo\Exception\UnsupportedException;
+use SpacePress\Identity\Vendor\Symfony\Component\TypeInfo\Type;
+use SpacePress\Identity\Vendor\Symfony\Component\TypeInfo\Type\CollectionType;
+use SpacePress\Identity\Vendor\Symfony\Component\TypeInfo\TypeContext\TypeContextFactory;
+use SpacePress\Identity\Vendor\Symfony\Component\TypeInfo\TypeIdentifier;
+use SpacePress\Identity\Vendor\Symfony\Component\TypeInfo\TypeResolver\ReflectionParameterTypeResolver;
+use SpacePress\Identity\Vendor\Symfony\Component\TypeInfo\TypeResolver\ReflectionPropertyTypeResolver;
+use SpacePress\Identity\Vendor\Symfony\Component\TypeInfo\TypeResolver\ReflectionReturnTypeResolver;
+use SpacePress\Identity\Vendor\Symfony\Component\TypeInfo\TypeResolver\ReflectionTypeResolver;
+use SpacePress\Identity\Vendor\Symfony\Component\TypeInfo\TypeResolver\TypeResolver;
+use SpacePress\Identity\Vendor\Symfony\Component\TypeInfo\TypeResolver\TypeResolverInterface;
 
 /**
  * Extracts data using the reflection API.
@@ -161,7 +161,7 @@ class ReflectionExtractor implements PropertyListExtractorInterface, PropertyTyp
      */
     public function getTypes(string $class, string $property, array $context = []): ?array
     {
-        typedpress_identity_vendor_trigger_deprecation('symfony/property-info', '7.3', 'The "%s()" method is deprecated, use "%s::getType()" instead.', __METHOD__, self::class);
+        spacepress_identity_vendor_trigger_deprecation('symfony/property-info', '7.3', 'The "%s()" method is deprecated, use "%s::getType()" instead.', __METHOD__, self::class);
 
         if ($fromMutator = $this->extractFromMutator($class, $property)) {
             return $fromMutator;
@@ -198,7 +198,7 @@ class ReflectionExtractor implements PropertyListExtractorInterface, PropertyTyp
      */
     public function getTypesFromConstructor(string $class, string $property): ?array
     {
-        typedpress_identity_vendor_trigger_deprecation('symfony/property-info', '7.3', 'The "%s()" method is deprecated, use "%s::getTypeFromConstructor()" instead.', __METHOD__, self::class);
+        spacepress_identity_vendor_trigger_deprecation('symfony/property-info', '7.3', 'The "%s()" method is deprecated, use "%s::getTypeFromConstructor()" instead.', __METHOD__, self::class);
 
         try {
             $reflection = new \ReflectionClass($class);

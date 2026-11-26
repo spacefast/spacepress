@@ -8,7 +8,7 @@ declare(strict_types=1);
  * files do; the facade's API reads keep `private, no-store` and no validator. On WordPress-on-SQLite
  * served by php -S with the theme front end on. Prints JSON.
  *
- *   TP_WP_THEMES=1 php tests/php/validators.php <wp-content dir>
+ *   SP_WP_THEMES=1 php tests/php/validators.php <wp-content dir>
  */
 
 require __DIR__ . '/wp.php';
@@ -21,7 +21,7 @@ $swap = <<<'PHP'
     if (!isset($_SERVER['HTTP_X_SWAP'])) {
         return;
     }
-    final class TpSwapStream
+    final class SpSwapStream
     {
         public static int $opens = 0;
         public $context;
@@ -80,20 +80,20 @@ $swap = <<<'PHP'
     if ($_SERVER['HTTP_X_SWAP'] === 'large') {
         // A page larger than what this request has left: just before the file is read, the limit is
         // set to the memory in use plus 2 MiB, less than the 8 MiB page, so holding it whole is fatal.
-        add_filter('tp_prebuilt_serve', static function (bool $serve): bool {
+        add_filter('sp_prebuilt_serve', static function (bool $serve): bool {
             ini_set('memory_limit', (string) (memory_get_usage(true) + 2 * 1024 * 1024));
             return $serve;
         }, PHP_INT_MAX);
         return;
     }
-    stream_wrapper_register('tpswap', TpSwapStream::class);
-    add_filter('tp_prebuilt_dir', static fn (): string => 'tpswap://prebuilt');
+    stream_wrapper_register('spswap', SpSwapStream::class);
+    add_filter('sp_prebuilt_dir', static fn (): string => 'spswap://prebuilt');
     PHP;
 $site = wpSite('validators', ['wpContent' => $argv[1], 'users' => ['chief' => 'editor'], 'muPlugins' => ['swap' => $swap]]);
 wp_set_current_user(1);
-\TypedPress\db()->insert('notes', ['title' => 'Hello', 'slug' => 'hello', 'status' => 'published']);
+\SpacePress\db()->insert('notes', ['title' => 'Hello', 'slug' => 'hello', 'status' => 'published']);
 $site->actAs(null);
-\TypedPress\Wp\Purges::flush();
+\SpacePress\Wp\Purges::flush();
 $site->startServer();
 $url = $site->url();
 
@@ -113,7 +113,7 @@ function fetch(string $url, array $headers = [], string $method = 'GET'): array
     ]);
     $body = (string) curl_exec($ch);
 
-    return ['status' => (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE), 'prebuilt' => isset($out['x-typedpress-prebuilt']), 'etag' => $out['etag'][0] ?? null,
+    return ['status' => (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE), 'prebuilt' => isset($out['x-spacepress-prebuilt']), 'etag' => $out['etag'][0] ?? null,
         'cache' => $out['cache-control'][0] ?? null, 'vary' => $out['vary'][0] ?? null, 'type' => $out['content-type'][0] ?? null, 'body' => $body];
 }
 $cookie = 'Cookie: ' . LOGGED_IN_COOKIE . '=' . rawurlencode(wp_generate_auth_cookie($site->userId('chief'), time() + 3600, 'logged_in'));
@@ -137,8 +137,8 @@ $validated = static function (string $page, array $first) use ($url): array {
 
 $out = [];
 // ---- prebuilt pages -----------------------------------------------------------------------------
-for ($i = 0; $i < 10 && as_has_scheduled_action(\TypedPress\Render\Prebuilt::ACTION, null, 'typedpress'); $i++) {
-    ActionScheduler_QueueRunner::instance()->run('TypedPress tests');
+for ($i = 0; $i < 10 && as_has_scheduled_action(\SpacePress\Render\Prebuilt::ACTION, null, 'spacepress'); $i++) {
+    ActionScheduler_QueueRunner::instance()->run('SpacePress tests');
 }
 $about = fetch("$url/about/");
 $twin = fetch("$url/about.md");
@@ -152,16 +152,16 @@ $out['prebuilt signed in'] = [fetch("$url/about/", [$cookie, 'If-None-Match: ' .
 $out['prebuilt head'] = fetch("$url/about/", [], 'HEAD')['etag'] === $about['etag'];
 // Replaced between the tag and the body: whatever body is sent, the tag sent names exactly it.
 $swapped = fetch("$url/about/", ['X-Swap: replace']);
-$out['prebuilt replaced between reads'] = [$swapped['status'], $swapped['prebuilt'], $swapped['body'], $swapped['etag'] === \TypedPress\Validator::bytes($swapped['body'])];
+$out['prebuilt replaced between reads'] = [$swapped['status'], $swapped['prebuilt'], $swapped['body'], $swapped['etag'] === \SpacePress\Validator::bytes($swapped['body'])];
 // A file that exists but can't be read: rendered as usual (no prebuilt answer), never a 304.
 // A page of 8 MiB served with 2 MiB of memory left in the request: streamed whole, with the tag of its bytes.
 $large = str_repeat("<p>prebuilt page text</p>\n", intdiv(8 * 1024 * 1024, 26));
-$aboutPath = \TypedPress\Render\Prebuilt::dir() . '/about.html';
+$aboutPath = \SpacePress\Render\Prebuilt::dir() . '/about.html';
 $aboutBefore = (string) file_get_contents($aboutPath);
 file_put_contents($aboutPath, $large);
 $big = fetch("$url/about/", ['X-Swap: large']);
 file_put_contents($aboutPath, $aboutBefore);
-$out['prebuilt larger than memory_limit'] = [$big['status'], $big['prebuilt'], strlen($big['body']) === strlen($large), $big['etag'] === \TypedPress\Validator::bytes($large), strlen($large) > 2 * 1024 * 1024];
+$out['prebuilt larger than memory_limit'] = [$big['status'], $big['prebuilt'], strlen($big['body']) === strlen($large), $big['etag'] === \SpacePress\Validator::bytes($large), strlen($large) > 2 * 1024 * 1024];
 // A stream that ends before the size it reported, and one that reads nothing without ever ending:
 // both render as usual, with no prebuilt header, and never a 304, whatever the client sends.
 foreach (['short', 'empty-read'] as $mode) {
@@ -176,7 +176,7 @@ $out['prebuilt unreadable'] = array_map(static function (string $match) use ($ur
 }, ['*', '""']);
 // The validator is the bytes served: another content of the same length, with the same modification
 // time, is a 200 with the new body for a client holding the old tag (review 1, B5).
-$aboutFile = \TypedPress\Render\Prebuilt::dir() . '/about.html';
+$aboutFile = \SpacePress\Render\Prebuilt::dir() . '/about.html';
 clearstatcache();
 $mtime = filemtime($aboutFile);
 $changed = substr_replace($about['body'], 'ABOUT', (int) strpos($about['body'], 'About'), 5);
@@ -187,43 +187,43 @@ $replaced = fetch("$url/about/", ['If-None-Match: ' . $about['etag']]);
 $out['prebuilt same size and mtime'] = [strlen($changed) === strlen($about['body']), filemtime($aboutFile) === $mtime, $replaced['status'], $replaced['body'] === $changed, $replaced['etag'] !== $about['etag']];
 
 // ---- the OpenAPI document --------------------------------------------------------------------------
-$doc = fetch("$url/wp-json/typedpress/v1/openapi.json");
+$doc = fetch("$url/wp-json/spacepress/v1/openapi.json");
 $decoded = json_decode($doc['body'], true);
 $out['openapi'] = [$doc['status'], $doc['type'], $doc['cache'], $decoded['servers'][0]['url'] ?? null, isset($decoded['paths']), $decoded['openapi'] ?? null];
-$out['openapi validators'] = $validated('/wp-json/typedpress/v1/openapi.json', $doc);
+$out['openapi validators'] = $validated('/wp-json/spacepress/v1/openapi.json', $doc);
 // The document's server is this site: another site name gives another body and another ETag.
 update_option('blogname', 'Renamed');
-$renamed = fetch("$url/wp-json/typedpress/v1/openapi.json");
+$renamed = fetch("$url/wp-json/spacepress/v1/openapi.json");
 $out['openapi follows the site'] = [$renamed['etag'] !== $doc['etag'], json_decode($renamed['body'], true)['servers'][0]['description'] ?? null];
 // The bytes as before: the built file, its `servers` replaced, re-encoded (empty schemas stay objects).
-$file = json_decode((string) file_get_contents($site->plugin()->dir . '/tp/app/openapi.json'), false);
-$file->servers = [['url' => \TypedPress\Wp\Facade::url(), 'description' => 'Renamed']];
+$file = json_decode((string) file_get_contents($site->plugin()->dir . '/sp/app/openapi.json'), false);
+$file->servers = [['url' => \SpacePress\Wp\Facade::url(), 'description' => 'Renamed']];
 $out['openapi bytes'] = $renamed['body'] === json_encode($file, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
 // The same document bytes with another modification time keep their tag; other bytes of the same
 // length and time get another (review 1, B5).
-$built = $site->plugin()->dir . '/tp/app/openapi.json';
+$built = $site->plugin()->dir . '/sp/app/openapi.json';
 touch($built, filemtime($built) + 3600);
 clearstatcache();
-$touched = fetch("$url/wp-json/typedpress/v1/openapi.json");
+$touched = fetch("$url/wp-json/spacepress/v1/openapi.json");
 $bytes = (string) file_get_contents($built);
 clearstatcache();
 $builtTime = filemtime($built);
 file_put_contents($built, str_replace('"openapi": "3.1.0"', '"openapi": "3.1.1"', $bytes));
 touch($built, $builtTime);
 clearstatcache();
-$edited = fetch("$url/wp-json/typedpress/v1/openapi.json", ['If-None-Match: ' . $touched['etag']]);
+$edited = fetch("$url/wp-json/spacepress/v1/openapi.json", ['If-None-Match: ' . $touched['etag']]);
 file_put_contents($built, $bytes);
 // An OpenAPI file that can't be read is no document: never a 304, whatever the client holds.
 chmod($built, 0000);
 clearstatcache();
-$out['openapi unreadable'] = array_map(static fn (string $match): int => fetch("$url/wp-json/typedpress/v1/openapi.json", ["If-None-Match: $match"])['status'], ['*', '""']);
+$out['openapi unreadable'] = array_map(static fn (string $match): int => fetch("$url/wp-json/spacepress/v1/openapi.json", ["If-None-Match: $match"])['status'], ['*', '""']);
 // The matcher itself, on headers a test request can't carry or shouldn't have to: a line break after
 // a tag is not part of a list of tags, and a long list is read in one pass (a regex over it ran out
 // of stack at 20,000 tags and lost the match).
 $named = static function (string $header): bool {
     $_SERVER['HTTP_IF_NONE_MATCH'] = addslashes($header);
     try {
-        return \TypedPress\Validator::matches('"hit"');
+        return \SpacePress\Validator::matches('"hit"');
     } finally {
         unset($_SERVER['HTTP_IF_NONE_MATCH']);
     }
@@ -237,8 +237,8 @@ chmod($built, 0644);
 $out['openapi tag follows the bytes'] = [$touched['etag'] === $renamed['etag'], $edited['status'], json_decode($edited['body'], true)['openapi'] ?? null, $edited['etag'] !== $touched['etag']];
 
 // ---- the facade's reads stay private -----------------------------------------------------------------
-$list = fetch("$url/wp-json/typedpress/v1/notes");
-$out['facade'] = [$list['status'], $list['cache'], $list['etag'], fetch("$url/wp-json/typedpress/v1/notes", ['If-None-Match: *'])['status']];
+$list = fetch("$url/wp-json/spacepress/v1/notes");
+$out['facade'] = [$list['status'], $list['cache'], $list['etag'], fetch("$url/wp-json/spacepress/v1/notes", ['If-None-Match: *'])['status']];
 
 $site->stopServer();
 echo json_encode($out, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT), "\n";

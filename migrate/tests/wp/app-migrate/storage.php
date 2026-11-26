@@ -2,15 +2,15 @@
 
 declare(strict_types=1);
 
-use TypedPress\HttpError;
-use TypedPress\Wp\Connection;
-use TypedPress\Wp\InstallMarker;
-use TypedPress\Wp\Plugin;
+use SpacePress\HttpError;
+use SpacePress\Wp\Connection;
+use SpacePress\Wp\InstallMarker;
+use SpacePress\Wp\Plugin;
 
 $plugin = Plugin::instance() ?? throw new RuntimeException('No app loaded');
 $db = $plugin->connection();
 $wpdb = $db->wpdb();
-$table = $db->prefix() . 'tp_engine_drift_probe';
+$table = $db->prefix() . 'sp_engine_drift_probe';
 $condition = static function (bool $ok, string $problem): void {
     if (!$ok) {
         throw new RuntimeException($problem);

@@ -1,5 +1,5 @@
 import type { Post } from '@wordpress/core-data';
-import type { Field, DataViewRenderFieldProps } from '@typedpress-admin/dataviews';
+import type { Field, DataViewRenderFieldProps } from '@spacepress-admin/dataviews';
 import { renderedText } from '../../../packages/boot/src/rendered-text';
 
 function ExcerptField( { item }: DataViewRenderFieldProps< Post > ) {

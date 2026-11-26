@@ -14,7 +14,7 @@ require __DIR__ . '/wp.php';
 require __DIR__ . '/harness.php';
 
 $schema = require dirname(__DIR__) . '/fixtures/blog/schema.php';
-// TypedPress closes comments on every kind that doesn't turn them on (Hardening::comments), so the target is
+// SpacePress closes comments on every kind that doesn't turn them on (Hardening::comments), so the target is
 // the blog's posts collection with `comments: true`.
 $schema['collections']['posts']['comments'] = true;
 $wp = wpSite('spam', [
@@ -25,8 +25,8 @@ $wp = wpSite('spam', [
     'users' => ['sub' => 'subscriber', 'sub2' => 'subscriber'],
 ]);
 
-eq('the app mounted with Akismet active and no key', [$wp->plugin()->unavailable(), \TypedPress\Wp\Platform::problems(), class_exists('Akismet', false), (bool) \Akismet::get_api_key()], [null, [], true, false]);
-eq('runtime.wp reports Akismet without spam checks', \TypedPress\Wp\Platform::versions()['akismet'], ['version' => AKISMET_VERSION, 'spamChecks' => false]);
+eq('the app mounted with Akismet active and no key', [$wp->plugin()->unavailable(), \SpacePress\Wp\Platform::problems(), class_exists('Akismet', false), (bool) \Akismet::get_api_key()], [null, [], true, false]);
+eq('runtime.wp reports Akismet without spam checks', \SpacePress\Wp\Platform::versions()['akismet'], ['version' => AKISMET_VERSION, 'spamChecks' => false]);
 
 /** @var list<array{url: string, body: array<string, string>}> */
 $checks = [];
@@ -52,11 +52,11 @@ $comment = static function (string $content, string $as) use ($post, $wp): array
 [$status, $data] = $comment('Without a key nothing is checked.', 'sub');
 eq('without a key a create is not spam-checked: no Akismet request, the comment is not spam', [$status, $checks, get_comment((int) $data['id'])->comment_approved !== 'spam'], [201, [], true]);
 
-define('WPCOM_API_KEY', 'typedpress-test-akismet-key');
-eq('with WPCOM_API_KEY, runtime.wp reports spam checks on', \TypedPress\Wp\Platform::versions()['akismet']['spamChecks'], true);
+define('WPCOM_API_KEY', 'spacepress-test-akismet-key');
+eq('with WPCOM_API_KEY, runtime.wp reports spam checks on', \SpacePress\Wp\Platform::versions()['akismet']['spamChecks'], true);
 [$status, $data] = $comment('Buy cheap things now.', 'sub2');
 $check = array_values(array_filter($checks, static fn (array $c): bool => str_ends_with((string) parse_url($c['url'], PHP_URL_PATH), '/comment-check')));
-eq('with a key a create is spam-checked with that key and the comment', [count($check), $check[0]['body']['api_key'] ?? null, $check[0]['body']['comment_content'] ?? null], [1, 'typedpress-test-akismet-key', 'Buy cheap things now.']);
+eq('with a key a create is spam-checked with that key and the comment', [count($check), $check[0]['body']['api_key'] ?? null, $check[0]['body']['comment_content'] ?? null], [1, 'spacepress-test-akismet-key', 'Buy cheap things now.']);
 eq('Akismet\'s spam answer marks the comment spam', [$status, get_comment((int) $data['id'])->comment_approved], [201, 'spam']);
 
 finish('spam_test');

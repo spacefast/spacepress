@@ -1,4 +1,4 @@
-// The build-time loader's paging against an in-memory stand-in for `POST /wp-json/typedpress/v1/_live`
+// The build-time loader's paging against an in-memory stand-in for `POST /wp-json/spacepress/v1/_live`
 // (same answers: a sealed token per read, "not modified" when the read's rows are the same, and
 // "pending" now and then): random inserts with high and low keys, deletes, edits and rows leaving
 // and joining the filter. After every build the entries must be exactly the rows, none stale, and
@@ -6,7 +6,7 @@
 // real site.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { tpLoader } from "../src/index.js";
+import { spLoader } from "../src/index.js";
 
 const DESC = { data: { kinds: { notes: { type: "table", key: "notes", route: "/wp/v2/notes", primaryKey: "id", columns: {}, relations: {} } } } };
 test("paging keeps every row exactly once and the pages near rows / size, through random writes", async () => {
@@ -27,7 +27,7 @@ for (const seed0 of [1, 2, 3, 4, 5, 6, 7, 8]) {
   const state = { entries: new Map(), meta: new Map() };
   const ctx = { store: { get: (i) => state.entries.get(i), set: (e) => state.entries.set(e.id, e), has: (i) => state.entries.has(i), keys: () => [...state.entries.keys()], delete: (i) => state.entries.delete(i) },
     meta: { get: (k) => state.meta.get(k), set: (k, v) => state.meta.set(k, v), delete: (k) => state.meta.delete(k) }, logger: { info() {} }, parseData: async ({ data }) => data, generateDigest: (d) => JSON.stringify(d) };
-  const loader = tpLoader("notes", { site: "http://x", fetch, pageSize: 10, id: "id" });
+  const loader = spLoader("notes", { site: "http://x", fetch, pageSize: 10, id: "id" });
   let maxPages = 0;
   for (let b = 0; b < 300; b++) {
     const ops = Math.floor(rnd() * 8);
@@ -44,7 +44,7 @@ for (const seed0 of [1, 2, 3, 4, 5, 6, 7, 8]) {
     const got = [...state.entries.keys()].sort();
     if (JSON.stringify(want) !== JSON.stringify(got)) assert.fail(`seed ${seed0} build ${b}: entries differ`);
     for (const r of db.values()) if (r.on && state.entries.get(String(r.id)).data.v !== r.v) assert.fail(`seed ${seed0} build ${b}: stale ${r.id}`);
-    const pages = JSON.parse(state.meta.get("typedpress:pages")).pages;
+    const pages = JSON.parse(state.meta.get("spacepress:pages")).pages;
     maxPages = Math.max(maxPages, pages.length - Math.ceil(want.length / 10));
   }
   assert.ok(maxPages <= 20, `seed ${seed0}: ${maxPages} pages over rows / size`);

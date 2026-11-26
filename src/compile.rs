@@ -105,7 +105,7 @@ fn is_env_name(s: &str) -> bool {
 /// WordPress's own secrets: its database login, its keys and salts, the Secrets API site key, and
 /// the credentials core reads for its filesystem (`FTP_*`) and outgoing proxy.
 /// App code never reads them,
-/// on any host; `TypedPress\\Env::HOST_SECRETS` answers null for the same names at runtime, and
+/// on any host; `SpacePress\\Env::HOST_SECRETS` answers null for the same names at runtime, and
 /// `host_secrets_match_the_runtime` keeps the lists equal.
 const HOST_SECRETS: &[&str] = &[
     "DB_NAME",
@@ -478,7 +478,7 @@ pub struct Compiler<'a, 'p> {
     fx: Option<FnCtx>,
     /// Inferred result type of each action handler (for the typed client).
     pub action_results: HashMap<String, Ty>,
-    /// Each server component's props type (`tp/components/x.tsx#Name` → its first parameter),
+    /// Each server component's props type (`sp/components/x.tsx#Name` → its first parameter),
     /// for the blocks Markdown pages use (`crate::content_blocks`).
     pub component_props: HashMap<String, Ty>,
     /// Each compiled `emails/` template's function, by its closure, for `mail.render()`.
@@ -774,15 +774,15 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let name = self.unique_name(&format!("{table}__{}__chain", kind.name()));
         let calls: Vec<String> = functions
             .iter()
-            .map(|f| format!("'\\\\TypedPressApp\\\\{f}'"))
+            .map(|f| format!("'\\\\SpacePressApp\\\\{f}'"))
             .collect();
         let list = calls.join(", ");
         let body = match kind {
             HookKind::BeforeCreate => format!(
-                "function {name}(\\TypedPress\\JsObject $data, $ctx) {{\n\tforeach ([{list}] as $hook) {{\n\t\t$result = $hook($data, $ctx);\n\t\tif ($result instanceof \\TypedPress\\JsObject) {{\n\t\t\t$data = $result;\n\t\t\t$ctx->p['data'] = $result;\n\t\t}}\n\t}}\n\treturn $data;\n}}\n\n"
+                "function {name}(\\SpacePress\\JsObject $data, $ctx) {{\n\tforeach ([{list}] as $hook) {{\n\t\t$result = $hook($data, $ctx);\n\t\tif ($result instanceof \\SpacePress\\JsObject) {{\n\t\t\t$data = $result;\n\t\t\t$ctx->p['data'] = $result;\n\t\t}}\n\t}}\n\treturn $data;\n}}\n\n"
             ),
             HookKind::BeforeUpdate => format!(
-                "function {name}(\\TypedPress\\JsObject $data, $existing, $ctx) {{\n\tforeach ([{list}] as $hook) {{\n\t\t$result = $hook($data, $existing, $ctx);\n\t\tif ($result instanceof \\TypedPress\\JsObject) {{\n\t\t\t$data = $result;\n\t\t\t$ctx->p['data'] = $result;\n\t\t}}\n\t}}\n\treturn $data;\n}}\n\n"
+                "function {name}(\\SpacePress\\JsObject $data, $existing, $ctx) {{\n\tforeach ([{list}] as $hook) {{\n\t\t$result = $hook($data, $existing, $ctx);\n\t\tif ($result instanceof \\SpacePress\\JsObject) {{\n\t\t\t$data = $result;\n\t\t\t$ctx->p['data'] = $result;\n\t\t}}\n\t}}\n\treturn $data;\n}}\n\n"
             ),
             _ => format!(
                 "function {name}(...$arguments) {{\n\tforeach ([{list}] as $hook) {{\n\t\t$hook(...$arguments);\n\t}}\n}}\n\n"
@@ -993,7 +993,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     | "yield"
             )
         {
-            name = format!("tp_{name}");
+            name = format!("sp_{name}");
         }
         if self.used_names.contains(&name.to_ascii_lowercase()) {
             let mut i = 2;
@@ -1048,7 +1048,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             return Ok(());
         }
         if self.resolving_json_types.len() >= 96 {
-            return err(*span, "JSON model expansion exceeds TypedPress's 96-level limit");
+            return err(*span, "JSON model expansion exceeds SpacePress's 96-level limit");
         }
         if !self.resolving_json_types.insert(key) {
             return err(*span, "recursive JSON model annotations aren't supported");
@@ -1434,7 +1434,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         if params.is_some() && receives_this(&f) {
             return err_help(
                 f.span,
-                "TypedPress calls this function without a receiver, so `this` is undefined in it",
+                "SpacePress calls this function without a receiver, so `this` is undefined in it",
                 "read what you need from the handler's parameters, or from a variable it captures, instead of `this`",
             );
         }
@@ -1492,7 +1492,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 return Err(untyped_this(p.span));
             }
             let declared = match &p.ann {
-                // `PageProps`/`LayoutProps` from "typedpress/app" are whatever the router passes this route.
+                // `PageProps`/`LayoutProps` from "spacepress/app" are whatever the router passes this route.
                 Some(a) if self.app_props_annotation(a, f.module) && params.is_some() => None,
                 Some(a) => Some(self.resolve_runtime_ann(a, f.module)?),
                 None => None,
@@ -1536,7 +1536,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     return err_help(
                         p.span,
                         "this parameter needs a type",
-                        "annotate it, e.g. `(item: Item)`; TypedPress compiles by type",
+                        "annotate it, e.g. `(item: Item)`; SpacePress compiles by type",
                     );
                 }
             };
@@ -1566,7 +1566,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             return err(
                 f.span,
                 format!(
-                    "this function takes {} parameters, but TypedPress calls it with {}",
+                    "this function takes {} parameters, but SpacePress calls it with {}",
                     f.params.len(),
                     ps.len()
                 ),
@@ -1653,7 +1653,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         );
         if self.suspends(&f) {
             let body_name = self.unique_name(&format!("{name}__body"));
-            let wrapper = self.suspending_wrapper(&f, &format!("\\TypedPressApp\\{body_name}"));
+            let wrapper = self.suspending_wrapper(&f, &format!("\\SpacePressApp\\{body_name}"));
             let body_docs = php_function_doc(
                 &summary,
                 &parameter_docs,
@@ -1663,9 +1663,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 "Start the compiled asynchronous or generator callback.",
                 " * @param mixed ...$args Arguments forwarded to the callback.\n",
                 match (f.is_async, f.is_generator) {
-                    (true, true) => "\\TypedPress\\JsAsyncGenerator",
-                    (false, true) => "\\TypedPress\\JsGenerator",
-                    _ => "\\TypedPress\\JsPromise",
+                    (true, true) => "\\SpacePress\\JsAsyncGenerator",
+                    (false, true) => "\\SpacePress\\JsGenerator",
+                    _ => "\\SpacePress\\JsPromise",
                 },
             );
             let _ = writeln!(
@@ -1750,14 +1750,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     format!("...{rest}"),
                     format!("Remaining {language} arguments."),
                 ));
-                let _ = writeln!(prologue, "\t{php} = new \\TypedPress\\JsArray({rest});");
+                let _ = writeln!(prologue, "\t{php} = new \\SpacePress\\JsArray({rest});");
                 continue;
             }
             match &p.pat {
                 Pat::Id(_, _) => {
                     let php = self.declare_parameter(p, &t, &mut prologue, 1)?;
                     let default = if self.javascript_module(f.module) {
-                        " = \\TypedPress\\JsUndefined::Value"
+                        " = \\SpacePress\\JsUndefined::Value"
                     } else {
                         parameter_default_suffix(&f.params[i..], &param_tys[i..f.params.len()])
                     };
@@ -1775,7 +1775,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         php.clone(),
                         format!("{language} parameter `{}`.", php_doc_text(source_name)),
                     ));
-                    if hint == "\\TypedPress\\JsObject "
+                    if hint == "\\SpacePress\\JsObject "
                         && matches!(t, Ty::Obj(_) | Ty::Map(_))
                         && p.default.is_none()
                         && !self.effects.binding_reassigned(p.pat.span())
@@ -1833,13 +1833,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let rewritten = Self::client_server_body(stmts, &self.client.as_ref().expect("client").analysis);
                 body.push_str(&self.block(&rewritten, 1)?);
                 if self.note_fallthrough(&rewritten, f.span)? {
-                    body.push_str("\treturn \\TypedPress\\Js::undefined();\n");
+                    body.push_str("\treturn \\SpacePress\\Js::undefined();\n");
                 }
             }
             FnBody::Block(stmts) => {
                 body.push_str(&self.block(stmts, 1)?);
                 if self.note_fallthrough(stmts, f.span)? {
-                    body.push_str("\treturn \\TypedPress\\Js::undefined();\n");
+                    body.push_str("\treturn \\SpacePress\\Js::undefined();\n");
                 }
             }
         }
@@ -2256,7 +2256,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         let php = self.declare_local(n, ty, mutable, pat.span());
                         let v = value
                             .map(|v| v.php)
-                            .unwrap_or_else(|| "\\TypedPress\\Js::undefined()".into());
+                            .unwrap_or_else(|| "\\SpacePress\\Js::undefined()".into());
                         self.fresh_binding(&php, pat.span(), &mut out, indent);
                         let _ = writeln!(out, "{p}{php} = {v};");
                     }
@@ -2284,7 +2284,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     return err_help(
                         e.span,
                         "this async call isn't awaited",
-                        "add `await`; TypedPress runs async calls in order",
+                        "add `await`; SpacePress runs async calls in order",
                     );
                 }
                 if matches!(v.ty, Ty::Builder(_)) {
@@ -2301,7 +2301,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
                 None => {
                     self.note_return(&Ty::Undefined, *span)?;
-                    let _ = writeln!(out, "{p}return \\TypedPress\\Js::undefined();");
+                    let _ = writeln!(out, "{p}return \\SpacePress\\Js::undefined();");
                 }
             },
             Stmt::If(test, then, otherwise) => {
@@ -2380,7 +2380,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         locals.sort_by(|a, b| a.php.cmp(&b.php));
                         locals
                             .into_iter()
-                            .map(|l| format!("{php} = &\\TypedPress\\Js::cell({php})", php = l.php))
+                            .map(|l| format!("{php} = &\\SpacePress\\Js::cell({php})", php = l.php))
                             .collect()
                     }
                     _ => Vec::new(),
@@ -2411,7 +2411,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let module = self.fx().module;
                 // Authored TypeScript has no job queue, so `for await` is accepted only where the
                 // blocking model is exact: a sync iterable (array, tuple, string) whose elements are
-                // TypedPress's own promises or plain values. Each element is then already settled, and
+                // SpacePress's own promises or plain values. Each element is then already settled, and
                 // awaiting it yields its value. Async iterables, generators and values from imported
                 // JavaScript go through the job queue, which only imported JavaScript has.
                 let typed_await = *is_await && !self.javascript_module(module);
@@ -2447,13 +2447,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let it = self.expr(iter)?;
                 let it = self.finish_value(it, iter.span)?;
                 let (el, src) = match &it.ty.non_null() {
-                    Ty::Dynamic => (Ty::Dynamic, format!("\\TypedPress\\Js::dynamicIterator({})", it.php)),
+                    Ty::Dynamic => (Ty::Dynamic, format!("\\SpacePress\\Js::dynamicIterator({})", it.php)),
                     Ty::Array(t) | Ty::NonEmptyArray(t) => ((**t).clone(), it.php.clone()),
                     Ty::Tuple(ts) | Ty::ArrayLiteral(ts) => (Ty::union(ts.clone()), it.php.clone()),
-                    t if t.is_str() => (Ty::Str, format!("\\TypedPress\\Js::from({})", it.php)),
+                    t if t.is_str() => (Ty::Str, format!("\\SpacePress\\Js::from({})", it.php)),
                     t @ (Ty::MapOf(..) | Ty::SetOf(_) | Ty::Iter(_) | Ty::UrlParams) => (
                         self.iterable_element(t).expect("collection element"),
-                        format!("\\TypedPress\\Js::iter({})", it.php),
+                        format!("\\SpacePress\\Js::iter({})", it.php),
                     ),
                     other => return err(iter.span, format!("can't loop over {}", other.describe())),
                 };
@@ -2504,7 +2504,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     }
                     let _ = writeln!(
                         out,
-                        "{p}{source} = \\TypedPress\\JsIter::{open}({});\n{p}try {{\n{p}while ({source}->step()) {{",
+                        "{p}{source} = \\SpacePress\\JsIter::{open}({});\n{p}try {{\n{p}while ({source}->step()) {{",
                         it.php
                     );
                     let _ = writeln!(out, "{}{value} = {source}->value;", pad(indent + 1));
@@ -2603,7 +2603,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 };
                 let _ = writeln!(
                     out,
-                    "{p}{source} = \\TypedPress\\Js::dynamicForIn({});\n{p}foreach ({source} as {index}) {{",
+                    "{p}{source} = \\SpacePress\\Js::dynamicForIn({});\n{p}foreach ({source} as {index}) {{",
                     value.php
                 );
                 if matches!(kind, Some(DeclKind::Let | DeclKind::Const)) {
@@ -2730,13 +2730,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     let javascript = self.javascript_module(module);
                     let caught = self.tmp_var();
                     // Database and validation errors propagate: they must roll back the request.
-                    let _ = writeln!(out, "{p}}} catch (\\TypedPress\\JsError {caught}) {{");
+                    let _ = writeln!(out, "{p}}} catch (\\SpacePress\\JsError {caught}) {{");
                     if let Some((n, span)) = param {
                         let var =
                             self.declare_local(n, if javascript { Ty::Dynamic } else { Ty::Error }, javascript, *span);
                         // Typed catch bindings are Errors: Error subclass instances pass, other values are refused.
                         let unwrap = if javascript { "thrownValue" } else { "caughtError" };
-                        let _ = writeln!(out, "{p}\t{var} = \\TypedPress\\Js::{unwrap}({caught});");
+                        let _ = writeln!(out, "{p}\t{var} = \\SpacePress\\Js::{unwrap}({caught});");
                     }
                     out.push_str(&self.conditional_stmts(h, indent + 1)?);
                     self.fx().scopes.pop();
@@ -2929,7 +2929,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             };
             match callee_v {
                 Resolved::Global(g) if ERROR_CONSTRUCTORS.contains(&g) => {
-                    self.fx().throws.insert("\\TypedPress\\JsError");
+                    self.fx().throws.insert("\\SpacePress\\JsError");
                     return self.error_constructor(g, args).map(|value| (value.php, false));
                 }
                 Resolved::Value(Value::Builtin(Builtin::HttpError), _) => {
@@ -2962,9 +2962,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     if !(3..=4).contains(&parts.len()) {
                         return err(e.span, "HttpError takes (status, code, message)");
                     }
-                    self.fx().throws.insert("\\TypedPress\\HttpError");
+                    self.fx().throws.insert("\\SpacePress\\HttpError");
                     return Ok((
-                        format!("new \\TypedPress\\HttpError({})", parts.join(", ")),
+                        format!("new \\SpacePress\\HttpError({})", parts.join(", ")),
                         json_arguments,
                     ));
                 }
@@ -2973,14 +2973,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         let v = self.expr(e)?;
         if v.ty == Ty::Error {
-            self.fx().throws.insert("\\TypedPress\\JsError");
+            self.fx().throws.insert("\\SpacePress\\JsError");
             return Ok((v.php, false));
         }
         let module = self.fx().module;
         if self.javascript_module(module) || self.error_instance(&v.ty) {
             let v = self.finish_value(v, e.span)?;
             self.fx().throws.insert("\\Throwable");
-            return Ok((format!("\\TypedPress\\Js::throwable({})", v.php), false));
+            return Ok((format!("\\SpacePress\\Js::throwable({})", v.php), false));
         }
         err_help(
             e.span,
@@ -3055,14 +3055,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 };
                 let tmp = self.tmp_var();
                 let _ = writeln!(out, "{p}{tmp} = {src};");
-                let _ = writeln!(out, "{p}if (\\TypedPress\\Js::undefined() === {tmp}) {{");
+                let _ = writeln!(out, "{p}if (\\SpacePress\\Js::undefined() === {tmp}) {{");
                 let _ = writeln!(out, "{}{tmp} = {};", pad(indent + 1), d.php);
                 let _ = writeln!(out, "{p}}}");
                 self.bind_pattern_types(inner, &tmp, types, mutable, out, indent)?;
             }
             Pat::Obj { props, rest, span } => {
                 let source = self.tmp_var();
-                let _ = writeln!(out, "{p}{source} = \\TypedPress\\Js::requirePresent({src});");
+                let _ = writeln!(out, "{p}{source} = \\SpacePress\\Js::requirePresent({src});");
                 let src = &source;
                 let t = ty.non_null();
                 if ty.is_nullable() && ty != Ty::Dynamic {
@@ -3071,7 +3071,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 // Imported JavaScript: any field may be read, and an absent one is undefined.
                 if ty == Ty::Dynamic {
                     for (key, p2) in props {
-                        let access = format!("\\TypedPress\\Js::dynamicGet({src}, {})", php_str(key));
+                        let access = format!("\\SpacePress\\Js::dynamicGet({src}, {})", php_str(key));
                         let types = BindingTypes {
                             read: Ty::Dynamic,
                             constraint: Ty::Dynamic,
@@ -3088,7 +3088,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         self.fresh_binding(&php, *span, out, indent);
                         let _ = writeln!(
                             out,
-                            "{p}{php} = \\TypedPress\\Js::dynamicRest({src}, [{}]);",
+                            "{p}{php} = \\SpacePress\\Js::dynamicRest({src}, [{}]);",
                             keys.join(", ")
                         );
                     }
@@ -3104,7 +3104,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         }
                         return Err(d);
                     };
-                    let access = format!("\\TypedPress\\Js::dataGet({src}, {})", php_str(key));
+                    let access = format!("\\SpacePress\\Js::dataGet({src}, {})", php_str(key));
                     let read = if optional || matches!(t, Ty::Map(_)) {
                         Ty::union([ft, Ty::Undefined])
                     } else {
@@ -3135,7 +3135,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     };
                     let php = self.declare_binding(name, types, mutable, *span);
                     self.fresh_binding(&php, *span, out, indent);
-                    let _ = writeln!(out, "{p}{php} = \\TypedPress\\Js::omit({src}, [{}]);", keys.join(", "));
+                    let _ = writeln!(out, "{p}{php} = \\SpacePress\\Js::omit({src}, [{}]);", keys.join(", "));
                 }
             }
             Pat::Arr { elems, rest, span } => {
@@ -3148,10 +3148,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     } else {
                         elems.len().to_string()
                     };
-                    let _ = writeln!(out, "{p}{source} = \\TypedPress\\Js::destructure({src}, {take});");
+                    let _ = writeln!(out, "{p}{source} = \\SpacePress\\Js::destructure({src}, {take});");
                     for (i, e) in elems.iter().enumerate() {
                         if let Some(e) = e {
-                            let access = format!("\\TypedPress\\Js::dynamicGet({source}, {i})");
+                            let access = format!("\\SpacePress\\Js::dynamicGet({source}, {i})");
                             let types = BindingTypes {
                                 read: Ty::Dynamic,
                                 constraint: Ty::Dynamic,
@@ -3166,7 +3166,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         };
                         let php = self.declare_binding(name, types, mutable, *span);
                         self.fresh_binding(&php, *span, out, indent);
-                        let _ = writeln!(out, "{p}{php} = \\TypedPress\\Js::arrSlice({source}, {});", elems.len());
+                        let _ = writeln!(out, "{p}{php} = \\SpacePress\\Js::arrSlice({source}, {});", elems.len());
                     }
                     return Ok(());
                 }
@@ -3197,7 +3197,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     let _ = writeln!(out, "{p}{done} = {done} || {i} >= \\count({src}->a);");
                     if let Some(e) = e {
                         let access = format!(
-                            "({done} ? \\TypedPress\\Js::undefined() : \\TypedPress\\Js::dynamicGet({src}, {i}))"
+                            "({done} ? \\SpacePress\\Js::undefined() : \\SpacePress\\Js::dynamicGet({src}, {i}))"
                         );
                         let types = BindingTypes {
                             read: live_element(&ty, i, changed).expect("array read"),
@@ -3227,7 +3227,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     self.fresh_binding(&php, *span, out, indent);
                     let _ = writeln!(
                         out,
-                        "{p}{php} = {done} ? new \\TypedPress\\JsArray() : \\TypedPress\\Js::arrSlice({src}, {});",
+                        "{p}{php} = {done} ? new \\SpacePress\\JsArray() : \\SpacePress\\Js::arrSlice({src}, {});",
                         elems.len()
                     );
                 }
@@ -3672,10 +3672,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 )
             }) =>
             {
-                format!("!\\TypedPress\\Js::isNullish({})", v.php)
+                format!("!\\SpacePress\\Js::isNullish({})", v.php)
             }
             t if t.is_str() => format!("{} !== ''", v.wrapped()),
-            _ => format!("\\TypedPress\\Js::truthy({})", v.php),
+            _ => format!("\\SpacePress\\Js::truthy({})", v.php),
         }
     }
 
@@ -3697,7 +3697,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             Ty::Promise(_) => err_help(
                 span,
                 "this async call isn't awaited",
-                "add `await`; TypedPress runs async calls in order",
+                "add `await`; SpacePress runs async calls in order",
             ),
             Ty::KindSystem(_) => err_help(
                 span,
@@ -3731,7 +3731,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let out = match &e.kind {
             ExprKind::Class(_) => return err(span, "class declarations must be at module scope"),
             ExprKind::Instanceof(left, right) => {
-                // Built-in classes TypedPress implements answer `instanceof` from imported JavaScript.
+                // Built-in classes SpacePress implements answer `instanceof` from imported JavaScript.
                 // None of them can be subclassed in compiled code, so the PHP class is exact.
                 if let ExprKind::Ident(name) = &right.kind
                     && let Some(class) = builtin_instance_class(name)
@@ -3740,7 +3740,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 {
                     let left = self.expr(left)?;
                     return Ok(Out::atom(
-                        format!("({} instanceof \\TypedPress\\{class})", left.php),
+                        format!("({} instanceof \\SpacePress\\{class})", left.php),
                         Ty::Bool,
                     ));
                 }
@@ -3752,7 +3752,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     let left = self.expr(left)?;
                     let left = self.finish_value(left, span)?;
                     return Ok(Out::atom(
-                        format!("\\TypedPress\\JsBinary::instanceOf({}, {})", left.php, php_str(g)),
+                        format!("\\SpacePress\\JsBinary::instanceOf({}, {})", left.php, php_str(g)),
                         Ty::Bool,
                     ));
                 }
@@ -3762,7 +3762,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 {
                     let left = self.expr(left)?;
                     return Ok(Out::atom(
-                        format!("\\TypedPress\\Js::isError({}, {})", left.php, php_str(g)),
+                        format!("\\SpacePress\\Js::isError({}, {})", left.php, php_str(g)),
                         Ty::Bool,
                     ));
                 }
@@ -3770,15 +3770,15 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let right = self.expr(right)?;
                 if right.ty == Ty::Dynamic {
                     return Ok(Out::atom(
-                        format!("\\TypedPress\\Js::dynamicInstanceof({}, {})", left.php, right.php),
+                        format!("\\SpacePress\\Js::dynamicInstanceof({}, {})", left.php, right.php),
                         Ty::Bool,
                     ));
                 }
                 if !matches!(right.ty, Ty::Class(_)) {
-                    return err(span, "instanceof requires a named TypedPress class");
+                    return err(span, "instanceof requires a named SpacePress class");
                 }
                 Out::atom(
-                    format!("\\TypedPress\\JsClass::instanceOf({}, {})", left.php, right.php),
+                    format!("\\SpacePress\\JsClass::instanceOf({}, {})", left.php, right.php),
                     Ty::Bool,
                 )
             }
@@ -3793,7 +3793,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 if let Some(at) = lone_surrogate {
                     return Err(Diag::new(
                         *at,
-                        "TypedPress code doesn't support strings with lone UTF-16 surrogates",
+                        "SpacePress code doesn't support strings with lone UTF-16 surrogates",
                     )
                     .help("use complete characters; a lone surrogate can't be stored as UTF-8")
                     .code(crate::diag::Code::Unsupported));
@@ -3802,7 +3802,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     .iter()
                     .map(|c| {
                         c.as_deref()
-                            .map_or("\\TypedPress\\Js::undefined()".to_string(), php_str)
+                            .map_or("\\SpacePress\\Js::undefined()".to_string(), php_str)
                     })
                     .collect::<Vec<_>>()
                     .join(", ");
@@ -3811,7 +3811,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let site = format!("{}:{}:{}", span.file, span.start, span.end);
                 Out::atom(
                     format!(
-                        "\\TypedPress\\Js::templateStrings({}, [{items}], [{raw}])",
+                        "\\SpacePress\\Js::templateStrings({}, [{items}], [{raw}])",
                         php_str(&site)
                     ),
                     // TypeScript types every cooked string as `string`, so a TemplateStringsArray
@@ -3831,27 +3831,27 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 };
                 // Js::hasProperty: own properties, then the value's fixed prototype chain.
                 Out::atom(
-                    format!("\\TypedPress\\Js::hasProperty({}, {})", key.php, object.php),
+                    format!("\\SpacePress\\Js::hasProperty({}, {})", key.php, object.php),
                     Ty::Bool,
                 )
             }
             ExprKind::Num(n) => Out::atom(php_number(*n), Ty::FreshNumLit(*n)),
             ExprKind::BigInt(digits) => Out::atom(
-                format!("\\TypedPress\\JsBigInt::literal({})", php_str(digits)),
+                format!("\\SpacePress\\JsBigInt::literal({})", php_str(digits)),
                 Ty::BigInt,
             ),
             ExprKind::Str(s) => Out::atom(php_str(s), Ty::FreshStrLit(s.clone())),
             ExprKind::Bool(b) => Out::atom(b.to_string(), Ty::FreshBoolLit(*b)),
-            ExprKind::Undefined => Out::atom("\\TypedPress\\Js::undefined()", Ty::Undefined),
+            ExprKind::Undefined => Out::atom("\\SpacePress\\Js::undefined()", Ty::Undefined),
             ExprKind::Null => Out::atom("null", Ty::Null),
             ExprKind::Regex { pattern, flags } => {
                 crate::builtins::check_regex(pattern, flags, span)?;
                 let javascript = self.javascript_module(self.fx.as_ref().expect("fn").module);
                 Out::atom(
                     if javascript {
-                        format!("new \\TypedPress\\RegExp({}, {})", php_str(pattern), php_str(flags))
+                        format!("new \\SpacePress\\RegExp({}, {})", php_str(pattern), php_str(flags))
                     } else {
-                        format!("\\TypedPress\\Js::re({}, {})", php_str(pattern), php_str(flags))
+                        format!("\\SpacePress\\Js::re({}, {})", php_str(pattern), php_str(flags))
                     },
                     if javascript { Ty::Dynamic } else { Ty::Regex },
                 )
@@ -3910,7 +3910,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                             match v.ty.non_null() {
                                 Ty::Dynamic => {
                                     tys.push(Ty::Dynamic);
-                                    parts.push(format!("...(\\TypedPress\\Js::dynamicIterable({}))->a", v.php));
+                                    parts.push(format!("...(\\SpacePress\\Js::dynamicIterable({}))->a", v.php));
                                     continue;
                                 }
                                 Ty::Array(t) | Ty::NonEmptyArray(t) => tys.push(*t),
@@ -3923,7 +3923,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                                         );
                                     }
                                     tys.push(self.iterable_element(&t).expect("collection element"));
-                                    parts.push(format!("...(\\TypedPress\\Js::iterArray({}))->a", v.php));
+                                    parts.push(format!("...(\\SpacePress\\Js::iterArray({}))->a", v.php));
                                     continue;
                                 }
                                 other => {
@@ -3939,7 +3939,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 } else {
                     Ty::Array(Box::new(Ty::union(tys)))
                 };
-                Out::atom(format!("(new \\TypedPress\\JsArray([{}]))", parts.join(", ")), ty)
+                Out::atom(format!("(new \\SpacePress\\JsArray([{}]))", parts.join(", ")), ty)
             }
             ExprKind::Object(props)
                 if self.javascript_module(self.fx.as_ref().expect("fn").module)
@@ -4069,7 +4069,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                                         );
                                     }
                                     is_map = true;
-                                    (format!("\\TypedPress\\Js::key({})", k.php), None)
+                                    (format!("\\SpacePress\\Js::key({})", k.php), None)
                                 }
                             };
                             if let (ExprKind::Func(f), Some(k)) = (&value.kind, name)
@@ -4186,17 +4186,17 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 {
                     let fields = parts.iter().map(|p| &p[1..p.len() - 1]).collect::<Vec<_>>().join(", ");
                     if null_prototype {
-                        format!("(new \\TypedPress\\JsObject([{fields}], nullPrototype: true))")
+                        format!("(new \\SpacePress\\JsObject([{fields}], nullPrototype: true))")
                     } else {
-                        format!("(new \\TypedPress\\JsObject([{fields}]))")
+                        format!("(new \\SpacePress\\JsObject([{fields}]))")
                     }
                 } else if null_prototype {
                     format!(
-                        "\\TypedPress\\Js::nullPrototype(\\TypedPress\\Js::obj({}))",
+                        "\\SpacePress\\Js::nullPrototype(\\SpacePress\\Js::obj({}))",
                         parts.join(", ")
                     )
                 } else {
-                    format!("\\TypedPress\\Js::obj({})", parts.join(", "))
+                    format!("\\SpacePress\\Js::obj({})", parts.join(", "))
                 };
                 Out::atom(php, ty)
             }
@@ -4224,10 +4224,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         Out::new(format!("!{}", paren(&self.truthy(&v))), ty)
                     }
                     UnOp::Neg if v.ty == Ty::BigInt => {
-                        Out::atom(format!("\\TypedPress\\Js::neg({})", v.php), Ty::BigInt)
+                        Out::atom(format!("\\SpacePress\\Js::neg({})", v.php), Ty::BigInt)
                     }
                     UnOp::BitNot if v.ty == Ty::BigInt => {
-                        Out::atom(format!("\\TypedPress\\Js::bitNot({})", v.php), Ty::BigInt)
+                        Out::atom(format!("\\SpacePress\\Js::bitNot({})", v.php), Ty::BigInt)
                     }
                     UnOp::Plus if v.ty == Ty::BigInt => {
                         return err_help(
@@ -4247,7 +4247,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                             // Js::neg: the operand as a JS number, like the binary operators (or a
                             // BigInt, which checked JavaScript can't rule out).
                             _ => Out::atom(
-                                format!("\\TypedPress\\Js::neg({})", v.php),
+                                format!("\\SpacePress\\Js::neg({})", v.php),
                                 if v.ty == Ty::Dynamic { Ty::Dynamic } else { Ty::Num },
                             ),
                         }
@@ -4257,7 +4257,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                             self.need_num(&v, x.span, "`~`")?;
                         }
                         Out::atom(
-                            format!("\\TypedPress\\Js::bitNot({})", v.php),
+                            format!("\\SpacePress\\Js::bitNot({})", v.php),
                             if v.ty == Ty::Dynamic { Ty::Dynamic } else { Ty::Num },
                         )
                     }
@@ -4265,13 +4265,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         if v.ty.is_num() {
                             v
                         } else {
-                            Out::atom(format!("\\TypedPress\\Js::toNumber({})", v.php), Ty::Num)
+                            Out::atom(format!("\\SpacePress\\Js::toNumber({})", v.php), Ty::Num)
                         }
                     }
                     UnOp::TypeOf if v.ty == Ty::Undefined => {
                         Out::atom(Self::sequence(vec![v.php], php_str("undefined")), Ty::Str)
                     }
-                    UnOp::TypeOf => Out::atom(format!("\\TypedPress\\Js::typeOf({})", v.php), Ty::Str),
+                    UnOp::TypeOf => Out::atom(format!("\\SpacePress\\Js::typeOf({})", v.php), Ty::Str),
                 }
             }
             ExprKind::Binary(op, l, r) => {
@@ -4315,7 +4315,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let v = self.expr(x)?;
                 Out::atom(
                     format!(
-                        "{}\\TypedPress\\Js::isNullish({})",
+                        "{}\\SpacePress\\Js::isNullish({})",
                         if *negated { "!" } else { "" },
                         v.php
                     ),
@@ -4339,12 +4339,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         // A literal fallback can be passed eagerly without observing a read,
                         // allocation or side effect on a branch JavaScript would skip.
                         if literal_php(&b) || literal_position(r) {
-                            Out::atom(format!("\\TypedPress\\Js::coalesce({}, {})", a.php, b.php), ty)
+                            Out::atom(format!("\\SpacePress\\Js::coalesce({}, {})", a.php, b.php), ty)
                         } else {
                             let tmp = self.tmp_var();
                             Out::new(
                                 format!(
-                                    "(\\TypedPress\\Js::isNullish({}) ? {} : {tmp})",
+                                    "(\\SpacePress\\Js::isNullish({}) ? {} : {tmp})",
                                     php_lazy_assignment(&tmp, &a.php),
                                     b.php
                                 ),
@@ -4454,7 +4454,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             | Ty::KindSystem(_)
             | Ty::KindRevisions(_, _)
             | Ty::DbGlobals
-            | Ty::DbGlobal(_) => Some("\\TypedPress\\db()"),
+            | Ty::DbGlobal(_) => Some("\\SpacePress\\db()"),
             Ty::Builder(_) => Some(""),
             _ => None,
         };
@@ -4511,10 +4511,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
         crate::builtins::check_string_coercion_type(&v.ty, span)?;
         Ok(match &v.ty {
             t if t.is_str() => v.wrapped(),
-            Ty::Num | Ty::NumLit(_) | Ty::FreshNumLit(_) => format!("\\TypedPress\\Js::numStr({})", v.php),
+            Ty::Num | Ty::NumLit(_) | Ty::FreshNumLit(_) => format!("\\SpacePress\\Js::numStr({})", v.php),
             Ty::BigInt => format!("(string) ({})", v.php),
             Ty::Builder(_) | Ty::Promise(_) => return err(span, "this value needs `await` first"),
-            _ => format!("\\TypedPress\\Js::str({})", v.php),
+            _ => format!("\\SpacePress\\Js::str({})", v.php),
         })
     }
 
@@ -4532,7 +4532,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 return None;
             };
             (element.is_str() && out.ty.is_nullable() && out.ty.non_null().is_str())
-                .then(|| format!("({} ?? \\TypedPress\\Js::undefined())", out.php))
+                .then(|| format!("({} ?? \\SpacePress\\Js::undefined())", out.php))
         };
         let (left, right) = match (&a.ty, &b.ty) {
             (Ty::Unknown, _) => (a.php.clone(), read(b, r, self)?),
@@ -4540,7 +4540,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             _ => return None,
         };
         Some(Out::atom(
-            format!("\\TypedPress\\Js::dynamicBinary('+', {left}, {right})"),
+            format!("\\SpacePress\\Js::dynamicBinary('+', {left}, {right})"),
             Ty::union([Ty::Str, Ty::Num]),
         ))
     }
@@ -4561,10 +4561,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
             BinOp::Add => {
                 if a.ty.is_num() && b.ty.is_num() {
                     // Js::add: operands and result as JS numbers (exact ints past ±2^53 round, as in JS).
-                    Out::atom(format!("\\TypedPress\\Js::add({}, {})", a.php, b.php), Ty::Num)
+                    Out::atom(format!("\\SpacePress\\Js::add({}, {})", a.php, b.php), Ty::Num)
                 } else if a.ty.is_str() || b.ty.is_str() {
                     Out::atom(
-                        format!("\\TypedPress\\Js::dynamicBinary('+', {}, {})", a.php, b.php),
+                        format!("\\SpacePress\\Js::dynamicBinary('+', {}, {})", a.php, b.php),
                         Ty::Str,
                     )
                 } else {
@@ -4597,9 +4597,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 match op {
                     BinOp::Div => Out::atom(format!("\\fdiv({}, {})", a.php, b.php), Ty::Num),
                     BinOp::Rem => Out::atom(format!("\\fmod({}, {})", a.php, b.php), Ty::Num),
-                    BinOp::Exp => Out::atom(format!("\\TypedPress\\Js::pow({}, {})", a.php, b.php), Ty::Num),
-                    BinOp::Sub => Out::atom(format!("\\TypedPress\\Js::sub({}, {})", a.php, b.php), Ty::Num),
-                    _ => Out::atom(format!("\\TypedPress\\Js::mul({}, {})", a.php, b.php), Ty::Num),
+                    BinOp::Exp => Out::atom(format!("\\SpacePress\\Js::pow({}, {})", a.php, b.php), Ty::Num),
+                    BinOp::Sub => Out::atom(format!("\\SpacePress\\Js::sub({}, {})", a.php, b.php), Ty::Num),
+                    _ => Out::atom(format!("\\SpacePress\\Js::mul({}, {})", a.php, b.php), Ty::Num),
                 }
             }
             BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge => {
@@ -4613,7 +4613,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     self.number_compare(sym, a, b)
                 } else if a.ty.is_str() && b.ty.is_str() {
                     Out::new(
-                        format!("\\TypedPress\\Js::stringCompare({}, {}) {sym} 0", a.php, b.php),
+                        format!("\\SpacePress\\Js::stringCompare({}, {}) {sym} 0", a.php, b.php),
                         Ty::Bool,
                     )
                 } else {
@@ -4642,7 +4642,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 self.need_num(&b, span, &format!("`{sym}`"))?;
                 // Js::bitwise: ToInt32/ToUint32 on JS numbers, a signed or (`>>>`) unsigned 32-bit result.
                 Out::atom(
-                    format!("\\TypedPress\\Js::bitwise({}, {}, {})", php_str(sym), a.php, b.php),
+                    format!("\\SpacePress\\Js::bitwise({}, {}, {})", php_str(sym), a.php, b.php),
                     Ty::Num,
                 )
             }
@@ -4703,7 +4703,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         };
         Ok(Out::atom(
             format!(
-                "\\TypedPress\\Js::dynamicBinary({}, {}, {})",
+                "\\SpacePress\\Js::dynamicBinary({}, {}, {})",
                 php_str(symbol),
                 a.php,
                 b.php
@@ -4730,7 +4730,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             // left-to-right operand evaluation and numeric comparisons directly.
             return Out::atom(
                 format!(
-                    "\\TypedPress\\Js::dynamicBinary({}, {}, {})",
+                    "\\SpacePress\\Js::dynamicBinary({}, {}, {})",
                     php_str(sym),
                     a.php,
                     b.php
@@ -4750,7 +4750,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         Out::atom(
             format!(
-                "({} ? {native} : \\TypedPress\\Js::dynamicBinary({}, {}, {}))",
+                "({} ? {native} : \\SpacePress\\Js::dynamicBinary({}, {}, {}))",
                 test.join(" && "),
                 php_str(sym),
                 a.php,
@@ -4798,7 +4798,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 return format!("{} == {}", a.php, b.php);
             }
             return format!(
-                "({} ? {} == {} : \\TypedPress\\Js::strictEq({}, {}))",
+                "({} ? {} == {} : \\SpacePress\\Js::strictEq({}, {}))",
                 test.join(" && "),
                 a.php,
                 b.php,
@@ -4806,7 +4806,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 b.php
             );
         }
-        format!("\\TypedPress\\Js::strictEq({}, {})", a.php, b.php)
+        format!("\\SpacePress\\Js::strictEq({}, {})", a.php, b.php)
     }
 
     fn ident(&mut self, n: &str, span: Span) -> Result<Out> {
@@ -4830,15 +4830,15 @@ impl<'a, 'p> Compiler<'a, 'p> {
             Resolved::Value(v, b) => self.captured(n, v, &b, span),
             Resolved::Global("NaN") => Ok(Out::atom("NAN", Ty::Num)),
             Resolved::Global("Infinity") => Ok(Out::atom("INF", Ty::Num)),
-            Resolved::Global("Math") => Ok(Out::atom("\\TypedPress\\Js::dynamicNamespace('Math')", Ty::Dynamic)),
+            Resolved::Global("Math") => Ok(Out::atom("\\SpacePress\\Js::dynamicNamespace('Math')", Ty::Dynamic)),
             Resolved::Global("Boolean") => Ok(boolean_function()),
             Resolved::Global("AbortSignal") if self.javascript_module(self.fx.as_ref().expect("fn").module) => Ok(
-                Out::atom("\\TypedPress\\Js::dynamicNamespace('AbortSignal')", Ty::Dynamic),
+                Out::atom("\\SpacePress\\Js::dynamicNamespace('AbortSignal')", Ty::Dynamic),
             ),
             Resolved::Global(g) if BINARY_GLOBALS.contains(&g) => {
                 self.binary_global(g, span)?;
                 Ok(Out::atom(
-                    format!("\\TypedPress\\JsConstructor::of({})", php_str(g)),
+                    format!("\\SpacePress\\JsConstructor::of({})", php_str(g)),
                     Ty::Dynamic,
                 ))
             }
@@ -4847,7 +4847,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 format!(
                     "`{g}` can only be used as `navigator.platform`, `process.platform`, `process.env.NAME` or under `typeof`"
                 ),
-                format!("read the member you need, e.g. `{g}.platform`; `{g}` itself isn't a value in TypedPress code"),
+                format!("read the member you need, e.g. `{g}.platform`; `{g}` itself isn't a value in SpacePress code"),
             ),
             Resolved::Global(g) => err_help(
                 span,
@@ -4905,7 +4905,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     let method = n.rsplit('.').next().unwrap_or(n);
                     return Err(Diag::new(
                         span,
-                        format!("TypedPress code doesn't support using `{n}` apart from the object literal that defines it"),
+                        format!("SpacePress code doesn't support using `{n}` apart from the object literal that defines it"),
                     )
                     .code(crate::diag::Code::Unsupported)
                     .help(format!(
@@ -4955,9 +4955,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         self.helper_values.insert((self.owner(), key), wrapper.clone());
                         // A helper that reads `this` takes its receiver first: its value binds it.
                         let receives_this = receives_this(&c.func);
-                        let callable = format!("\\Closure::fromCallable('\\\\TypedPressApp\\\\{name}')");
+                        let callable = format!("\\Closure::fromCallable('\\\\SpacePressApp\\\\{name}')");
                         let callable = if receives_this {
-                            format!("\\TypedPress\\Js::receiverFunction({callable})")
+                            format!("\\SpacePress\\Js::receiverFunction({callable})")
                         } else {
                             callable
                         };
@@ -4970,7 +4970,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     }
                 };
                 let mut out = Out::atom(
-                    format!("\\TypedPressApp\\{wrapper}()"),
+                    format!("\\SpacePressApp\\{wrapper}()"),
                     if self.javascript_module(c.func.module) {
                         Ty::Dynamic
                     } else {
@@ -4980,9 +4980,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 // A direct call skips the wrapper, so a helper that reads `this` receives undefined
                 // explicitly, as a plain call does in strict mode.
                 out.helper = Some(if receives_this(&c.func) {
-                    format!("\\TypedPressApp\\{name}(\\TypedPress\\JsUndefined::Value, ")
+                    format!("\\SpacePressApp\\{name}(\\SpacePress\\JsUndefined::Value, ")
                 } else {
-                    format!("\\TypedPressApp\\{name}(")
+                    format!("\\SpacePressApp\\{name}(")
                 });
                 Ok(out)
             }
@@ -4996,10 +4996,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         .code(crate::diag::Code::AccessQuery)
                         .help("return a filter instead, e.g. `{ ownerId: ctx.user?.id ?? -1 }`"));
                 }
-                Ok(Out::atom("\\TypedPress\\db()", Ty::Db))
+                Ok(Out::atom("\\SpacePress\\db()", Ty::Db))
             }
             Value::Asset(file) => Ok(Out::atom(
-                format!("\\TypedPress\\Assets::url({})", php_str(file)),
+                format!("\\SpacePress\\Assets::url({})", php_str(file)),
                 Ty::Str,
             )),
             Value::Env(name) => {
@@ -5008,7 +5008,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
                 self.uses("env", name.to_string(), span);
                 Ok(Out::atom(
-                    format!("\\TypedPress\\Env::get({})", php_str(name)),
+                    format!("\\SpacePress\\Env::get({})", php_str(name)),
                     Ty::Str.nullable(),
                 ))
             }
@@ -5062,7 +5062,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     return err_help(
                         span,
                         format!("`{n}` is a file bucket that isn't exported"),
-                        "export it from `typedpress.config.ts` or under `tp/`: `export const inbox = files({ ... })`",
+                        "export it from `spacepress.config.ts` or under `sp/`: `export const inbox = files({ ... })`",
                     );
                 };
                 if !self.schema.files.contains_key(name) {
@@ -5089,7 +5089,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     let body = self.attempt(|this| {
                         this.data_helpers.insert(key, name.clone());
                         let mut body = format!(
-                            "function {name}(): \\TypedPress\\{} {{\n\tstatic $value;\n\tif ($value === null) {{\n\t\t$value = new \\TypedPress\\{0}();\n",
+                            "function {name}(): \\SpacePress\\{} {{\n\tstatic $value;\n\tif ($value === null) {{\n\t\t$value = new \\SpacePress\\{0}();\n",
                             if c.set { "JsSet" } else { "JsMap" }
                         );
                         for (k, v) in &c.entries {
@@ -5130,7 +5130,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         }
                     }
                 };
-                Ok(Out::atom(format!("\\TypedPressApp\\{name}()"), ty))
+                Ok(Out::atom(format!("\\SpacePressApp\\{name}()"), ty))
             }
             Value::Symbol(symbol) => {
                 self.require_javascript_symbols(span)?;
@@ -5154,12 +5154,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         self.data_helpers.insert(key, name.clone());
                         let _ = writeln!(
                             self.output,
-                            "function {name}(): \\TypedPress\\Js{kind} {{\n\tstatic $value;\n\treturn $value ??= new \\TypedPress\\Js{kind}();\n}}\n"
+                            "function {name}(): \\SpacePress\\Js{kind} {{\n\tstatic $value;\n\treturn $value ??= new \\SpacePress\\Js{kind}();\n}}\n"
                         );
                         name
                     }
                 };
-                Ok(Out::atom(format!("\\TypedPressApp\\{name}()"), Ty::Dynamic))
+                Ok(Out::atom(format!("\\SpacePressApp\\{name}()"), Ty::Dynamic))
             }
             Value::Native(native) => {
                 if !self.javascript_module(self.fx.as_ref().expect("fn").module) {
@@ -5180,11 +5180,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         let args = args.join(", ");
                         let build = match &native.method {
                             None => format!(
-                                "\\TypedPress\\Js::dynamicConstruct({}, new \\TypedPress\\JsArray([{args}]))",
+                                "\\SpacePress\\Js::dynamicConstruct({}, new \\SpacePress\\JsArray([{args}]))",
                                 php_str(native.constructor)
                             ),
                             Some(m) => format!(
-                                "\\TypedPress\\Js::dynamicStaticCall({}, {}, new \\TypedPress\\JsArray([{args}]))",
+                                "\\SpacePress\\Js::dynamicStaticCall({}, {}, new \\SpacePress\\JsArray([{args}]))",
                                 php_str(native.constructor),
                                 php_str(m)
                             ),
@@ -5198,7 +5198,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         name
                     }
                 };
-                Ok(Out::atom(format!("\\TypedPressApp\\{name}()"), Ty::Dynamic))
+                Ok(Out::atom(format!("\\SpacePressApp\\{name}()"), Ty::Dynamic))
             }
             Value::Regex(p, f) => {
                 let key = (self.owner(), 2, Rc::as_ptr(p) as *const () as usize);
@@ -5209,14 +5209,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     self.data_helpers.insert(key, name.clone());
                     let _ = writeln!(
                         self.output,
-                        "function {name}(): \\TypedPress\\RegExp {{\n\tstatic $value;\n\treturn $value ??= new \\TypedPress\\RegExp({}, {});\n}}\n",
+                        "function {name}(): \\SpacePress\\RegExp {{\n\tstatic $value;\n\treturn $value ??= new \\SpacePress\\RegExp({}, {});\n}}\n",
                         php_str(p),
                         php_str(f)
                     );
                     name
                 };
                 Ok(Out::atom(
-                    format!("\\TypedPressApp\\{name}()"),
+                    format!("\\SpacePressApp\\{name}()"),
                     if self.javascript_module(self.fx.as_ref().expect("fn").module) {
                         Ty::Dynamic
                     } else {
@@ -5235,7 +5235,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 {
                     return Err(Diag::new(
                         span,
-                        format!("TypedPress code doesn't support using `{n}` as a value: it has a getter, setter, or non-enumerable, read-only or non-configurable property defined with Object.defineProperty"),
+                        format!("SpacePress code doesn't support using `{n}` as a value: it has a getter, setter, or non-enumerable, read-only or non-configurable property defined with Object.defineProperty"),
                     )
                     .code(crate::diag::Code::Unsupported)
                     .help(ATTRIBUTE_HELP));
@@ -5299,7 +5299,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             Some(Value::Accessor(_)) => {
                 return Err(Diag::new(
                     prop_span,
-                    format!("TypedPress code doesn't support reading `{path}`, a getter defined while the module was evaluated"),
+                    format!("SpacePress code doesn't support reading `{path}`, a getter defined while the module was evaluated"),
                 )
                 .code(crate::diag::Code::Unsupported)
                 .help("compiled code reads build-time objects as constants, and a getter must run on every read; assign the value as a plain property instead"));
@@ -5344,8 +5344,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
     /// others as one per-request static per allocation.
     pub(super) fn symbol_php(&mut self, symbol: &Rc<SymbolVal>) -> String {
         match &**symbol {
-            SymbolVal::Registered(key) => format!("\\TypedPress\\JsSymbol::for({})", php_str(key)),
-            SymbolVal::WellKnown(name) => format!("\\TypedPress\\JsSymbol::wellKnown({})", php_str(name)),
+            SymbolVal::Registered(key) => format!("\\SpacePress\\JsSymbol::for({})", php_str(key)),
+            SymbolVal::WellKnown(name) => format!("\\SpacePress\\JsSymbol::wellKnown({})", php_str(name)),
             SymbolVal::Unique(description) => {
                 let key = (self.owner(), 5, Rc::as_ptr(symbol) as usize);
                 let name = match self.data_helpers.get(&key) {
@@ -5356,12 +5356,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         let description = description.as_deref().map(php_str).unwrap_or_default();
                         let _ = writeln!(
                             self.output,
-                            "function {name}(): \\TypedPress\\JsSymbol {{\n\tstatic $value;\n\treturn $value ??= \\TypedPress\\JsSymbol::create(new \\TypedPress\\JsArray([{description}]));\n}}\n"
+                            "function {name}(): \\SpacePress\\JsSymbol {{\n\tstatic $value;\n\treturn $value ??= \\SpacePress\\JsSymbol::create(new \\SpacePress\\JsArray([{description}]));\n}}\n"
                         );
                         name
                     }
                 };
-                format!("\\TypedPressApp\\{name}()")
+                format!("\\SpacePressApp\\{name}()")
             }
         }
     }
@@ -5373,18 +5373,18 @@ impl<'a, 'p> Compiler<'a, 'p> {
             Value::Object(o) => ((owner, 1, Rc::as_ptr(o) as usize), false),
             _ => {
                 return Ok(match value {
-                    Value::Undef => "\\TypedPress\\Js::undefined()".into(),
+                    Value::Undef => "\\SpacePress\\Js::undefined()".into(),
                     Value::Null => "null".into(),
                     Value::Bool(b) => b.to_string(),
                     Value::Num(n) => php_number(*n),
                     Value::Str(s) => php_str(s),
-                    Value::Asset(file) => format!("\\TypedPress\\Assets::url({})", php_str(file)),
+                    Value::Asset(file) => format!("\\SpacePress\\Assets::url({})", php_str(file)),
                     _ => unreachable!("validated captured scalar"),
                 });
             }
         };
         if let Some(name) = self.data_helpers.get(&key) {
-            return Ok(format!("\\TypedPressApp\\{name}()"));
+            return Ok(format!("\\SpacePressApp\\{name}()"));
         }
         let name = self.unique_name("captured");
         self.data_helpers.insert(key, name.clone());
@@ -5405,7 +5405,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             _ => "",
         };
         let mut body = format!(
-            "/**\n * Return a value the app's configuration captured.\n *\n * @return \\TypedPress\\{class}\n */\nfunction {name}(): \\TypedPress\\{class} {{\n\tstatic $value;\n\tif (null === $value) {{\n\t\t$value = new \\TypedPress\\{class}({arguments});\n"
+            "/**\n * Return a value the app's configuration captured.\n *\n * @return \\SpacePress\\{class}\n */\nfunction {name}(): \\SpacePress\\{class} {{\n\tstatic $value;\n\tif (null === $value) {{\n\t\t$value = new \\SpacePress\\{class}({arguments});\n"
         );
         for (key, value) in fields {
             let value = self.captured_data(&value)?;
@@ -5413,7 +5413,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         body.push_str("\t}\n\treturn $value;\n}\n\n");
         self.output.push_str(&body);
-        Ok(format!("\\TypedPressApp\\{name}()"))
+        Ok(format!("\\SpacePressApp\\{name}()"))
     }
 
     /// The per-request object behind a read of `obj` when `obj` is, or sits inside, a static
@@ -5443,7 +5443,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         };
         Ok(self
             .stateful_namespace(inner)?
-            .map(|outer| format!("\\TypedPress\\Js::dynamicGet({outer}, {})", php_str(prop))))
+            .map(|outer| format!("\\SpacePress\\Js::dynamicGet({outer}, {})", php_str(prop))))
     }
 
     /// A static namespace materialized as the receiver of a method that reads `this`.
@@ -5473,7 +5473,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         {
             return Err(Diag::new(
                 span,
-                format!("TypedPress code doesn't support calling a function that reads `this` through the module namespace `{path}`"),
+                format!("SpacePress code doesn't support calling a function that reads `this` through the module namespace `{path}`"),
             )
             .code(crate::diag::Code::Unsupported)
             .help(
@@ -5483,14 +5483,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
         if o.has_attributes() {
             return Err(Diag::new(
                 span,
-                format!("TypedPress code doesn't support `{path}` as a method receiver: it has properties defined with Object.defineProperty"),
+                format!("SpacePress code doesn't support `{path}` as a method receiver: it has properties defined with Object.defineProperty"),
             )
             .code(crate::diag::Code::Unsupported)
             .help(ATTRIBUTE_HELP));
         }
         let key = (self.owner(), 7, Rc::as_ptr(o) as usize);
         if let Some(name) = self.data_helpers.get(&key) {
-            return Ok(format!("\\TypedPressApp\\{name}()"));
+            return Ok(format!("\\SpacePressApp\\{name}()"));
         }
         let name = self.unique_name("receiver");
         let fields: Vec<(String, Value)> = o.borrow().iter().map(|(k, v)| (k.clone(), v.clone())).collect();
@@ -5498,7 +5498,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let body = self.attempt(|this| {
             this.data_helpers.insert(key, name.clone());
             let mut body = format!(
-                "function {name}(): \\TypedPress\\JsObject {{\n\tstatic $value;\n\tif ($value === null) {{\n\t\t$value = new \\TypedPress\\JsObject({arguments});\n"
+                "function {name}(): \\SpacePress\\JsObject {{\n\tstatic $value;\n\tif ($value === null) {{\n\t\t$value = new \\SpacePress\\JsObject({arguments});\n"
             );
             for (key, member) in fields {
                 let member_path = format!("{path}.{key}");
@@ -5510,7 +5510,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     // A PHP closure can't carry properties, so `this.{key}.prop` would read undefined.
                     return Err(Diag::new(
                         span,
-                        format!("TypedPress code doesn't support a function with properties (`{member_path}`) in an object whose methods read `this`"),
+                        format!("SpacePress code doesn't support a function with properties (`{member_path}`) in an object whose methods read `this`"),
                     )
                     .code(crate::diag::Code::Unsupported)
                     .help(format!(
@@ -5536,7 +5536,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             Ok(body)
         })?;
         self.output.push_str(&body);
-        Ok(format!("\\TypedPressApp\\{name}()"))
+        Ok(format!("\\SpacePressApp\\{name}()"))
     }
 
     /// The object literal a TypeScript method that reads an untyped `this` was written in, when
@@ -5786,7 +5786,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             Ty::union([present, value.ty])
         };
         let initialization = format!(
-            "{}if ({php} === \\TypedPress\\JsUndefined::Value) {{ {php} = {}; }}\n",
+            "{}if ({php} === \\SpacePress\\JsUndefined::Value) {{ {php} = {}; }}\n",
             pad(indent),
             value.php
         );
@@ -5828,14 +5828,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let php = self.declare_local(name, param_tys[i].clone(), true, p.pat.span());
                 let rest = self.tmp_var();
                 params.push(format!("...{rest}"));
-                let _ = writeln!(body, "\t\t{php} = new \\TypedPress\\JsArray({rest});");
+                let _ = writeln!(body, "\t\t{php} = new \\SpacePress\\JsArray({rest});");
                 continue;
             }
             match &p.pat {
                 Pat::Id(_, _) => {
                     let php = self.declare_parameter(p, &param_tys[i], &mut body, 2)?;
                     let default = if self.javascript_module(f.module) {
-                        " = \\TypedPress\\JsUndefined::Value"
+                        " = \\SpacePress\\JsUndefined::Value"
                     } else {
                         parameter_default_suffix(&f.params[i..], &param_tys[i..f.params.len()])
                     };
@@ -5874,7 +5874,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             FnBody::Block(stmts) => {
                 body.push_str(&self.block(stmts, 2)?);
                 if self.note_fallthrough(stmts, f.span)? {
-                    body.push_str("\t\treturn \\TypedPress\\Js::undefined();\n");
+                    body.push_str("\t\treturn \\SpacePress\\Js::undefined();\n");
                 }
             }
         }
@@ -6101,14 +6101,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
         // a receiver function, a plain call passes undefined and a method call, `call` or `apply`
         // passes the receiver (Js::receiverFunction).
         let php = if receives_this(f) {
-            format!("\\TypedPress\\Js::receiverFunction({php})")
+            format!("\\SpacePress\\Js::receiverFunction({php})")
         } else {
             php
         };
         let php = if let Some((keys, descending)) = crate::builtins::sort_key(f) {
             let keys = keys.iter().map(|key| php_str(key)).collect::<Vec<_>>().join(", ");
             format!(
-                "\\TypedPress\\Js::sortComparator({php}, [{keys}], {})",
+                "\\SpacePress\\Js::sortComparator({php}, [{keys}], {})",
                 if descending { "true" } else { "false" }
             )
         } else {
@@ -6167,7 +6167,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             return Ok(Out::atom(
                 format!(
-                    "\\TypedPress\\Js::{}({}, {}, {})",
+                    "\\SpacePress\\Js::{}({}, {}, {})",
                     match target.kind {
                         WriteKind::Dynamic => "dynamicSet",
                         WriteKind::Array => "setAt",
@@ -6192,7 +6192,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     | CapturedPlace::Object { receiver, key }
                     | CapturedPlace::NativeObject { receiver, key } => {
                         let present = self.tmp_var();
-                        steps.push(format!("{present} = \\TypedPress\\Js::has({receiver}, {key})"));
+                        steps.push(format!("{present} = \\SpacePress\\Js::has({receiver}, {key})"));
                         Some(present)
                     }
                 }
@@ -6208,7 +6208,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         && place.constraint.non_null().is_num()
                     {
                         left = Out::atom(
-                            format!("({present} ? \\TypedPress\\Js::toNumber({old}) : NAN)"),
+                            format!("({present} ? \\SpacePress\\Js::toNumber({old}) : NAN)"),
                             Ty::Num,
                         );
                     }
@@ -6217,7 +6217,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     if b == BinOp::Add
                         && let Some(present) = present
                     {
-                        result.php = format!("\\TypedPress\\Js::plus({old}, {right}, !{present})");
+                        result.php = format!("\\SpacePress\\Js::plus({old}, {right}, !{present})");
                         result.atomic = true;
                     }
                     if !(assignable(&result.ty, &place.constraint) || result.ty.is_num() && place.constraint.is_num()) {
@@ -6245,7 +6245,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     }
                     let ty = logical_result_type(l, &place.read.ty, &v.ty);
                     let keep = match l {
-                        LogOp::Nullish => format!("!\\TypedPress\\Js::isNullish({old})"),
+                        LogOp::Nullish => format!("!\\SpacePress\\Js::isNullish({old})"),
                         LogOp::Or => self.truthy(&Out::atom(old.clone(), place.read.ty)),
                         LogOp::And => format!("!({})", self.truthy(&Out::atom(old.clone(), place.read.ty))),
                     };
@@ -6319,7 +6319,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     return err(*span, format!("can't destructure {}: it might be null", ty.describe()));
                 }
                 let object = self.tmp_var();
-                steps.push(format!("{object} = \\TypedPress\\Js::requirePresent({src})"));
+                steps.push(format!("{object} = \\SpacePress\\Js::requirePresent({src})"));
                 let mut keys = Vec::new();
                 let mut literal_keys: Vec<Option<String>> = Vec::new();
                 for (key, p) in props {
@@ -6346,7 +6346,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                             let key = self.expr(k)?;
                             let key = self.finish_value(key, k.span)?;
                             let tmp = self.tmp_var();
-                            steps.push(format!("{tmp} = \\TypedPress\\Js::key({})", key.php));
+                            steps.push(format!("{tmp} = \\SpacePress\\Js::key({})", key.php));
                             let literal = match &key.ty {
                                 Ty::StrLit(s) | Ty::FreshStrLit(s) => Some(s.clone()),
                                 _ => None,
@@ -6382,12 +6382,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     });
                     let read = self.tmp_var();
                     let getter = if *ty == Ty::Dynamic { "dynamicGet" } else { "dataGet" };
-                    let pending = format!("{read} = \\TypedPress\\Js::{getter}({object}, {key_php})");
+                    let pending = format!("{read} = \\SpacePress\\Js::{getter}({object}, {key_php})");
                     self.assign_pattern_steps(p, &read, Some(pending), &field_ty, steps)?;
                 }
                 if let Some(r) = rest {
                     let value = self.tmp_var();
-                    let pending = format!("{value} = \\TypedPress\\Js::omit({object}, [{}])", keys.join(", "));
+                    let pending = format!("{value} = \\SpacePress\\Js::omit({object}, [{}])", keys.join(", "));
                     let rest_ty = match ty.non_null() {
                         Ty::Obj(f) => Ty::Obj(
                             f.into_iter()
@@ -6416,7 +6416,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 // other iterable, which is read once up front.
                 let list = self.tmp_var();
                 steps.push(match element {
-                    None => format!("{list} = \\TypedPress\\Js::dynamicIterableLive({src})"),
+                    None => format!("{list} = \\SpacePress\\Js::dynamicIterableLive({src})"),
                     Some(_) => format!("{list} = {src}"),
                 });
                 for (i, p) in elems.iter().enumerate() {
@@ -6427,12 +6427,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         (Some(_), Ty::Tuple(ts) | Ty::ArrayLiteral(ts)) => ts.get(i).cloned().unwrap_or(Ty::Undefined),
                         (Some(t), _) => t.clone(),
                     };
-                    let pending = format!("{read} = \\TypedPress\\Js::dynamicGet({list}, {i})");
+                    let pending = format!("{read} = \\SpacePress\\Js::dynamicGet({list}, {i})");
                     self.assign_pattern_steps(p, &read, Some(pending), &el_ty, steps)?;
                 }
                 if let Some(r) = rest {
                     let value = self.tmp_var();
-                    let pending = format!("{value} = \\TypedPress\\Js::restFrom({list}, {})", elems.len());
+                    let pending = format!("{value} = \\SpacePress\\Js::restFrom({list}, {})", elems.len());
                     let rest_ty = match (&element, ty.non_null()) {
                         (None, _) => Ty::Dynamic,
                         (Some(_), Ty::Tuple(ts) | Ty::ArrayLiteral(ts)) => {
@@ -6459,7 +6459,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let d = self.expr(default)?;
         let d = self.finish_value(d, default.span)?;
         steps.push(format!(
-            "{value} = ({src} === \\TypedPress\\Js::undefined() ? {} : {src})",
+            "{value} = ({src} === \\SpacePress\\Js::undefined() ? {} : {src})",
             d.php
         ));
         Ok((value, Ty::union([defined_type(ty), d.ty])))
@@ -6527,12 +6527,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     format!("{key} = {}", target.key),
                 ];
                 let read = match target.kind {
-                    WriteKind::Dynamic | WriteKind::Array => format!("\\TypedPress\\Js::dynamicGet({receiver}, {key})"),
+                    WriteKind::Dynamic | WriteKind::Array => format!("\\SpacePress\\Js::dynamicGet({receiver}, {key})"),
                     // Present non-null values skip the checked read; absent keys keep dataGet's semantics.
                     WriteKind::NativeObject => {
-                        format!("({receiver}->p[{key}] ?? \\TypedPress\\Js::dataGet({receiver}, {key}))")
+                        format!("({receiver}->p[{key}] ?? \\SpacePress\\Js::dataGet({receiver}, {key}))")
                     }
-                    WriteKind::Object => format!("\\TypedPress\\Js::dataGet({receiver}, {key})"),
+                    WriteKind::Object => format!("\\SpacePress\\Js::dataGet({receiver}, {key})"),
                     WriteKind::Private(ref class) => format!("{class}->privateGet({receiver}, {key})"),
                 };
                 let write = match target.kind {
@@ -6556,7 +6556,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     format!("({binding} = {value})")
                 }
             }
-            CapturedPlace::Object { receiver, key } => format!("\\TypedPress\\Js::set({receiver}, {key}, {value})"),
+            CapturedPlace::Object { receiver, key } => format!("\\SpacePress\\Js::set({receiver}, {key}, {value})"),
             CapturedPlace::NativeObject { receiver, key } => {
                 if statement {
                     format!("{receiver}->p[{key}] = {value}")
@@ -6564,9 +6564,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     format!("({receiver}->p[{key}] = {value})")
                 }
             }
-            CapturedPlace::Array { receiver, key } => format!("\\TypedPress\\Js::setAt({receiver}, {key}, {value})"),
+            CapturedPlace::Array { receiver, key } => format!("\\SpacePress\\Js::setAt({receiver}, {key}, {value})"),
             CapturedPlace::Dynamic { receiver, key } => {
-                format!("\\TypedPress\\Js::dynamicSet({receiver}, {key}, {value})")
+                format!("\\SpacePress\\Js::dynamicSet({receiver}, {key}, {value})")
             }
             CapturedPlace::Private { class, receiver, key } => {
                 format!("{class}->privateSet({receiver}, {key}, {value})")
@@ -6589,7 +6589,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let old = self.tmp_var();
         steps.push(format!("{old} = {read}"));
         if place.read.ty == Ty::Dynamic {
-            steps.push(format!("{old} = \\TypedPress\\Js::toNumber({old})"));
+            steps.push(format!("{old} = \\SpacePress\\Js::toNumber({old})"));
         }
         if property_number {
             let (CapturedPlace::Array { receiver, key }
@@ -6599,10 +6599,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 unreachable!()
             };
             steps.push(format!(
-                "{old} = (\\TypedPress\\Js::has({receiver}, {key}) ? \\TypedPress\\Js::toNumber({old}) : NAN)"
+                "{old} = (\\SpacePress\\Js::has({receiver}, {key}) ? \\SpacePress\\Js::toNumber({old}) : NAN)"
             ));
         }
-        let value = format!("\\TypedPress\\Js::add({old}, {})", if inc { "1" } else { "-1" });
+        let value = format!("\\SpacePress\\Js::add({old}, {})", if inc { "1" } else { "-1" });
         let written = Self::write_place(&write, &value, false);
         let result = if prefix {
             written
@@ -6671,7 +6671,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 if let Some(ty) = self.class_accessor_write(&o.ty, prop, *prop_span)? {
                     return Ok(AssignmentPlace {
                         read: Out::atom(
-                            format!("\\TypedPress\\Js::dynamicGet({}, {})", o.php, php_str(prop)),
+                            format!("\\SpacePress\\Js::dynamicGet({}, {})", o.php, php_str(prop)),
                             ty.clone(),
                         ),
                         constraint: ty,
@@ -6732,7 +6732,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         }
                     });
                 let read = Out::atom(
-                    format!("\\TypedPress\\Js::dataGet({}, {})", o.php, php_str(prop)),
+                    format!("\\SpacePress\\Js::dataGet({}, {})", o.php, php_str(prop)),
                     read_ty,
                 );
                 Ok(AssignmentPlace {
@@ -6782,13 +6782,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 };
                 let getter = if array { "dynamicGet" } else { "dataGet" };
                 let read = Out::atom(
-                    format!("\\TypedPress\\Js::{getter}({}, {})", o.php, i.php),
+                    format!("\\SpacePress\\Js::{getter}({}, {})", o.php, i.php),
                     Ty::union([ty, Ty::Undefined]),
                 );
                 let key = if array {
                     i.php
                 } else {
-                    format!("\\TypedPress\\Js::key({})", i.php)
+                    format!("\\SpacePress\\Js::key({})", i.php)
                 };
                 Ok(AssignmentPlace {
                     read,
@@ -6864,7 +6864,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         {
             return err_help(
                 span,
-                "`delete` on an array element would leave a hole; TypedPress arrays are dense",
+                "`delete` on an array element would leave a hole; SpacePress arrays are dense",
                 "remove it with `splice(index, 1)`, or assign `undefined` to keep the length",
             );
         }
@@ -6915,18 +6915,18 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 "check it first, or use `delete obj?.key`",
             );
         }
-        // Js::delete: strict-mode [[Delete]] on TypedPress's value model.
+        // Js::delete: strict-mode [[Delete]] on SpacePress's value model.
         Ok(if optional {
             let tmp = self.tmp_var();
             Out::atom(
                 format!(
-                    "(\\TypedPress\\Js::isNullish({tmp} = {}) ? true : \\TypedPress\\Js::delete({tmp}, {key_php}))",
+                    "(\\SpacePress\\Js::isNullish({tmp} = {}) ? true : \\SpacePress\\Js::delete({tmp}, {key_php}))",
                     o.php
                 ),
                 Ty::Bool,
             )
         } else {
-            Out::atom(format!("\\TypedPress\\Js::delete({}, {key_php})", o.php), Ty::Bool)
+            Out::atom(format!("\\SpacePress\\Js::delete({}, {key_php})", o.php), Ty::Bool)
         })
     }
 
@@ -6962,7 +6962,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 self.binary_global(g, obj.span)?;
                 return Ok(Out::atom(
                     format!(
-                        "\\TypedPress\\Js::dynamicGet(\\TypedPress\\JsConstructor::of({}), {})",
+                        "\\SpacePress\\Js::dynamicGet(\\SpacePress\\JsConstructor::of({}), {})",
                         php_str(g),
                         php_str(prop)
                     ),
@@ -6976,7 +6976,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 ("Number", "MIN_SAFE_INTEGER") => Ok(Out::atom("-9007199254740991", Ty::Num)),
                 ("Number", "isFinite") => Ok(number_is_finite_function()),
                 ("globalThis", _) => match crate::eval::global_member(prop) {
-                    crate::eval::GlobalMember::Absent => Ok(Out::atom("\\TypedPress\\Js::undefined()", Ty::Undefined)),
+                    crate::eval::GlobalMember::Absent => Ok(Out::atom("\\SpacePress\\Js::undefined()", Ty::Undefined)),
                     crate::eval::GlobalMember::Provided("NaN") => Ok(Out::atom("NAN", Ty::Num)),
                     crate::eval::GlobalMember::Provided("Infinity") => Ok(Out::atom("INF", Ty::Num)),
                     crate::eval::GlobalMember::Provided("Boolean") => Ok(boolean_function()),
@@ -6990,7 +6990,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 ("Symbol", name) if WELL_KNOWN_SYMBOLS.contains(&name) => {
                     self.require_javascript_symbols(span)?;
                     Ok(Out::atom(
-                        format!("\\TypedPress\\JsSymbol::wellKnown({})", php_str(name)),
+                        format!("\\SpacePress\\JsSymbol::wellKnown({})", php_str(name)),
                         Ty::Dynamic,
                     ))
                 }
@@ -6999,7 +6999,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     method @ ("abs" | "floor" | "ceil" | "trunc" | "round" | "min" | "max" | "pow" | "sqrt" | "sign"),
                 ) if self.javascript_module(self.fx.as_ref().expect("fn").module) => Ok(Out::atom(
                     format!(
-                        "\\TypedPress\\Js::dynamicGet(\\TypedPress\\Js::dynamicNamespace('Math'), {})",
+                        "\\SpacePress\\Js::dynamicGet(\\SpacePress\\Js::dynamicNamespace('Math'), {})",
                         php_str(method)
                     ),
                     Ty::Dynamic,
@@ -7012,7 +7012,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     }
                     Ok(Out::atom(
                         format!(
-                            "\\TypedPress\\Js::dynamicGet(\\TypedPress\\Js::dynamicNamespace('AbortSignal'), {})",
+                            "\\SpacePress\\Js::dynamicGet(\\SpacePress\\Js::dynamicNamespace('AbortSignal'), {})",
                             php_str(method)
                         ),
                         Ty::Dynamic,
@@ -7033,7 +7033,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         if let Some(receiver) = self.stateful_namespace(obj)? {
             let javascript = self.javascript_module(self.fx.as_ref().expect("fn").module);
             return Ok(Out::atom(
-                format!("\\TypedPress\\Js::dynamicGet({receiver}, {})", php_str(prop)),
+                format!("\\SpacePress\\Js::dynamicGet({receiver}, {})", php_str(prop)),
                 if javascript { Ty::Dynamic } else { Ty::Unknown },
             ));
         }
@@ -7052,19 +7052,19 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         match &o.ty {
             Ty::Collection(t) if prop == "system" => {
-                return Ok(Out::atom("\\TypedPress\\db()", Ty::KindSystem(t.clone())));
+                return Ok(Out::atom("\\SpacePress\\db()", Ty::KindSystem(t.clone())));
             }
             Ty::Collection(t) if prop == "revisions" => {
-                return Ok(Out::atom("\\TypedPress\\db()", Ty::KindRevisions(t.clone(), false)));
+                return Ok(Out::atom("\\SpacePress\\db()", Ty::KindRevisions(t.clone(), false)));
             }
             Ty::KindSystem(t) if prop == "revisions" => {
-                return Ok(Out::atom("\\TypedPress\\db()", Ty::KindRevisions(t.clone(), true)));
+                return Ok(Out::atom("\\SpacePress\\db()", Ty::KindRevisions(t.clone(), true)));
             }
-            Ty::Db if prop == "query" => return Ok(Out::atom("\\TypedPress\\db()", Ty::DbQuery)),
-            Ty::Db if prop == "globals" => return Ok(Out::atom("\\TypedPress\\db()", Ty::DbGlobals)),
+            Ty::Db if prop == "query" => return Ok(Out::atom("\\SpacePress\\db()", Ty::DbQuery)),
+            Ty::Db if prop == "globals" => return Ok(Out::atom("\\SpacePress\\db()", Ty::DbGlobals)),
             Ty::DbGlobals => {
                 return if self.schema.globals.contains_key(prop) {
-                    Ok(Out::atom("\\TypedPress\\db()", Ty::DbGlobal(prop.to_string())))
+                    Ok(Out::atom("\\SpacePress\\db()", Ty::DbGlobal(prop.to_string())))
                 } else {
                     let mut d = Diag::new(
                         prop_span,
@@ -7078,7 +7078,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             Ty::DbQuery => {
                 return match self.schema.by_key(prop) {
-                    Some(c) => Ok(Out::atom("\\TypedPress\\db()", Ty::QueryColl(c.table.clone()))),
+                    Some(c) => Ok(Out::atom("\\SpacePress\\db()", Ty::QueryColl(c.table.clone()))),
                     None => {
                         let mut d = Diag::new(
                             prop_span,
@@ -7099,7 +7099,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let mut o = self.finish_value(o, obj.span)?;
         if o.ty == Ty::Arguments && prop == "length" {
             return Ok(Out::atom(
-                format!("\\TypedPress\\Js::dynamicGet({}, 'length')", o.php),
+                format!("\\SpacePress\\Js::dynamicGet({}, 'length')", o.php),
                 Ty::Num,
             ));
         }
@@ -7138,7 +7138,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             if optional && o.ty.is_nullable() {
                 let tmp = c.tmp_var();
                 format!(
-                    "(\\TypedPress\\Js::isNullish({tmp} = {}) ? \\TypedPress\\Js::undefined() : {})",
+                    "(\\SpacePress\\Js::isNullish({tmp} = {}) ? \\SpacePress\\Js::undefined() : {})",
                     o.php,
                     f(&tmp)
                 )
@@ -7148,7 +7148,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         };
         Ok(match (&base, prop) {
             (t, "length") if t.is_str() => {
-                let php = guarded(self, &|x| format!("\\TypedPress\\Js::length({x})"));
+                let php = guarded(self, &|x| format!("\\SpacePress\\Js::length({x})"));
                 Out::atom(php, suffix_null(Ty::Num))
             }
             (Ty::Array(_) | Ty::NonEmptyArray(_) | Ty::Tuple(_) | Ty::ArrayLiteral(_), "length") => {
@@ -7159,18 +7159,18 @@ impl<'a, 'p> Compiler<'a, 'p> {
             // The annotation resolves to a non-empty string array; a plain array has no `raw`,
             // so the checked read throws instead of returning a wrong value.
             (Ty::NonEmptyArray(element) | Ty::Array(element), "raw") if **element == Ty::Str => {
-                let php = guarded(self, &|x| format!("\\TypedPress\\Js::templateRaw({x})"));
+                let php = guarded(self, &|x| format!("\\SpacePress\\Js::templateRaw({x})"));
                 Out::atom(php, suffix_null(Ty::Array(Box::new(Ty::Str))))
             }
             (Ty::Error, "cause") => {
-                let php = guarded(self, &|x| format!("\\TypedPress\\Js::dynamicGet({x}, 'cause')"));
+                let php = guarded(self, &|x| format!("\\SpacePress\\Js::dynamicGet({x}, 'cause')"));
                 Out::atom(php, Ty::Unknown)
             }
             (Ty::Error, "message" | "name" | "stack") => {
                 // A caught value may be an Error subclass instance, so read through JavaScript lookup.
                 let php = guarded(self, &|x| {
                     format!(
-                        "\\TypedPress\\Js::str(\\TypedPress\\Js::dynamicGet({x}, {}))",
+                        "\\SpacePress\\Js::str(\\SpacePress\\Js::dynamicGet({x}, {}))",
                         php_str(prop)
                     )
                 });
@@ -7226,7 +7226,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 // Every shape the receiver can have is a plain object (`JsObject`), never an array.
                 let plain_objects = base.all(|t| matches!(t, Ty::Obj(_) | Ty::Map(_)));
                 let php = if optional && o.ty.is_nullable() {
-                    format!("\\TypedPress\\Js::optionalDataGet({}, {})", o.php, php_str(prop))
+                    format!("\\SpacePress\\Js::optionalDataGet({}, {})", o.php, php_str(prop))
                 } else {
                     guarded(self, &|x| {
                         // Present non-null values skip the checked read; absent keys, null values and any
@@ -7236,9 +7236,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         if (native_object && !map && !opt_field)
                             || (plain_objects && stable_local && is_php_variable(x))
                         {
-                            format!("({x}->p[{0}] ?? \\TypedPress\\Js::dataGet({x}, {0}))", php_str(prop))
+                            format!("({x}->p[{0}] ?? \\SpacePress\\Js::dataGet({x}, {0}))", php_str(prop))
                         } else {
-                            format!("\\TypedPress\\Js::dataGet({x}, {})", php_str(prop))
+                            format!("\\SpacePress\\Js::dataGet({x}, {})", php_str(prop))
                         }
                     })
                 };
@@ -7287,7 +7287,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         {
             let key = self.expr(index)?;
             return Ok(Out::atom(
-                format!("\\TypedPress\\JsClass::functionPrototypeGet({})", key.php),
+                format!("\\SpacePress\\JsClass::functionPrototypeGet({})", key.php),
                 Ty::Dynamic,
             ));
         }
@@ -7296,7 +7296,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let i = self.expr(index)?;
         if o.ty == Ty::Arguments {
             return Ok(Out::atom(
-                format!("\\TypedPress\\Js::dynamicGet({}, {})", o.php, i.php),
+                format!("\\SpacePress\\Js::dynamicGet({}, {})", o.php, i.php),
                 Ty::Unknown,
             ));
         }
@@ -7304,7 +7304,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             && matches!(index.kind, ExprKind::Num(n) if n == 0.0)
         {
             return Ok(Out::atom(
-                format!("\\TypedPress\\Js::dynamicGet({}, {})", o.php, i.php),
+                format!("\\SpacePress\\Js::dynamicGet({}, {})", o.php, i.php),
                 (**element).clone(),
             ));
         }
@@ -7334,7 +7334,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         };
         let mut out = match (&base, &i.ty) {
             (Ty::Array(t) | Ty::NonEmptyArray(t), it) if it.is_num() => Out::atom(
-                format!("\\TypedPress\\Js::dynamicGet({}, {})", o.php, i.php),
+                format!("\\SpacePress\\Js::dynamicGet({}, {})", o.php, i.php),
                 wrap(Ty::union([(**t).clone(), Ty::Undefined])),
             ),
             (Ty::Tuple(ts) | Ty::ArrayLiteral(ts), _) => match &index.kind {
@@ -7342,7 +7342,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     let t = ts.get(*n as usize).cloned().unwrap_or(Ty::Undefined);
                     let place = o.place.as_ref().map(|p| format!("{p}->a[{}]", *n as usize));
                     Out {
-                        php: format!("\\TypedPress\\Js::dynamicGet({}, {})", o.php, *n as usize),
+                        php: format!("\\SpacePress\\Js::dynamicGet({}, {})", o.php, *n as usize),
                         ty: wrap(Ty::union([t, Ty::Undefined])),
                         place,
                         atomic: true,
@@ -7350,13 +7350,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     }
                 }
                 _ if i.ty.is_num() => Out::atom(
-                    format!("\\TypedPress\\Js::dynamicGet({}, {})", o.php, i.php),
+                    format!("\\SpacePress\\Js::dynamicGet({}, {})", o.php, i.php),
                     wrap(Ty::union(ts.iter().cloned().chain([Ty::Undefined]))),
                 ),
                 _ => return err(index.span, "tuples are indexed by number"),
             },
             (Ty::Map(t), key_ty) if key_ty.is_str() => Out::atom(
-                format!("\\TypedPress\\Js::dataGet({}, {})", o.php, i.php),
+                format!("\\SpacePress\\Js::dataGet({}, {})", o.php, i.php),
                 wrap(Ty::union([(**t).clone(), Ty::Undefined])),
             ),
             (Ty::Obj(fields), key_ty) if key_ty.is_str() => {
@@ -7389,12 +7389,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     });
                 }
                 Out::atom(
-                    format!("\\TypedPress\\Js::dataGet({}, {})", o.php, i.php),
+                    format!("\\SpacePress\\Js::dataGet({}, {})", o.php, i.php),
                     wrap(Ty::union(values)),
                 )
             }
             (s, it) if s.is_str() && it.is_num() => Out::atom(
-                format!("\\TypedPress\\Js::strIndex({}, {})", o.php, i.php),
+                format!("\\SpacePress\\Js::strIndex({}, {})", o.php, i.php),
                 wrap(Ty::union([Ty::Str, Ty::Undefined])),
             ),
             _ => {
@@ -7406,7 +7406,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         };
         if guard {
             out.php = format!(
-                "(\\TypedPress\\Js::isNullish({} = {receiver}) ? \\TypedPress\\Js::undefined() : {})",
+                "(\\SpacePress\\Js::isNullish({} = {receiver}) ? \\SpacePress\\Js::undefined() : {})",
                 o.php, out.php
             );
             out.place = None;
@@ -7417,7 +7417,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
     // ---- JSX (docs/decisions/2026-11-08-tsx-to-php.md) -----------------------------------------
 
     /// A JSX node as rendered HTML. Literal parts fold to escaped strings at build time; every
-    /// value goes through `\TypedPress\Html`, which follows react-dom/server's child and attribute rules.
+    /// value goes through `\SpacePress\Html`, which follows react-dom/server's child and attribute rules.
     fn jsx(&mut self, jsx: &Jsx, span: Span) -> Result<Out> {
         match &jsx.kind {
             JsxKind::Component(call) => {
@@ -7502,7 +7502,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     None => props.php,
                 };
                 Ok(Out::atom(
-                    format!("\\TypedPress\\Html::component({}, {props})", checked_function(f).php),
+                    format!("\\SpacePress\\Html::component({}, {props})", checked_function(f).php),
                     Ty::Html,
                 ))
             }
@@ -7518,7 +7518,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let mut out = Vec::new();
         for child in children {
             if let ExprKind::Str(text) = &child.kind {
-                out.push(format!("\\TypedPress\\Html::raw({})", php_str(&jsx_escape(text))));
+                out.push(format!("\\SpacePress\\Html::raw({})", php_str(&jsx_escape(text))));
                 continue;
             }
             let v = self.expr(child)?;
@@ -7549,7 +7549,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             | Ty::Void
             | Ty::Never
             | Ty::Dynamic => true,
-            // `ReactNode`'s nested arrays: `\TypedPress\Html::child` checks each element when it renders.
+            // `ReactNode`'s nested arrays: `\SpacePress\Html::child` checks each element when it renders.
             Ty::Array(inner) | Ty::NonEmptyArray(inner) if **inner == Ty::Unknown => true,
             Ty::Array(inner) | Ty::NonEmptyArray(inner) => self.jsx_child_type(inner, span).is_ok(),
             Ty::Tuple(items) | Ty::ArrayLiteral(items) => items.iter().all(|t| self.jsx_child_type(t, span).is_ok()),
@@ -7656,7 +7656,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     if self.client.is_some() && name.to_ascii_lowercase().starts_with("data-wp-") {
                         return err_help(
                             *span,
-                            format!("`{name}` is a directive TypedPress writes"),
+                            format!("`{name}` is a directive SpacePress writes"),
                             "use state, props and handlers; the compiler adds the directives",
                         );
                     }
@@ -7768,11 +7768,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 return err_help(
                     span,
                     "a form with an action posts it form-encoded",
-                    "remove `method` and `encType`; TypedPress sets them",
+                    "remove `method` and `encType`; SpacePress sets them",
                 );
             }
             entries.push(format!(
-                "...\\TypedPress\\Render\\Forms::attributes({})",
+                "...\\SpacePress\\Render\\Forms::attributes({})",
                 php_str(action)
             ));
             spread = true;
@@ -7785,7 +7785,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             let mut out = Vec::new();
             for child in &jsx.children {
                 if let ExprKind::Str(text) = &child.kind {
-                    out.push(format!("\\TypedPress\\Html::raw({})", php_str(&jsx_escape(text))));
+                    out.push(format!("\\SpacePress\\Html::raw({})", php_str(&jsx_escape(text))));
                     continue;
                 }
                 // A list or conditional over state: the server renders it now, and the browser
@@ -7834,7 +7834,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         // The return path and, for a signed-in render, the REST nonce, after the author's fields.
         let form_fields = form_action
             .as_ref()
-            .map(|action| format!("\\TypedPress\\Render\\Forms::fields({})", php_str(action)));
+            .map(|action| format!("\\SpacePress\\Render\\Forms::fields({})", php_str(action)));
         // A literal string child stays a string, so `Html::element` can apply React's rules that
         // depend on it (the doubled leading newline in `<pre>`).
         match (jsx.children.as_slice(), client_children) {
@@ -7875,7 +7875,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             return Ok(Out::atom(folded, Ty::Html));
         }
         Ok(Out::atom(
-            format!("\\TypedPress\\Html::element({})", args.join(", ")),
+            format!("\\SpacePress\\Html::element({})", args.join(", ")),
             Ty::Html,
         ))
     }
@@ -7938,7 +7938,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         let field = name.strip_suffix("[]").unwrap_or(name);
         // What `Forms::decode` drops before the action reads the body.
-        if matches!(field, "_tp_return" | "_tp_form" | "_wpnonce" | "_locale" | "_method") {
+        if matches!(field, "_sp_return" | "_sp_form" | "_wpnonce" | "_locale" | "_method") {
             return Ok(None);
         }
         let Some((_, list)) = fields.iter().find(|(f, _)| f == field) else {
@@ -7978,7 +7978,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         };
         let option = option.map_or_else(|| "null".to_string(), php_str);
         Ok(Some(format!(
-            "...\\TypedPress\\Render\\Forms::control({}, {}, {}, {option})",
+            "...\\SpacePress\\Render\\Forms::control({}, {}, {}, {option})",
             php_str(action),
             php_str(name),
             php_str(mode)
@@ -8008,7 +8008,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         let open = html::open_tag(tag, &attrs)?;
         if html::is_void(tag) {
-            return Some(format!("\\TypedPress\\Html::raw({})", php_str(&format!("{open}/>"))));
+            return Some(format!("\\SpacePress\\Html::raw({})", php_str(&format!("{open}/>"))));
         }
         // A single literal string child is passed to `Html::element` unescaped (see above).
         let children: Vec<String> = match jsx.children.as_slice() {
@@ -8017,12 +8017,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     kind: ExprKind::Str(text),
                     ..
                 },
-            ] => vec![format!("\\TypedPress\\Html::raw({})", php_str(&jsx_escape(text)))],
+            ] => vec![format!("\\SpacePress\\Html::raw({})", php_str(&jsx_escape(text)))],
             _ => children.to_vec(),
         };
-        let mut parts = vec![format!("\\TypedPress\\Html::raw({})", php_str(&format!("{open}>")))];
+        let mut parts = vec![format!("\\SpacePress\\Html::raw({})", php_str(&format!("{open}>")))];
         parts.extend(children);
-        parts.push(format!("\\TypedPress\\Html::raw({})", php_str(&format!("</{tag}>"))));
+        parts.push(format!("\\SpacePress\\Html::raw({})", php_str(&format!("</{tag}>"))));
         Some(self.fold_children(parts))
     }
 
@@ -8048,13 +8048,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
         }
         if slots.is_empty() {
-            return format!("\\TypedPress\\Html::raw({})", php_str(&literals[0]));
+            return format!("\\SpacePress\\Html::raw({})", php_str(&literals[0]));
         }
         let php = if literals.iter().all(String::is_empty) {
-            format!("\\TypedPress\\Html::children({})", slots.join(", "))
+            format!("\\SpacePress\\Html::children({})", slots.join(", "))
         } else {
             let literals = literals.iter().map(|s| php_str(s)).collect::<Vec<_>>().join(", ");
-            format!("\\TypedPress\\Html::template([{literals}], {})", slots.join(", "))
+            format!("\\SpacePress\\Html::template([{literals}], {})", slots.join(", "))
         };
         self.folded_parts.insert(php.clone(), parts);
         php
@@ -8144,7 +8144,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     /// `style` takes an object whose keys are known at build time, so request data can only fill
-    /// values (which `\TypedPress\Html` escapes), never choose properties.
+    /// values (which `\SpacePress\Html` escapes), never choose properties.
     fn jsx_style_type(&self, ty: &Ty, span: Span) -> Result<()> {
         match ty.non_null() {
             Ty::Obj(fields)
@@ -8175,14 +8175,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         let v = self.expr(x)?;
         let module = self.fx().module;
-        // TypedPress's own typed async calls (fetch, database builders, typed helpers) block, as in
+        // SpacePress's own typed async calls (fetch, database builders, typed helpers) block, as in
         // TypeScript; any other awaited value from checked JavaScript goes through the job queue.
         if self.javascript_module(module) && !matches!(v.ty, Ty::Promise(_) | Ty::Builder(_)) {
             let v = self.finish_value(v, x.span)?;
             self.uses_jobs = true;
             return Ok(Out::atom(
                 format!(
-                    "\\TypedPress\\JsJobs::await({}, {})",
+                    "\\SpacePress\\JsJobs::await({}, {})",
                     v.php,
                     php_str(&crate::diag::site(span))
                 ),
@@ -8197,7 +8197,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 self.uses_jobs = true;
                 Out::atom(
                     format!(
-                        "\\TypedPress\\JsJobs::await({}, {})",
+                        "\\SpacePress\\JsJobs::await({}, {})",
                         v.php,
                         php_str(&crate::diag::site(span))
                     ),
@@ -8208,7 +8208,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 return err_help(
                     span,
                     format!("awaiting {} does nothing", other.describe()),
-                    "only await TypedPress database calls and your own async functions",
+                    "only await SpacePress database calls and your own async functions",
                 );
             }
         })
@@ -8222,7 +8222,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             self.binary_global(g, callee.span)?;
             let argv = self.javascript_args(args)?;
             return Ok(Out::atom(
-                format!("\\TypedPress\\Js::dynamicConstruct({}, {argv})", php_str(g)),
+                format!("\\SpacePress\\Js::dynamicConstruct({}, {argv})", php_str(g)),
                 Ty::Dynamic,
             ));
         }
@@ -8259,7 +8259,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 return err(span, "`new AbortController()` takes no arguments");
             }
             return Ok(Out::atom(
-                "(new \\TypedPress\\JsAbortController())",
+                "(new \\SpacePress\\JsAbortController())",
                 Ty::AbortController,
             ));
         }
@@ -8270,7 +8270,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         {
             let argv = self.javascript_args(args)?;
             return Ok(Out::atom(
-                format!("\\TypedPress\\Js::dynamicConstruct('RegExp', {argv})"),
+                format!("\\SpacePress\\Js::dynamicConstruct('RegExp', {argv})"),
                 Ty::Regex,
             ));
         }
@@ -8285,7 +8285,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             let argv = self.javascript_args(args)?;
             self.uses_jobs = true;
             return Ok(Out::atom(
-                format!("\\TypedPress\\Js::dynamicConstruct({}, {argv})", php_str(name)),
+                format!("\\SpacePress\\Js::dynamicConstruct({}, {argv})", php_str(name)),
                 Ty::Dynamic,
             ));
         }
@@ -8310,7 +8310,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
                 let argv = self.javascript_args(args)?;
                 return Ok(Out::atom(
-                    format!("\\TypedPress\\Js::dynamicConstruct({}, {argv})", php_str(name)),
+                    format!("\\SpacePress\\Js::dynamicConstruct({}, {argv})", php_str(name)),
                     Ty::Dynamic,
                 ));
             }
@@ -8319,7 +8319,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 if ctor.ty == Ty::Dynamic {
                     let argv = self.javascript_args(args)?;
                     return Ok(Out::atom(
-                        format!("\\TypedPress\\Js::dynamicConstruct({}, {argv})", ctor.php),
+                        format!("\\SpacePress\\Js::dynamicConstruct({}, {argv})", ctor.php),
                         Ty::Dynamic,
                     ));
                 }
@@ -8341,9 +8341,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 crate::builtins::check_date_literal(args, span)?;
                 let argv = self.plain_args(args)?;
                 Ok(match argv.as_slice() {
-                    [] => Out::atom("new \\TypedPress\\JsDate(\\TypedPress\\Js::now())", Ty::Date),
+                    [] => Out::atom("new \\SpacePress\\JsDate(\\SpacePress\\Js::now())", Ty::Date),
                     [a] => Out::atom(
-                        format!("new \\TypedPress\\JsDate(\\TypedPress\\Js::date({}))", a.php),
+                        format!("new \\SpacePress\\JsDate(\\SpacePress\\Js::date({}))", a.php),
                         Ty::Date,
                     ),
                     _ => {
@@ -8406,7 +8406,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let iter = |kind: &str, el: Ty| {
             Out::atom(
                 format!(
-                    "(new \\TypedPress\\JsIterator({r}->{kind}Iterator(), {}))",
+                    "(new \\SpacePress\\JsIterator({r}->{kind}Iterator(), {}))",
                     php_str(if set { "Set Iterator" } else { "Map Iterator" })
                 ),
                 Ty::Iter(Box::new(el)),
@@ -8431,12 +8431,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let k = arg(self, 0, &key, "a key")?;
                 Out::atom(format!("{r}->{m}({})", k.php), Ty::Bool)
             }
-            (_, "clear") => Out::atom(format!("\\TypedPress\\Js::clearCollection({r})"), Ty::Undefined),
+            (_, "clear") => Out::atom(format!("\\SpacePress\\Js::clearCollection({r})"), Ty::Undefined),
             (_, "forEach") => {
                 let f = self.arg(args, 0, span, "a function")?;
                 let cb = self.callback(f, &[value, key, recv.ty.non_null()])?;
                 Out::atom(
-                    format!("\\TypedPress\\Js::collectionForEach({r}, {})", cb.php),
+                    format!("\\SpacePress\\Js::collectionForEach({r}, {})", cb.php),
                     Ty::Undefined,
                 )
             }
@@ -8453,7 +8453,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         Ok(match (&recv.ty.non_null(), m) {
             (Ty::AbortController, "abort") => {
                 let reason = match args.first() {
-                    None => "\\TypedPress\\Js::undefined()".to_string(),
+                    None => "\\SpacePress\\Js::undefined()".to_string(),
                     Some(ArrEl::Item(x)) => {
                         let v = self.expr(x)?;
                         self.finish_value(v, x.span)?.php
@@ -8471,7 +8471,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let f = self.arg(args, 1, span, "a listener")?;
                 let cb = self.callback(f, &[Ty::Unknown])?;
                 let options = match args.get(2) {
-                    None => "\\TypedPress\\Js::undefined()".to_string(),
+                    None => "\\SpacePress\\Js::undefined()".to_string(),
                     Some(ArrEl::Item(x)) => {
                         let v = self.expr(x)?;
                         self.finish_value(v, x.span)?.php
@@ -8535,7 +8535,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         let class = if url { "JsUrl" } else { "JsUrlSearchParams" };
         Ok(Out::atom(
-            format!("\\TypedPress\\{class}::construct({})", argv.join(", ")),
+            format!("\\SpacePress\\{class}::construct({})", argv.join(", ")),
             if url { Ty::Url } else { Ty::UrlParams },
         ))
     }
@@ -8564,7 +8564,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let call = |ty: Ty| Out::atom(format!("{r}->{m}({})", strs.join(", ")), ty);
         let iter = |kind: &str, el: Ty| {
             Out::atom(
-                format!("(new \\TypedPress\\JsIterator({r}->{kind}Iterator(), 'URLSearchParams Iterator'))"),
+                format!("(new \\SpacePress\\JsIterator({r}->{kind}Iterator(), 'URLSearchParams Iterator'))"),
                 Ty::Iter(Box::new(el)),
             )
         };
@@ -8686,8 +8686,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
         };
         let php = match source {
-            Some((v, _, _)) => format!("\\TypedPress\\Js::new{what}({})", v.php),
-            None => format!("\\TypedPress\\Js::new{what}()"),
+            Some((v, _, _)) => format!("\\SpacePress\\Js::new{what}({})", v.php),
+            None => format!("\\SpacePress\\Js::new{what}()"),
         };
         Ok(Out::atom(php, ty))
     }
@@ -8840,11 +8840,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 if *optional {
                     let r = self.tmp_var();
                     format!(
-                        "(\\TypedPress\\Js::isNullish({r} = {}) ? null : \\TypedPress\\Js::optionalMethod({r}, {name}))",
+                        "(\\SpacePress\\Js::isNullish({r} = {}) ? null : \\SpacePress\\Js::optionalMethod({r}, {name}))",
                         recv.php
                     )
                 } else {
-                    format!("\\TypedPress\\Js::optionalMethod({}, {name})", recv.php)
+                    format!("\\SpacePress\\Js::optionalMethod({}, {name})", recv.php)
                 }
             }
             ExprKind::Index { obj, index, optional } => {
@@ -8855,24 +8855,24 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let key = self.finish_value(key, index.span)?;
                 if *optional {
                     format!(
-                        "(\\TypedPress\\Js::isNullish({r} = {}) ? null : \\TypedPress\\Js::optionalMethod({r}, {}))",
+                        "(\\SpacePress\\Js::isNullish({r} = {}) ? null : \\SpacePress\\Js::optionalMethod({r}, {}))",
                         recv.php, key.php
                     )
                 } else {
-                    format!("\\TypedPress\\Js::optionalMethod({}, {})", recv.php, key.php)
+                    format!("\\SpacePress\\Js::optionalMethod({}, {})", recv.php, key.php)
                 }
             }
             _ => {
                 let v = self.expr(callee)?;
                 let v = self.finish_value(v, callee.span)?;
                 let t = self.tmp_var();
-                format!("(\\TypedPress\\Js::isNullish({t} = {}) ? null : {t})", v.php)
+                format!("(\\SpacePress\\Js::isNullish({t} = {}) ? null : {t})", v.php)
             }
         };
         let argv = self.javascript_args(args)?;
         Ok(Out::atom(
             format!(
-                "(({f} = {read}) === null ? \\TypedPress\\Js::undefined() : \\TypedPress\\Js::dynamicCall({f}, {argv}))"
+                "(({f} = {read}) === null ? \\SpacePress\\Js::undefined() : \\SpacePress\\Js::dynamicCall({f}, {argv}))"
             ),
             Ty::Dynamic,
         ))
@@ -8896,7 +8896,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 .collect::<Vec<_>>()
                 .join(", ");
             return Ok(Out::atom(
-                format!("\\TypedPress\\Js::dynamicObjectTag([{values}][0])"),
+                format!("\\SpacePress\\Js::dynamicObjectTag([{values}][0])"),
                 Ty::Str,
             ));
         }
@@ -8959,7 +8959,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                             _ => Ty::Dynamic,
                         };
                         return Ok(Out::atom(
-                            format!("\\TypedPress\\Js::callWithReceiver({}, {}, {argv})", f.php, recv),
+                            format!("\\SpacePress\\Js::callWithReceiver({}, {}, {argv})", f.php, recv),
                             ret,
                         ));
                     }
@@ -8981,13 +8981,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     let argv = self.javascript_args(args)?;
                     let receiver = if *opt { self.tmp_var() } else { recv.php.clone() };
                     let call = format!(
-                        "(\\TypedPress\\Js::dynamicMethod({receiver}, {}))(...({argv})->a)",
+                        "(\\SpacePress\\Js::dynamicMethod({receiver}, {}))(...({argv})->a)",
                         key.php
                     );
                     return Ok(Out::atom(
                         if *opt {
                             format!(
-                                "(\\TypedPress\\Js::isNullish({receiver} = {}) ? \\TypedPress\\Js::undefined() : {call})",
+                                "(\\SpacePress\\Js::isNullish({receiver} = {}) ? \\SpacePress\\Js::undefined() : {call})",
                                 recv.php
                             )
                         } else {
@@ -9005,12 +9005,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 };
                 // Retain the indexed callee's type checks, but bind its receiver before
                 // evaluating arguments, just as for a direct data-property call.
-                f.php = format!("\\TypedPress\\Js::dataMethod({receiver}, {})", key.php);
+                f.php = format!("\\SpacePress\\Js::dataMethod({receiver}, {})", key.php);
                 f.helper = None;
                 let mut out = self.call_value(f, args, span, callee.span)?;
                 if *opt && recv.ty.is_nullable() {
                     out.php = format!(
-                        "(\\TypedPress\\Js::isNullish({receiver} = {}) ? \\TypedPress\\Js::undefined() : {})",
+                        "(\\SpacePress\\Js::isNullish({receiver} = {}) ? \\SpacePress\\Js::undefined() : {})",
                         recv.php, out.php
                     );
                 }
@@ -9186,14 +9186,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
         self.uses("mail", "send", span);
         self.writes(span, "sends an email");
         Ok(Out::atom(
-            format!("\\TypedPress\\Mail::send({})", v.php),
+            format!("\\SpacePress\\Mail::send({})", v.php),
             Ty::Promise(Box::new(types::obj_pub(&[("id", Ty::Str)]))),
         ))
     }
 
-    /// `connectors.call(role, tool, args?)` from "spacepress" / "typedpress" invokes a host connector
+    /// `connectors.call(role, tool, args?)` from "spacepress" / "spacepress" invokes a host connector
     /// now; `connectors.enqueue(role, tool, args?, { delay?, key? })` queues the call in the caller's
-    /// transaction as the built-in `typedpress.connector` job, which runs after commit.
+    /// transaction as the built-in `spacepress.connector` job, which runs after commit.
     fn connectors_call(&mut self, name: &str, args: &[ArrEl], span: Span) -> Result<Out> {
         let queued = match name {
             "call" => false,
@@ -9270,7 +9270,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         if !queued {
             return Ok(Out::atom(
                 format!(
-                    "\\TypedPress\\Connectors::call({}, {}, {})",
+                    "\\SpacePress\\Connectors::call({}, {}, {})",
                     role.php, tool.php, args_php
                 ),
                 Ty::Promise(Box::new(Ty::Unknown)),
@@ -9303,7 +9303,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         };
         Ok(Out::atom(
             format!(
-                "\\TypedPress\\Connectors::enqueue({}, {}, {}, {opts})",
+                "\\SpacePress\\Connectors::enqueue({}, {}, {}, {opts})",
                 role.php, tool.php, args_php
             ),
             Ty::Promise(Box::new(types::obj_pub(&[("id", Ty::Str)]))),
@@ -9361,8 +9361,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
         self.uses("mail", "render", span);
         Ok(Out::atom(
             format!(
-                "\\TypedPress\\Render\\Email::message({}, {})",
-                php_str(&format!("\\TypedPressApp\\{function}")),
+                "\\SpacePress\\Render\\Email::message({}, {})",
+                php_str(&format!("\\SpacePressApp\\{function}")),
                 props.php
             ),
             types::obj_pub(&[("html", Ty::Str), ("text", Ty::Str)]),
@@ -9428,7 +9428,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             d = match suggest(ability, self.abilities.abilities.keys().map(String::as_str)) {
                 Some(s) => d.help(format!("did you mean `{s}`?")),
                 None => d.help(format!(
-                    "abilities outside this app come from {}; run `typedpress abilities pull --site <url>` and commit it",
+                    "abilities outside this app come from {}; run `spacepress abilities pull --site <url>` and commit it",
                     crate::wordpress::abilities::LOCK
                 )),
             };
@@ -9441,7 +9441,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             None if matches!(&input_ty, Ty::Map(_))
                 || matches!(&input_ty, Ty::Obj(f) if f.values().all(|(_, o)| *o)) =>
             {
-                "new \\TypedPress\\JsObject()".to_string()
+                "new \\SpacePress\\JsObject()".to_string()
             }
             None => {
                 return err_help(
@@ -9471,13 +9471,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
         self.route_opaque(format!("ability {ability}"));
         self.use_wordpress(WordPressKind::Ability, ability, name_expr.span);
         Ok(Out::atom(
-            format!("\\TypedPress\\Wp\\Abilities\\Call::run({}, {input})", php_str(ability)),
+            format!("\\SpacePress\\Wp\\Abilities\\Call::run({}, {input})", php_str(ability)),
             Ty::Promise(Box::new(output_ty)),
         ))
     }
 
     /// A catalog WordPress function: arguments checked against the catalog's types, called through
-    /// `TypedPress\Wp\Functions::call` with the catalog's fixed arguments appended.
+    /// `SpacePress\Wp\Functions::call` with the catalog's fixed arguments appended.
     fn wp_function_call(&mut self, name: &str, args: &[ArrEl], span: Span) -> Result<Out> {
         let f = crate::wordpress::function(name).expect("only catalog functions are imported");
         if matches!(name, "update_option" | "delete_option" | "wp_insert_post") {
@@ -9494,7 +9494,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             return err_help(
                 span,
                 format!("`{name}` takes {} argument(s) from TypeScript", f.params.len()),
-                "TypedPress admits the arguments that map soundly; later PHP parameters keep their defaults",
+                "SpacePress admits the arguments that map soundly; later PHP parameters keep their defaults",
             );
         }
         let mut php = Vec::new();
@@ -9547,7 +9547,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         self.use_wordpress(WordPressKind::Function, name, span);
         Ok(Out::atom(
             format!(
-                "\\TypedPress\\Wp\\Functions::call({}, [{}])",
+                "\\SpacePress\\Wp\\Functions::call({}, [{}])",
                 php_str(name),
                 php.join(", ")
             ),
@@ -9589,7 +9589,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         Ok(Out::atom(
             // Receipts are shared storage: each plugin keeps its own `once` keys.
             format!(
-                "\\TypedPress\\Jobs\\Receipts::once({}, {}, {})",
+                "\\SpacePress\\Jobs\\Receipts::once({}, {}, {})",
                 php_str(
                     &self
                         .plugin
@@ -9673,7 +9673,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let mut result = IndexMap::new();
         result.insert("id".to_string(), (Ty::Str, false));
         Ok(Out::atom(
-            format!("\\TypedPress\\Seam::enqueue({}, {}, {opts})", php_str(job), input.php),
+            format!("\\SpacePress\\Seam::enqueue({}, {}, {opts})", php_str(job), input.php),
             Ty::Promise(Box::new(Ty::Obj(result))),
         ))
     }
@@ -9682,7 +9682,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         if f.ty == Ty::Dynamic {
             let argv = self.javascript_args(args)?;
             return Ok(Out::atom(
-                format!("\\TypedPress\\Js::dynamicCall({}, {argv})", f.php),
+                format!("\\SpacePress\\Js::dynamicCall({}, {argv})", f.php),
                 Ty::Dynamic,
             ));
         }
@@ -9844,7 +9844,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             let argv = self.javascript_args(args)?;
             return Ok(Out::atom(
-                format!("\\TypedPress\\JsBinary::{g}(...({argv})->a)"),
+                format!("\\SpacePress\\JsBinary::{g}(...({argv})->a)"),
                 Ty::Dynamic,
             ));
         }
@@ -9861,14 +9861,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
         if matches!(g, "parseInt" | "parseFloat") && self.javascript_module(self.fx.as_ref().expect("fn").module) {
             let argv = self.javascript_args(args)?;
             return Ok(Out::atom(
-                format!("\\TypedPress\\Js::dynamicStaticCall('Number', {}, {argv})", php_str(g)),
+                format!("\\SpacePress\\Js::dynamicStaticCall('Number', {}, {argv})", php_str(g)),
                 Ty::Num,
             ));
         }
         if g == "RegExp" {
             let argv = self.javascript_args(args)?;
             return Ok(Out::atom(
-                format!("\\TypedPress\\Js::dynamicRegExpCall({argv})"),
+                format!("\\SpacePress\\Js::dynamicRegExpCall({argv})"),
                 Ty::Dynamic,
             ));
         }
@@ -9878,7 +9878,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         if g == "Symbol" {
             let argv = self.javascript_args(args)?;
             return Ok(Out::atom(
-                format!("\\TypedPress\\JsSymbol::create({argv})"),
+                format!("\\SpacePress\\JsSymbol::create({argv})"),
                 Ty::Dynamic,
             ));
         }
@@ -9893,42 +9893,42 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ("Boolean", None) | ("isFinite", None) => Out::atom("false", Ty::Bool),
             ("isNaN", None) => Out::atom("true", Ty::Bool),
             ("String", Some(v)) if v.ty == Ty::Dynamic => {
-                Out::atom(format!("\\TypedPress\\Js::stringOf({})", v.php), Ty::Str)
+                Out::atom(format!("\\SpacePress\\Js::stringOf({})", v.php), Ty::Str)
             }
             ("String", Some(v)) => Out::new(self.to_string_php(v, span)?, Ty::Str),
             ("structuredClone", Some(v)) => {
-                Out::atom(format!("\\TypedPress\\Js::clone({})", v.php), classes::wire_type(&v.ty))
+                Out::atom(format!("\\SpacePress\\Js::clone({})", v.php), classes::wire_type(&v.ty))
             }
-            ("BigInt", Some(v)) => Out::atom(format!("\\TypedPress\\JsBigInt::of({})", v.php), Ty::BigInt),
+            ("BigInt", Some(v)) => Out::atom(format!("\\SpacePress\\JsBigInt::of({})", v.php), Ty::BigInt),
             ("Number", Some(v)) if v.ty == Ty::BigInt => Out::atom(format!("({})->toNumber()", v.php), Ty::Num),
             ("Number", Some(v)) => {
                 if v.ty.is_num() {
                     v.clone()
                 } else {
                     // Number(value): ToNumeric, then a BigInt becomes its nearest double.
-                    Out::atom(format!("\\TypedPress\\Js::number({})", v.php), Ty::Num)
+                    Out::atom(format!("\\SpacePress\\Js::number({})", v.php), Ty::Num)
                 }
             }
             ("Boolean", Some(v)) => Out::new(self.truthy(v), Ty::Bool),
             ("encodeURI" | "encodeURIComponent", Some(v)) => {
-                Out::atom(format!("\\TypedPress\\Js::{g}({})", v.php), Ty::Str).checked_str(v, span)?
+                Out::atom(format!("\\SpacePress\\Js::{g}({})", v.php), Ty::Str).checked_str(v, span)?
             }
             ("parseInt", Some(v)) => {
                 let radix = argv
                     .get(1)
-                    .map(|a| format!(", \\TypedPress\\Js::toNumber({})", a.php))
+                    .map(|a| format!(", \\SpacePress\\Js::toNumber({})", a.php))
                     .unwrap_or_default();
-                Out::atom(format!("\\TypedPress\\Js::parseInt({}{radix})", v.php), Ty::Num).checked_str(v, span)?
+                Out::atom(format!("\\SpacePress\\Js::parseInt({}{radix})", v.php), Ty::Num).checked_str(v, span)?
             }
             ("parseFloat", Some(v)) => {
-                Out::atom(format!("\\TypedPress\\Js::parseFloat({})", v.php), Ty::Num).checked_str(v, span)?
+                Out::atom(format!("\\SpacePress\\Js::parseFloat({})", v.php), Ty::Num).checked_str(v, span)?
             }
             ("isNaN", Some(v)) => Out::atom(
-                format!("\\is_nan((float) \\TypedPress\\Js::toNumber({}))", v.php),
+                format!("\\is_nan((float) \\SpacePress\\Js::toNumber({}))", v.php),
                 Ty::Bool,
             ),
             ("isFinite", Some(v)) => Out::atom(
-                format!("\\TypedPress\\Js::isFinite(\\TypedPress\\Js::toNumber({}))", v.php),
+                format!("\\SpacePress\\Js::isFinite(\\SpacePress\\Js::toNumber({}))", v.php),
                 Ty::Bool,
             ),
             ("process" | "navigator" | "crypto" | "Buffer", _) => {
@@ -9947,7 +9947,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ) => {
                 return err_help(
                     span,
-                    format!("`{g}` isn't available in TypedPress code"),
+                    format!("`{g}` isn't available in SpacePress code"),
                     "use supported server capabilities in a hook or action",
                 );
             }
@@ -9955,13 +9955,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
         })
     }
 
-    /// `setTimeout(callback, delay?, ...args)` / `clearTimeout(id)`: a `TypedPress\\Timers` entry that runs
+    /// `setTimeout(callback, delay?, ...args)` / `clearTimeout(id)`: a `SpacePress\\Timers` entry that runs
     /// only while the request waits. The site names the call in the handler-end refusal.
     fn timer_call(&mut self, g: &str, args: &[ArrEl], span: Span) -> Result<Out> {
         if g == "clearTimeout" {
             let argv = self.javascript_args(args)?;
             return Ok(Out::atom(
-                format!("\\TypedPress\\Timers::clear(({argv})->a[0] ?? \\TypedPress\\Js::undefined())"),
+                format!("\\SpacePress\\Timers::clear(({argv})->a[0] ?? \\SpacePress\\Js::undefined())"),
                 Ty::Undefined,
             ));
         }
@@ -9970,7 +9970,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let callback = self.arg(args, 0, span, "a callback")?;
         let cb = if javascript {
             let v = self.expr(callback)?;
-            format!("\\TypedPress\\Js::timerCallback({})", v.php)
+            format!("\\SpacePress\\Js::timerCallback({})", v.php)
         } else {
             self.callback(callback, &[])?.php
         };
@@ -10004,13 +10004,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let extra: Vec<String> = rest.iter().skip(1).map(|v| v.php.clone()).collect();
         let site = self.site(span);
         let set = format!(
-            "\\TypedPress\\Timers::set({cb}, {delay}, [{}], {})",
+            "\\SpacePress\\Timers::set({cb}, {delay}, [{}], {})",
             extra.join(", "),
             php_str(&site)
         );
         // Node returns a Timeout object, so typed code gets the same opaque handle: only clearTimeout uses it.
         Ok(Out::atom(
-            format!("\\TypedPress\\Timers::handle({set})"),
+            format!("\\SpacePress\\Timers::handle({set})"),
             if javascript { Ty::Dynamic } else { Ty::Unknown },
         ))
     }
@@ -10046,7 +10046,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     )?;
                 }
                 let list: Vec<&str> = argv.iter().map(|(v, _)| v.php.as_str()).collect();
-                let call = format!("\\TypedPress\\JsUrl::{}({})", m, list.join(", "));
+                let call = format!("\\SpacePress\\JsUrl::{}({})", m, list.join(", "));
                 if m == "parse" {
                     Out::atom(call, Ty::Url.nullable())
                 } else {
@@ -10056,9 +10056,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ("AbortSignal", "abort") => {
                 let reason = argv
                     .first()
-                    .map_or_else(|| "\\TypedPress\\Js::undefined()".into(), |(v, _)| v.php.clone());
+                    .map_or_else(|| "\\SpacePress\\Js::undefined()".into(), |(v, _)| v.php.clone());
                 Out::atom(
-                    format!("\\TypedPress\\JsAbortSignal::aborted({reason})"),
+                    format!("\\SpacePress\\JsAbortSignal::aborted({reason})"),
                     Ty::AbortSignal,
                 )
             }
@@ -10067,7 +10067,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 need(ms.ty.is_num(), *at, "a number of milliseconds")?;
                 self.uses("timers", "AbortSignal.timeout", span);
                 Out::atom(
-                    format!("\\TypedPress\\JsAbortSignal::timeout({})", ms.php),
+                    format!("\\SpacePress\\JsAbortSignal::timeout({})", ms.php),
                     Ty::AbortSignal,
                 )
             }
@@ -10079,7 +10079,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 need(ok, *at, "an array of AbortSignals")?;
                 Out::atom(
                     format!(
-                        "\\TypedPress\\JsAbortSignal::any(\\TypedPress\\Js::iter({}))",
+                        "\\SpacePress\\JsAbortSignal::any(\\SpacePress\\Js::iter({}))",
                         signals.php
                     ),
                     Ty::AbortSignal,
@@ -10098,7 +10098,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             let argv = self.javascript_args(args)?;
             return Ok(Out::atom(
                 format!(
-                    "\\TypedPress\\Js::dynamicStaticCall({}, {}, {argv})",
+                    "\\SpacePress\\Js::dynamicStaticCall({}, {}, {argv})",
                     php_str(g),
                     php_str(m)
                 ),
@@ -10106,10 +10106,10 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ));
         }
         if (g, m) == ("Error", "captureStackTrace") {
-            // TypedPress records no frames; the target gets Error's header-only stack.
+            // SpacePress records no frames; the target gets Error's header-only stack.
             let argv = self.javascript_args(args)?;
             return Ok(Out::atom(
-                format!("\\TypedPress\\JsClass::captureStackTrace((({argv})->a)[0] ?? \\TypedPress\\Js::undefined())"),
+                format!("\\SpacePress\\JsClass::captureStackTrace((({argv})->a)[0] ?? \\SpacePress\\Js::undefined())"),
                 Ty::Undefined,
             ));
         }
@@ -10118,7 +10118,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 crate::eval::GlobalMember::Provided(g) => self.global_call(g, args, span),
                 crate::eval::GlobalMember::Absent => err_help(
                     span,
-                    format!("`globalThis.{m}` is undefined in TypedPress, so this call always throws"),
+                    format!("`globalThis.{m}` is undefined in SpacePress, so this call always throws"),
                     format!("check `typeof globalThis.{m}` first, or remove the call"),
                 ),
                 crate::eval::GlobalMember::Refused => Err(crate::eval::refused_global_member(m, span)),
@@ -10135,7 +10135,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             let argv = self.javascript_args(args)?;
             let method = if m == "for" { "for" } else { "keyFor" };
             return Ok(Out::atom(
-                format!("\\TypedPress\\JsSymbol::{method}(...({argv})->a)"),
+                format!("\\SpacePress\\JsSymbol::{method}(...({argv})->a)"),
                 Ty::Dynamic,
             ));
         }
@@ -10143,7 +10143,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             let argv = self.javascript_args(args)?;
             self.uses_jobs = true;
             return Ok(Out::atom(
-                format!("\\TypedPress\\JsPromise::staticCall({}, ({argv})->a)", php_str(m)),
+                format!("\\SpacePress\\JsPromise::staticCall({}, ({argv})->a)", php_str(m)),
                 Ty::Dynamic,
             ));
         }
@@ -10154,7 +10154,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             let argv = self.plain_args(args)?;
             return Ok(Out::atom(
                 format!(
-                    "\\TypedPress\\JsBigInt::asIntN({}, {}, {})",
+                    "\\SpacePress\\JsBigInt::asIntN({}, {}, {})",
                     argv[0].php,
                     argv[1].php,
                     if m == "asIntN" { "true" } else { "false" }
@@ -10180,13 +10180,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             let argv = self.javascript_args(&args)?;
             return Ok(Out::atom(
-                format!("\\TypedPress\\Js::stringRaw(...({argv})->a)"),
+                format!("\\SpacePress\\Js::stringRaw(...({argv})->a)"),
                 Ty::Str,
             ));
         }
         if g == "String" && matches!(m, "fromCharCode" | "fromCodePoint") {
             let argv = self.javascript_args(args)?;
-            return Ok(Out::atom(format!("\\TypedPress\\Js::{m}(...({argv})->a)"), Ty::Str));
+            return Ok(Out::atom(format!("\\SpacePress\\Js::{m}(...({argv})->a)"), Ty::Str));
         }
         if (self.javascript_module(self.fx.as_ref().expect("fn").module)
             || args.iter().any(|a| matches!(a, ArrEl::Spread(_))))
@@ -10201,7 +10201,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             let argv = self.javascript_args(args)?;
             return Ok(Out::atom(
                 format!(
-                    "\\TypedPress\\Js::dynamicStaticCall({}, {}, {argv})",
+                    "\\SpacePress\\Js::dynamicStaticCall({}, {}, {argv})",
                     php_str(g),
                     php_str(m)
                 ),
@@ -10224,7 +10224,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let Ty::Fn(_, ret) = &cb.ty else { unreachable!() };
                 let ret = (**ret).clone();
                 return Ok(Out::atom(
-                    format!("\\TypedPress\\Js::range({}, {})", n.php, cb.php),
+                    format!("\\SpacePress\\Js::range({}, {})", n.php, cb.php),
                     Ty::Array(Box::new(ret)),
                 ));
             }
@@ -10236,12 +10236,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     let cb = self.callback(f, &[el, Ty::Num])?;
                     let Ty::Fn(_, ret) = &cb.ty else { unreachable!() };
                     return Ok(Out::atom(
-                        format!("\\TypedPress\\Js::iterArray({}, {})", v.php, cb.php),
+                        format!("\\SpacePress\\Js::iterArray({}, {})", v.php, cb.php),
                         Ty::Array(ret.clone()),
                     ));
                 }
                 return Ok(Out::atom(
-                    format!("\\TypedPress\\Js::iterArray({})", v.php),
+                    format!("\\SpacePress\\Js::iterArray({})", v.php),
                     Ty::Array(Box::new(el)),
                 ));
             }
@@ -10261,7 +10261,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
                 return Ok(Out::atom(
                     format!(
-                        "\\TypedPress\\Js::dynamicStaticCall('Array', 'from', new \\TypedPress\\JsArray([{}]))",
+                        "\\SpacePress\\Js::dynamicStaticCall('Array', 'from', new \\SpacePress\\JsArray([{}]))",
                         argv.join(", ")
                     ),
                     Ty::Array(Box::new(element)),
@@ -10292,12 +10292,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let cb = self.callback(f, &[el.clone(), Ty::Num])?;
                 let Ty::Fn(_, ret) = &cb.ty else { unreachable!() };
                 return Ok(Out::atom(
-                    format!("\\TypedPress\\Js::from({}, {})", v.php, cb.php),
+                    format!("\\SpacePress\\Js::from({}, {})", v.php, cb.php),
                     Ty::Array(ret.clone()),
                 ));
             }
             return Ok(Out::atom(
-                format!("\\TypedPress\\Js::from({})", v.php),
+                format!("\\SpacePress\\Js::from({})", v.php),
                 if nonempty {
                     Ty::NonEmptyArray(Box::new(el))
                 } else {
@@ -10317,7 +10317,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             };
             return Ok(Out::atom(
                 format!(
-                    "\\TypedPress\\Js::dynamicStaticCall({}, {}, new \\TypedPress\\JsArray([{}]))",
+                    "\\SpacePress\\Js::dynamicStaticCall({}, {}, new \\SpacePress\\JsArray([{}]))",
                     php_str(g),
                     php_str(m),
                     argv.iter().map(|v| v.php.clone()).collect::<Vec<_>>().join(", ")
@@ -10341,7 +10341,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         Ok(match (g, m) {
             ("Math", "max" | "min") => {
                 all_num(&format!("Math.{m}"))?;
-                Out::atom(format!("\\TypedPress\\Js::{m}({})", php_args()), Ty::Num)
+                Out::atom(format!("\\SpacePress\\Js::{m}({})", php_args()), Ty::Num)
             }
             ("Math", "floor" | "ceil" | "abs" | "sqrt" | "trunc" | "round" | "sign" | "pow" | "log" | "exp") => {
                 all_num(&format!("Math.{m}"))?;
@@ -10351,36 +10351,36 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     "ceil" => format!("\\ceil({x})"),
                     "abs" => format!("\\abs({x})"),
                     "sqrt" => format!("\\sqrt({x})"),
-                    "trunc" => format!("\\TypedPress\\Js::trunc({x})"),
-                    "round" => format!("\\TypedPress\\Js::round({x})"),
-                    "sign" => format!("\\TypedPress\\Js::sign({x})"),
+                    "trunc" => format!("\\SpacePress\\Js::trunc({x})"),
+                    "round" => format!("\\SpacePress\\Js::round({x})"),
+                    "sign" => format!("\\SpacePress\\Js::sign({x})"),
                     "pow" => format!(
-                        "\\TypedPress\\Js::pow({}, {})",
+                        "\\SpacePress\\Js::pow({}, {})",
                         argv[0].php,
                         argv.get(1).map(|a| a.php.as_str()).unwrap_or("NAN")
                     ),
-                    "log" | "exp" => format!("\\TypedPress\\Js::mathTranscendental('{}', {x})", m),
+                    "log" | "exp" => format!("\\SpacePress\\Js::mathTranscendental('{}', {x})", m),
                     _ => unreachable!(),
                 };
                 Out::atom(php, Ty::Num)
             }
-            ("Math", "random") => Out::atom("\\TypedPress\\Js::random()", Ty::Num),
-            ("Date", "now") => Out::atom("\\TypedPress\\Js::now()", Ty::Num),
+            ("Math", "random") => Out::atom("\\SpacePress\\Js::random()", Ty::Num),
+            ("Date", "now") => Out::atom("\\SpacePress\\Js::now()", Ty::Num),
             ("Object", "keys") => Out::atom(
-                format!("\\TypedPress\\Js::keys({})", self.obj_arg(a0, span)?),
+                format!("\\SpacePress\\Js::keys({})", self.obj_arg(a0, span)?),
                 Ty::Array(Box::new(Ty::Str)),
             ),
             ("Object", "values") => {
                 let t = obj_values_ty(a0.map(|a| &a.ty));
                 Out::atom(
-                    format!("\\TypedPress\\Js::values({})", self.obj_arg(a0, span)?),
+                    format!("\\SpacePress\\Js::values({})", self.obj_arg(a0, span)?),
                     Ty::Array(Box::new(t)),
                 )
             }
             ("Object", "entries") => {
                 let t = obj_values_ty(a0.map(|a| &a.ty));
                 Out::atom(
-                    format!("\\TypedPress\\Js::entries({})", self.obj_arg(a0, span)?),
+                    format!("\\SpacePress\\Js::entries({})", self.obj_arg(a0, span)?),
                     Ty::Array(Box::new(Ty::Tuple(vec![Ty::Str, t]))),
                 )
             }
@@ -10393,7 +10393,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     _ => return err(span, "Object.fromEntries needs an array of [key, value] pairs"),
                 };
                 Out::atom(
-                    format!("\\TypedPress\\Js::fromEntries({})", php_args()),
+                    format!("\\SpacePress\\Js::fromEntries({})", php_args()),
                     Ty::Map(Box::new(t)),
                 )
             }
@@ -10407,7 +10407,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
                 Out::atom(
                     format!(
-                        "\\TypedPress\\Js::dynamicStaticCall('Object', 'hasOwn', new \\TypedPress\\JsArray([{}]))",
+                        "\\SpacePress\\Js::dynamicStaticCall('Object', 'hasOwn', new \\SpacePress\\JsArray([{}]))",
                         php_args()
                     ),
                     Ty::Bool,
@@ -10415,15 +10415,15 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             ("Array", "isArray") => Out::atom(
                 format!(
-                    "({0} instanceof \\TypedPress\\JsArray)",
+                    "({0} instanceof \\SpacePress\\JsArray)",
                     a0.map(|a| a.php.clone()).unwrap_or_default()
                 ),
                 Ty::Bool,
             ),
-            ("Number", "isInteger") => Out::atom(format!("\\TypedPress\\Js::isInteger({})", php_args()), Ty::Bool),
-            ("Number", "isFinite") => Out::atom(format!("\\TypedPress\\Js::isFinite({})", php_args()), Ty::Bool),
-            ("Number", "parseInt") => Out::atom(format!("\\TypedPress\\Js::parseInt({})", php_args()), Ty::Num),
-            ("Number", "parseFloat") => Out::atom(format!("\\TypedPress\\Js::parseFloat({})", php_args()), Ty::Num),
+            ("Number", "isInteger") => Out::atom(format!("\\SpacePress\\Js::isInteger({})", php_args()), Ty::Bool),
+            ("Number", "isFinite") => Out::atom(format!("\\SpacePress\\Js::isFinite({})", php_args()), Ty::Bool),
+            ("Number", "parseInt") => Out::atom(format!("\\SpacePress\\Js::parseInt({})", php_args()), Ty::Num),
+            ("Number", "parseFloat") => Out::atom(format!("\\SpacePress\\Js::parseFloat({})", php_args()), Ty::Num),
             ("JSON", "stringify") => {
                 if let Some(value) = a0 {
                     crate::builtins::check_json_serialization_type(&value.ty, span)?;
@@ -10445,7 +10445,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
                 Out::atom(
                     format!(
-                        "\\TypedPress\\Js::dynamicStaticCall('JSON', 'stringify', new \\TypedPress\\JsArray([{}]))",
+                        "\\SpacePress\\Js::dynamicStaticCall('JSON', 'stringify', new \\SpacePress\\JsArray([{}]))",
                         php_args()
                     ),
                     t,
@@ -10460,17 +10460,17 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
                 Out::atom(
                     format!(
-                        "\\TypedPress\\Js::dynamicStaticCall('JSON', 'parse', new \\TypedPress\\JsArray([{}]))",
+                        "\\SpacePress\\Js::dynamicStaticCall('JSON', 'parse', new \\SpacePress\\JsArray([{}]))",
                         php_args()
                     ),
                     Ty::Unknown,
                 )
             }
             ("console", "log" | "info" | "warn" | "error" | "debug") => Out::atom(
-                format!("\\TypedPress\\Js::log({}, {})", php_str(m), php_args()),
+                format!("\\SpacePress\\Js::log({}, {})", php_str(m), php_args()),
                 Ty::Undefined,
             ),
-            _ => return err(span, format!("`{g}.{m}` isn't supported in TypedPress code")),
+            _ => return err(span, format!("`{g}.{m}` isn't supported in SpacePress code")),
         })
     }
 
@@ -10528,7 +10528,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     },
                     Ty::Str,
                 )),
-                _ => err(m_span, format!("bigint has no method `{m}` in TypedPress code")),
+                _ => err(m_span, format!("bigint has no method `{m}` in SpacePress code")),
             };
         }
         let family = match recv.ty.non_null() {
@@ -10558,13 +10558,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
             let argv = self.javascript_args(args)?;
             let receiver = if optional { self.tmp_var() } else { recv.php.clone() };
             let call = format!(
-                "(\\TypedPress\\Js::dynamicMethod({receiver}, {}))(...({argv})->a)",
+                "(\\SpacePress\\Js::dynamicMethod({receiver}, {}))(...({argv})->a)",
                 php_str(m)
             );
             return Ok(Out::atom(
                 if optional {
                     format!(
-                        "(\\TypedPress\\Js::isNullish({receiver} = {}) ? \\TypedPress\\Js::undefined() : {call})",
+                        "(\\SpacePress\\Js::isNullish({receiver} = {}) ? \\SpacePress\\Js::undefined() : {call})",
                         recv.php
                     )
                 } else {
@@ -10581,7 +10581,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     Ty::Array(_) | Ty::NonEmptyArray(_) | Ty::Tuple(_) | Ty::ArrayLiteral(_)
                 )
             {
-                recv.php = format!("\\TypedPress\\Js::requirePresent({})", recv.php);
+                recv.php = format!("\\SpacePress\\Js::requirePresent({})", recv.php);
             } else {
                 return err_help(
                     recv_span,
@@ -10609,15 +10609,15 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 "toFixed" => {
                     let argv = self.plain_args(args)?;
                     let d = argv.first().map(|a| a.php.clone()).unwrap_or_else(|| "0".into());
-                    Out::atom(format!("\\TypedPress\\Js::toFixed({}, {d})", recv.php), Ty::Str)
+                    Out::atom(format!("\\SpacePress\\Js::toFixed({}, {d})", recv.php), Ty::Str)
                 }
-                "toString" => Out::atom(format!("\\TypedPress\\Js::numStr({})", recv.php), Ty::Str),
+                "toString" => Out::atom(format!("\\SpacePress\\Js::numStr({})", recv.php), Ty::Str),
                 _ => return err(m_span, format!("numbers have no method `{m}`")),
             },
             Ty::Date => match m {
-                "toISOString" => Out::atom(format!("\\TypedPress\\Js::iso(({})->milliseconds)", recv.php), Ty::Str),
+                "toISOString" => Out::atom(format!("\\SpacePress\\Js::iso(({})->milliseconds)", recv.php), Ty::Str),
                 "toJSON" => Out::atom(
-                    format!("\\TypedPress\\Js::dateJSON(({})->milliseconds)", recv.php),
+                    format!("\\SpacePress\\Js::dateJSON(({})->milliseconds)", recv.php),
                     Ty::Str.nullable(),
                 ),
                 "getTime" | "valueOf" => Out::atom(format!("({})->milliseconds", recv.php), Ty::Num),
@@ -10647,7 +10647,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             Ty::Map(_) | Ty::Obj(_) => {
                 // Calling a function stored in an object field.
                 let mut f = self.member_of_out(&recv, m, m_span)?;
-                f.php = format!("\\TypedPress\\Js::dataMethod({}, {})", recv.php, php_str(m));
+                f.php = format!("\\SpacePress\\Js::dataMethod({}, {})", recv.php, php_str(m));
                 self.call_value(f, args, span, m_span)?
             }
             other => return err(m_span, format!("{} has no method `{m}`", other.describe())),
@@ -10655,7 +10655,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         if let Some((receiver, source)) = nullish_guard {
             return Ok(Out::new(
                 format!(
-                    "(\\TypedPress\\Js::isNullish({receiver} = {source}) ? \\TypedPress\\Js::undefined() : {})",
+                    "(\\SpacePress\\Js::isNullish({receiver} = {source}) ? \\SpacePress\\Js::undefined() : {})",
                     r.php
                 ),
                 Ty::union([r.ty, Ty::Undefined]),
@@ -10674,7 +10674,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             t
         };
         Ok(Out::atom(
-            format!("\\TypedPress\\Js::dataGet({}, {})", o.php, php_str(prop)),
+            format!("\\SpacePress\\Js::dataGet({}, {})", o.php, php_str(prop)),
             t,
         ))
     }
@@ -10715,7 +10715,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
             };
             return Ok(Out::atom(
-                format!("\\TypedPress\\Js::{m}({}, {}, {})", s.php, pat.php, rep.php),
+                format!("\\SpacePress\\Js::{m}({}, {}, {})", s.php, pat.php, rep.php),
                 Ty::Str,
             ));
         }
@@ -10739,11 +10739,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let js = |f: &str, extra: &[Option<String>]| {
             let mut parts = vec![s.php.clone()];
             parts.extend(extra.iter().flatten().cloned());
-            Out::atom(format!("\\TypedPress\\Js::{f}({})", parts.join(", ")), Ty::Str)
+            Out::atom(format!("\\SpacePress\\Js::{f}({})", parts.join(", ")), Ty::Str)
         };
         let dispatch = || {
             format!(
-                "\\TypedPress\\Js::dynamicCallMethod({}, {}, new \\TypedPress\\JsArray([{}]))",
+                "\\SpacePress\\Js::dynamicCallMethod({}, {}, new \\SpacePress\\JsArray([{}]))",
                 s.php,
                 php_str(m),
                 argv.iter()
@@ -10759,7 +10759,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
                 Out::atom(
                     format!(
-                        "\\TypedPress\\Js::dynamicCallMethod({}, 'concat', new \\TypedPress\\JsArray([{}]))",
+                        "\\SpacePress\\Js::dynamicCallMethod({}, 'concat', new \\SpacePress\\JsArray([{}]))",
                         s.php,
                         argv.iter().map(|v| v.php.clone()).collect::<Vec<_>>().join(", ")
                     ),
@@ -10790,7 +10790,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             "slice" | "substring" | "padStart" | "padEnd" | "repeat" | "charAt" => Out::atom(dispatch(), Ty::Str),
             "at" => Out::atom(
                 format!(
-                    "\\TypedPress\\Js::strAt({}, \\TypedPress\\Js::toNumber({}))",
+                    "\\SpacePress\\Js::strAt({}, \\SpacePress\\Js::toNumber({}))",
                     s.php,
                     a(0).unwrap_or("0".into())
                 ),
@@ -10808,7 +10808,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
                 if argv.is_empty() {
                     Out::atom(
-                        format!("new \\TypedPress\\JsArray([{}])", s.php),
+                        format!("new \\SpacePress\\JsArray([{}])", s.php),
                         Ty::Array(Box::new(Ty::Str)),
                     )
                 } else {
@@ -10840,7 +10840,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             "toString" => s.clone(),
             "length" => return err(m_span, "`length` is a property: write `s.length`"),
-            _ => return err(m_span, format!("strings have no method `{m}` in TypedPress code")),
+            _ => return err(m_span, format!("strings have no method `{m}` in SpacePress code")),
         })
     }
 
@@ -10855,7 +10855,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
     ) -> Result<Out> {
         self.builtin_args("array", m, args, span)?;
         let a = Out {
-            php: format!("\\TypedPress\\Js::nativeArrayReceiver({}, {})", a.php, php_str(m)),
+            php: format!("\\SpacePress\\Js::nativeArrayReceiver({}, {})", a.php, php_str(m)),
             ..a.clone()
         };
         let el = match a.ty.non_null() {
@@ -10899,7 +10899,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let f = cb(self, &[])?;
                 let r = ret_of(&f);
                 Out::atom(
-                    format!("\\TypedPress\\Js::map({}, {})", a.php, f.php),
+                    format!("\\SpacePress\\Js::map({}, {})", a.php, f.php),
                     if array_proven_nonempty(&a.ty) {
                         Ty::NonEmptyArray(Box::new(r))
                     } else {
@@ -10919,7 +10919,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     _ => el,
                 };
                 Out::atom(
-                    format!("\\TypedPress\\Js::filter({}, {})", a.php, f.php),
+                    format!("\\SpacePress\\Js::filter({}, {})", a.php, f.php),
                     Ty::Array(Box::new(narrowed)),
                 )
             }
@@ -10935,17 +10935,17 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     _ => el,
                 };
                 Out::atom(
-                    format!("\\TypedPress\\Js::{m}({}, {})", a.php, f.php),
+                    format!("\\SpacePress\\Js::{m}({}, {})", a.php, f.php),
                     Ty::union([narrowed, Ty::Undefined]),
                 )
             }
             "findIndex" | "findLastIndex" => {
                 let f = cb(self, &[])?;
-                Out::atom(format!("\\TypedPress\\Js::{m}({}, {})", a.php, f.php), Ty::Num)
+                Out::atom(format!("\\SpacePress\\Js::{m}({}, {})", a.php, f.php), Ty::Num)
             }
             "some" | "every" => {
                 let f = cb(self, &[])?;
-                Out::atom(format!("\\TypedPress\\Js::{m}({}, {})", a.php, f.php), Ty::Bool)
+                Out::atom(format!("\\SpacePress\\Js::{m}({}, {})", a.php, f.php), Ty::Bool)
             }
             "flatMap" => {
                 let f = cb(self, &[])?;
@@ -10959,14 +10959,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     t => flatten(t),
                 };
                 Out::atom(
-                    format!("\\TypedPress\\Js::flatMap({}, {})", a.php, f.php),
+                    format!("\\SpacePress\\Js::flatMap({}, {})", a.php, f.php),
                     Ty::Array(Box::new(r)),
                 )
             }
             "forEach" => {
                 let f = cb(self, &[])?;
                 Out::atom(
-                    format!("\\TypedPress\\Js::forEach({}, {})", a.php, f.php),
+                    format!("\\SpacePress\\Js::forEach({}, {})", a.php, f.php),
                     Ty::Undefined,
                 )
             }
@@ -10995,7 +10995,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
                 let init_php = init.map(|i| format!(", {}", i.php)).unwrap_or_default();
                 Out::atom(
-                    format!("\\TypedPress\\Js::reduce({}, {}{init_php})", a.php, f.php),
+                    format!("\\SpacePress\\Js::reduce({}, {}{init_php})", a.php, f.php),
                     acc_ty,
                 )
             }
@@ -11010,7 +11010,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     return err(span, "the comparator must return a number");
                 }
                 let fp = f.map(|f| format!(", {}", f.php)).unwrap_or_default();
-                Out::atom(format!("\\TypedPress\\Js::{m}({}{fp})", a.php), Ty::Array(Box::new(el)))
+                Out::atom(format!("\\SpacePress\\Js::{m}({}{fp})", a.php), Ty::Array(Box::new(el)))
             }
             "push" | "unshift" => {
                 let p = &a.php;
@@ -11019,7 +11019,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let items: Vec<String> = argv.iter().map(|x| x.php.clone()).collect();
                 Out::atom(
                     format!(
-                        "\\TypedPress\\Js::{m}({p}{})",
+                        "\\SpacePress\\Js::{m}({p}{})",
                         if items.is_empty() {
                             String::new()
                         } else {
@@ -11030,21 +11030,21 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 )
             }
             "pop" => Out::atom(
-                format!("\\TypedPress\\Js::pop({})", a.php),
+                format!("\\SpacePress\\Js::pop({})", a.php),
                 Ty::union([el, Ty::Undefined]),
             ),
             "shift" => Out::atom(
-                format!("\\TypedPress\\Js::shift({})", a.php),
+                format!("\\SpacePress\\Js::shift({})", a.php),
                 Ty::union([el, Ty::Undefined]),
             ),
-            "reverse" | "toReversed" => Out::atom(format!("\\TypedPress\\Js::{m}({})", a.php), Ty::Array(Box::new(el))),
+            "reverse" | "toReversed" => Out::atom(format!("\\SpacePress\\Js::{m}({})", a.php), Ty::Array(Box::new(el))),
             "splice" => {
                 let argv = self.plain_args(args)?;
                 check_insert(&argv[argv.len().min(2)..])?;
                 let extra: Vec<String> = argv.iter().map(|x| x.php.clone()).collect();
                 Out::atom(
                     format!(
-                        "(\\TypedPress\\Js::dynamicMethod({}, 'splice'))({})",
+                        "(\\SpacePress\\Js::dynamicMethod({}, 'splice'))({})",
                         a.php,
                         extra.join(", ")
                     ),
@@ -11060,15 +11060,15 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     .join(", ");
                 let dispatch = || {
                     format!(
-                        "(\\TypedPress\\Js::dynamicMethod({}, {}))({})",
+                        "(\\SpacePress\\Js::dynamicMethod({}, {}))({})",
                         a.php,
                         php_str(m),
                         extra.join(", ")
                     )
                 };
                 match m {
-                    "includes" => Out::atom(format!("\\TypedPress\\Js::includes({all})"), Ty::Bool),
-                    "indexOf" | "lastIndexOf" => Out::atom(format!("\\TypedPress\\Js::{m}({all})"), Ty::Num),
+                    "includes" => Out::atom(format!("\\SpacePress\\Js::includes({all})"), Ty::Bool),
+                    "indexOf" | "lastIndexOf" => Out::atom(format!("\\SpacePress\\Js::{m}({all})"), Ty::Num),
                     "join" => {
                         crate::builtins::check_string_coercion_type(&a.ty, span)?;
                         if let Some(sep) = argv.first()
@@ -11076,11 +11076,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         {
                             return err(span, "join() needs a string separator");
                         }
-                        Out::atom(format!("\\TypedPress\\Js::join({all})"), Ty::Str)
+                        Out::atom(format!("\\SpacePress\\Js::join({all})"), Ty::Str)
                     }
                     "slice" => Out::atom(dispatch(), Ty::Array(Box::new(el))),
                     "at" => Out::atom(
-                        format!("\\TypedPress\\Js::arrAt({all})"),
+                        format!("\\SpacePress\\Js::arrAt({all})"),
                         Ty::union([el, Ty::Undefined]),
                     ),
                     "concat" => {
@@ -11099,7 +11099,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                             parts.push(x.php.clone());
                         }
                         Out::atom(
-                            format!("\\TypedPress\\Js::concat({})", parts.join(", ")),
+                            format!("\\SpacePress\\Js::concat({})", parts.join(", ")),
                             Ty::Array(Box::new(Ty::union(t))),
                         )
                     }
@@ -11138,7 +11138,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     }
                 }
             }
-            _ => return err(m_span, format!("arrays have no method `{m}` in TypedPress code")),
+            _ => return err(m_span, format!("arrays have no method `{m}` in SpacePress code")),
         })
     }
 
@@ -11219,19 +11219,19 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let (php, ty) = if m == "findMany" {
             let opts = self.projected_list(table, span, options, opts);
             (
-                format!("\\TypedPress\\Seam::findMany({}, {opts})", php_str(table)),
+                format!("\\SpacePress\\Seam::findMany({}, {opts})", php_str(table)),
                 Ty::Array(Box::new(row_ty)),
             )
         } else {
             (
-                format!("\\TypedPress\\Seam::findFirst({}, {opts})", php_str(table)),
+                format!("\\SpacePress\\Seam::findFirst({}, {opts})", php_str(table)),
                 row_ty.nullable(),
             )
         };
         Ok(Out::atom(php, Ty::Promise(Box::new(ty))))
     }
 
-    /// `posts.list(q)`, `paginate`, `get`, `count`, `create`, `update`, `delete` on a `"typedpress:db"`
+    /// `posts.list(q)`, `paginate`, `get`, `count`, `create`, `update`, `delete` on a `"spacepress:db"`
     /// kind (spec §3): the visitor's call, access rules and field masks applied; jobs and signed
     /// webhooks run as the system. `posts.system.*` is the same call, trusted.
     fn kind_call(
@@ -11356,7 +11356,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 if m == "list" {
                     let opts = self.projected_list(table, span, plain.first().copied(), opts);
                     (
-                        format!("\\TypedPress\\Seam::kindList({}, {opts}, {trusted})", php_str(table)),
+                        format!("\\SpacePress\\Seam::kindList({}, {opts}, {trusted})", php_str(table)),
                         Ty::Array(Box::new(row_ty)),
                     )
                 } else {
@@ -11365,7 +11365,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     page.insert("cursor".to_string(), (Ty::Str.nullable(), false));
                     (
                         format!(
-                            "\\TypedPress\\Seam::kindPaginate({}, {opts}, {trusted})",
+                            "\\SpacePress\\Seam::kindPaginate({}, {opts}, {trusted})",
                             php_str(table)
                         ),
                         Ty::Obj(page),
@@ -11378,7 +11378,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     Some(o) => self.kind_opts(table, o, false, false)?.0,
                 };
                 (
-                    format!("\\TypedPress\\Seam::kindCount({}, {opts}, {trusted})", php_str(table)),
+                    format!("\\SpacePress\\Seam::kindCount({}, {opts}, {trusted})", php_str(table)),
                     Ty::Num,
                 )
             }
@@ -11395,7 +11395,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 };
                 (
                     format!(
-                        "\\TypedPress\\Seam::kindGet({}, {selector}, {opts}, {trusted})",
+                        "\\SpacePress\\Seam::kindGet({}, {selector}, {opts}, {trusted})",
                         php_str(table)
                     ),
                     row_ty.nullable(),
@@ -11405,7 +11405,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let values = self.write_values(table, plain[0], true)?;
                 (
                     format!(
-                        "\\TypedPress\\Seam::kindCreate({}, {values}, {trusted})",
+                        "\\SpacePress\\Seam::kindCreate({}, {values}, {trusted})",
                         php_str(table)
                     ),
                     row,
@@ -11416,7 +11416,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let patch = self.write_values(table, plain[1], false)?;
                 (
                     format!(
-                        "\\TypedPress\\Seam::kindUpdate({}, {target}, {patch}, {trusted})",
+                        "\\SpacePress\\Seam::kindUpdate({}, {target}, {patch}, {trusted})",
                         php_str(table)
                     ),
                     row,
@@ -11426,7 +11426,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let target = id(self, plain[0])?;
                 (
                     format!(
-                        "\\TypedPress\\Seam::kindRestore({}, {target}, {trusted})",
+                        "\\SpacePress\\Seam::kindRestore({}, {target}, {trusted})",
                         php_str(table)
                     ),
                     row,
@@ -11435,7 +11435,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             "purge" => {
                 let target = id(self, plain[0])?;
                 (
-                    format!("\\TypedPress\\Seam::kindPurge({}, {target}, {trusted})", php_str(table)),
+                    format!("\\SpacePress\\Seam::kindPurge({}, {target}, {trusted})", php_str(table)),
                     row,
                 )
             }
@@ -11443,7 +11443,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let target = id(self, plain[0])?;
                 (
                     format!(
-                        "\\TypedPress\\Seam::kindDelete({}, {target}, {trusted})",
+                        "\\SpacePress\\Seam::kindDelete({}, {target}, {trusted})",
                         php_str(table)
                     ),
                     row,
@@ -11553,7 +11553,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 summary.insert("changed".into(), (Ty::Array(Box::new(Ty::Str)).nullable(), false));
                 (
                     format!(
-                        "\\TypedPress\\Seam::kindRevisionsList({}, {target}, {trusted})",
+                        "\\SpacePress\\Seam::kindRevisionsList({}, {target}, {trusted})",
                         php_str(table)
                     ),
                     Ty::Array(Box::new(Ty::Obj(summary))),
@@ -11563,7 +11563,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let ver = arg_num(plain[1], "version")?;
                 (
                     format!(
-                        "\\TypedPress\\Seam::kindRevisionsGet({}, {target}, {ver}, {trusted})",
+                        "\\SpacePress\\Seam::kindRevisionsGet({}, {target}, {ver}, {trusted})",
                         php_str(table)
                     ),
                     row,
@@ -11573,7 +11573,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let ver = arg_num(plain[1], "version")?;
                 (
                     format!(
-                        "\\TypedPress\\Seam::kindRevisionsRestore({}, {target}, {ver}, {trusted})",
+                        "\\SpacePress\\Seam::kindRevisionsRestore({}, {target}, {ver}, {trusted})",
                         php_str(table)
                     ),
                     row,
@@ -11592,7 +11592,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 diff.insert("changes".into(), (Ty::Array(Box::new(Ty::Obj(change))), false));
                 (
                     format!(
-                        "\\TypedPress\\Seam::kindRevisionsDiff({}, {target}, {from_v}, {to_v}, {trusted})",
+                        "\\SpacePress\\Seam::kindRevisionsDiff({}, {target}, {from_v}, {to_v}, {trusted})",
                         php_str(table)
                     ),
                     Ty::Obj(diff),
@@ -12143,13 +12143,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
     /// Filter values for timestamp/date columns accept Dates (epoch ms): convert to the stored form.
     fn filter_value(&self, col: &crate::schema::Column, v: &Out) -> String {
         match (col.ty, &v.ty) {
-            (ColType::Timestamp, Ty::Date) => format!("\\TypedPress\\Js::iso(({})->milliseconds)", v.php),
-            (ColType::Date, Ty::Date) => format!("\\substr(\\TypedPress\\Js::iso(({})->milliseconds), 0, 10)", v.php),
+            (ColType::Timestamp, Ty::Date) => format!("\\SpacePress\\Js::iso(({})->milliseconds)", v.php),
+            (ColType::Date, Ty::Date) => format!("\\substr(\\SpacePress\\Js::iso(({})->milliseconds), 0, 10)", v.php),
             (ColType::Timestamp, Ty::Num | Ty::NumLit(_) | Ty::FreshNumLit(_)) => {
-                format!("\\TypedPress\\Js::iso({})", v.php)
+                format!("\\SpacePress\\Js::iso({})", v.php)
             }
             (ColType::Date, Ty::Num | Ty::NumLit(_) | Ty::FreshNumLit(_)) => {
-                format!("\\substr(\\TypedPress\\Js::iso({}), 0, 10)", v.php)
+                format!("\\substr(\\SpacePress\\Js::iso({}), 0, 10)", v.php)
             }
             _ => v.php.clone(),
         }
@@ -12206,7 +12206,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 fields.insert("url".to_string(), (Ty::Str, false));
                 (
                     format!(
-                        "\\TypedPress\\Media\\Files::getOrNull({}, (int) ({}))",
+                        "\\SpacePress\\Media\\Files::getOrNull({}, (int) ({}))",
                         php_str(bucket),
                         id.php
                     ),
@@ -12215,7 +12215,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             "readText" => (
                 format!(
-                    "\\TypedPress\\Media\\Files::readText({}, (int) ({}))",
+                    "\\SpacePress\\Media\\Files::readText({}, (int) ({}))",
                     php_str(bucket),
                     id.php
                 ),
@@ -12223,7 +12223,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ),
             "readBase64" => (
                 format!(
-                    "\\TypedPress\\Media\\Files::readBase64({}, (int) ({}))",
+                    "\\SpacePress\\Media\\Files::readBase64({}, (int) ({}))",
                     php_str(bucket),
                     id.php
                 ),
@@ -12264,7 +12264,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
         // Typed like collection rows: `json<T>()` fields read and write as T.
         let row = types::columns_row(&self.schema.globals[name].fields, &types::json_ty);
         let php = match (m, args) {
-            ("get", []) => format!("\\TypedPress\\Seam::globalGet({})", php_str(name)),
+            ("get", []) => format!("\\SpacePress\\Seam::globalGet({})", php_str(name)),
             ("update", [ArrEl::Item(patch)]) => {
                 let v = self.expr(patch)?;
                 let v = self.finish_value(v, patch.span)?;
@@ -12293,7 +12293,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         ),
                     );
                 }
-                format!("\\TypedPress\\Seam::globalUpdate({}, {})", php_str(name), v.php)
+                format!("\\SpacePress\\Seam::globalUpdate({}, {})", php_str(name), v.php)
             }
             ("get", _) => return err(m_span, "`get()` takes no arguments"),
             ("update", _) => return err(m_span, "`update()` takes one patch object"),
@@ -12551,7 +12551,7 @@ pub(super) fn static_host(e: &Expr, is_builtin_url: impl FnOnce(&Expr) -> bool) 
             .filter(|(_, port)| port.chars().all(|c| c.is_ascii_digit()))
             .map_or(authority, |(h, _)| h),
     };
-    // The same normalization `TypedPress\Fetch::target` applies before comparing hosts.
+    // The same normalization `SpacePress\Fetch::target` applies before comparing hosts.
     Some(host.trim_end_matches('.').to_ascii_lowercase())
 }
 
@@ -12629,10 +12629,10 @@ mod tests {
     #[test]
     fn refused_speculative_build_discards_nested_usage_records() {
         let project = tempfile::tempdir().unwrap();
-        let entry = project.path().join("typedpress.config.ts");
+        let entry = project.path().join("spacepress.config.ts");
         std::fs::write(
             &entry,
-            r#"import { defineConfig } from "typedpress"; export default defineConfig({ name: "usage-test" });"#,
+            r#"import { defineConfig } from "spacepress"; export default defineConfig({ name: "usage-test" });"#,
         )
         .unwrap();
         let program = crate::loader::load(&entry).unwrap();
@@ -12778,7 +12778,7 @@ fn php_function_base(name: &str) -> String {
 
 fn php_local_base(name: &str) -> String {
     if name == "this" {
-        return "__tp_this".into();
+        return "__sp_this".into();
     }
     let reserved = matches!(
         name,
@@ -12795,7 +12795,7 @@ fn php_local_base(name: &str) -> String {
         }
     }
     let encoded = crate::hex(name);
-    format!("__tp_local_{encoded}")
+    format!("__sp_local_{encoded}")
 }
 
 /// A number literal the compiler wrote (`5`, `-1`, `1.5`, `NAN`): its PHP is exactly the literal its
@@ -12817,7 +12817,7 @@ fn is_php_variable(php: &str) -> bool {
 /// The PHP of a literal the compiler wrote: a quoted string, `true`/`false`, `null` or undefined.
 fn literal_php(v: &Out) -> bool {
     let php = v.php.as_str();
-    matches!(php, "true" | "false" | "null" | "\\TypedPress\\Js::undefined()")
+    matches!(php, "true" | "false" | "null" | "\\SpacePress\\Js::undefined()")
         || ((php.starts_with('\'') || php.starts_with('"')) && matches!(v.ty, Ty::StrLit(_) | Ty::FreshStrLit(_)))
 }
 
@@ -12847,10 +12847,10 @@ fn php_doc_type(t: &Ty, access_filter: bool) -> String {
         Ty::Map(_) | Ty::Obj(_) if access_filter => "array".to_string(),
         Ty::Null => "null".to_string(),
         // A TypeScript void function returns the runtime undefined sentinel.
-        Ty::Undefined | Ty::Void => "\\TypedPress\\JsUndefined".to_string(),
+        Ty::Undefined | Ty::Void => "\\SpacePress\\JsUndefined".to_string(),
         Ty::Never => "never".to_string(),
         Ty::Fn(..) => "\\Closure".to_string(),
-        Ty::Promise(_) => "\\TypedPress\\JsPromise".to_string(),
+        Ty::Promise(_) => "\\SpacePress\\JsPromise".to_string(),
         Ty::Union(parts) => {
             let mut types = Vec::new();
             for part in parts {
@@ -12874,12 +12874,12 @@ fn php_doc_type(t: &Ty, access_filter: bool) -> String {
 
 fn php_hint(t: &Ty) -> &'static str {
     match t {
-        Ty::Instance(..) => "\\TypedPress\\JsObject ",
-        Ty::Class(_) => "\\TypedPress\\JsClass ",
-        Ty::Obj(_) | Ty::Map(_) => "\\TypedPress\\JsObject ",
-        Ty::Array(_) | Ty::NonEmptyArray(_) | Ty::Tuple(_) | Ty::ArrayLiteral(_) => "\\TypedPress\\JsArray ",
+        Ty::Instance(..) => "\\SpacePress\\JsObject ",
+        Ty::Class(_) => "\\SpacePress\\JsClass ",
+        Ty::Obj(_) | Ty::Map(_) => "\\SpacePress\\JsObject ",
+        Ty::Array(_) | Ty::NonEmptyArray(_) | Ty::Tuple(_) | Ty::ArrayLiteral(_) => "\\SpacePress\\JsArray ",
         t if t.is_nullable() && matches!(t.non_null(), Ty::Obj(_) | Ty::Map(_)) => {
-            "\\TypedPress\\JsObject|\\TypedPress\\JsUndefined|null "
+            "\\SpacePress\\JsObject|\\SpacePress\\JsUndefined|null "
         }
         t if t.is_nullable()
             && matches!(
@@ -12887,7 +12887,7 @@ fn php_hint(t: &Ty) -> &'static str {
                 Ty::Array(_) | Ty::NonEmptyArray(_) | Ty::Tuple(_) | Ty::ArrayLiteral(_)
             ) =>
         {
-            "\\TypedPress\\JsArray|\\TypedPress\\JsUndefined|null "
+            "\\SpacePress\\JsArray|\\SpacePress\\JsUndefined|null "
         }
         t if t.is_str() => "string ",
         t if t.is_bool() => "bool ",
@@ -12948,23 +12948,23 @@ fn logical_result_type(op: LogOp, left: &Ty, right: &Ty) -> Ty {
 /// A function value the compiler did not build itself, checked to be a JavaScript function before
 /// it is called. The type checker says it is a function, but a type assertion or parsed JSON can
 /// make it a string or an array at run time, and PHP would call the PHP function a string names
-/// (`"system"`, `"TypedPress\\Db::..."`) with the arguments the program passes.
+/// (`"system"`, `"SpacePress\\Db::..."`) with the arguments the program passes.
 fn checked_function(f: Out) -> Out {
-    Out::atom(format!("\\TypedPress\\Js::callback({})", f.php), f.ty)
+    Out::atom(format!("\\SpacePress\\Js::callback({})", f.php), f.ty)
 }
 
 /// The global `Boolean` read as a value: one shared closure that returns ToBoolean of its
 /// first argument (docs/decisions/2026-11-10-boolean-global.md).
 fn boolean_function() -> Out {
     Out::atom(
-        "\\TypedPress\\Js::booleanFunction()",
+        "\\SpacePress\\Js::booleanFunction()",
         Ty::Fn(vec![Ty::Unknown], Box::new(Ty::Bool)),
     )
 }
 
 fn number_is_finite_function() -> Out {
     Out::atom(
-        "\\TypedPress\\Js::numberIsFiniteFunction()",
+        "\\SpacePress\\Js::numberIsFiniteFunction()",
         Ty::Fn(vec![Ty::Unknown], Box::new(Ty::Bool)),
     )
 }
@@ -13120,7 +13120,7 @@ fn check_parameter_argument(given: &Ty, declared: &Ty, span: Span) -> Result<()>
 fn untyped_this(span: Span) -> Diag {
     Diag::new(
         span,
-        "TypedPress code doesn't support `this` without a type in a function that isn't a method of an object literal",
+        "SpacePress code doesn't support `this` without a type in a function that isn't a method of an object literal",
     )
     .code(crate::diag::Code::Unsupported)
     .help(
@@ -13210,7 +13210,7 @@ fn parameter_default_suffix(parameters: &[Param], types: &[Ty]) -> &'static str 
         .zip(types)
         .all(|(parameter, ty)| parameter.rest || accepts_omission(ty))
     {
-        " = \\TypedPress\\JsUndefined::Value"
+        " = \\SpacePress\\JsUndefined::Value"
     } else {
         ""
     }
@@ -13302,7 +13302,7 @@ fn parameter_input_type(parameter: &Param, ty: Ty) -> Ty {
     }
 }
 
-/// The type a typed `for await` element settles to under the blocking model: a TypedPress promise is
+/// The type a typed `for await` element settles to under the blocking model: a SpacePress promise is
 /// its value, a plain value is itself. `None` for values only the job queue can settle (anything
 /// from imported JavaScript, unknown values, builders that were never awaited).
 fn awaited_element(t: &Ty) -> Option<Ty> {
@@ -13397,7 +13397,7 @@ fn widen_fresh_literals(t: &Ty) -> Ty {
 
 /// Is a value of type `a` usable where `b` is expected?
 /// A protected option named by a literal (or a union of literals) is refused at the call; a name
-/// built at runtime meets the same list in `TypedPress\Wp\Guard` (runtime/TypedPress/Wp/guard.json).
+/// built at runtime meets the same list in `SpacePress\Wp\Guard` (runtime/SpacePress/Wp/guard.json).
 fn protected_option_literal(function: &str, access: &str, name: &Ty, span: Span) -> Result<()> {
     let literals: Vec<&str> = match name {
         Ty::StrLit(s) | Ty::FreshStrLit(s) => vec![s.as_str()],
@@ -13477,7 +13477,7 @@ pub fn assignable(a: &Ty, b: &Ty) -> bool {
         (Ty::Rest(x), Ty::Rest(y)) => assignable(x, y),
         (Ty::Promise(x), Ty::Promise(y)) => assignable(x, y),
         // Mutable handles: TypeScript checks these covariantly, which is unsound for writes.
-        // TypedPress requires the same element types (ReadonlyMap/ReadonlySet are the same handle).
+        // SpacePress requires the same element types (ReadonlyMap/ReadonlySet are the same handle).
         (Ty::MapOf(ka, va), Ty::MapOf(kb, vb)) => same_type(ka, kb) && same_type(va, vb),
         (Ty::SetOf(a), Ty::SetOf(b)) => same_type(a, b),
         (Ty::Iter(a), Ty::Iter(b)) => assignable(a, b),
@@ -13805,10 +13805,10 @@ fn literal_position(e: &Expr) -> bool {
 }
 
 /// Text React would escape, escaped the same way (`&`, `<`, `>`, `"`, `'`).
-/// The markup of `\\TypedPress\\Html::raw('...')` as the compiler writes it, unquoted; `None` for any
+/// The markup of `\\SpacePress\\Html::raw('...')` as the compiler writes it, unquoted; `None` for any
 /// other PHP.
 fn static_markup(php: &str) -> Option<String> {
-    let inner = php.strip_prefix("\\TypedPress\\Html::raw(")?.strip_suffix(')')?;
+    let inner = php.strip_prefix("\\SpacePress\\Html::raw(")?.strip_suffix(')')?;
     unquote_php(inner)
 }
 
@@ -13855,14 +13855,14 @@ fn merge_static(parts: Vec<String>) -> Vec<String> {
             Some(markup) => run.get_or_insert_with(String::new).push_str(&markup),
             None => {
                 if let Some(markup) = run.take() {
-                    out.push(format!("\\TypedPress\\Html::raw({})", php_str(&markup)));
+                    out.push(format!("\\SpacePress\\Html::raw({})", php_str(&markup)));
                 }
                 out.push(part);
             }
         }
     }
     if let Some(markup) = run {
-        out.push(format!("\\TypedPress\\Html::raw({})", php_str(&markup)));
+        out.push(format!("\\SpacePress\\Html::raw({})", php_str(&markup)));
     }
     out
 }
@@ -13882,7 +13882,7 @@ fn jsx_escape(text: &str) -> String {
     out
 }
 
-/// `\TypedPress\Html::URL`, for a lowercased attribute name.
+/// `\SpacePress\Html::URL`, for a lowercased attribute name.
 fn is_url_attribute(folded: &str) -> bool {
     let name = folded
         .strip_prefix("xlink:")
@@ -13914,7 +13914,7 @@ fn is_url_attribute(folded: &str) -> bool {
     )
 }
 
-/// `\TypedPress\Html::safeUrl` at build time, for literal URLs.
+/// `\SpacePress\Html::safeUrl` at build time, for literal URLs.
 fn safe_url(url: &str) -> bool {
     let url: String = url
         .trim_matches(|c: char| c <= ' ')
@@ -13932,7 +13932,7 @@ fn safe_url(url: &str) -> bool {
     }
 }
 
-/// `\TypedPress\Html::safeDataMediaUrl` at build time: allows base64 media `data:` URIs
+/// `\SpacePress\Html::safeDataMediaUrl` at build time: allows base64 media `data:` URIs
 /// (such as `?inline` asset imports) strictly on `src` of `img`/`audio`/`video`/`source`.
 fn safe_data_media_url(tag: &str, attr: &str, url: &str) -> bool {
     if attr != "src" {
@@ -14019,13 +14019,13 @@ fn valid_attribute_name(name: &str) -> bool {
         && chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | ':' | '-'))
 }
 
-/// `\TypedPress\Html::styleOf`: a `style` value narrowed to the property names its type declares.
+/// `\SpacePress\Html::styleOf`: a `style` value narrowed to the property names its type declares.
 fn style_of(php: &str, ty: &Ty) -> String {
     let names = match ty.non_null() {
         Ty::Obj(fields) => fields.keys().map(|k| php_str(k)).collect::<Vec<_>>(),
         _ => Vec::new(),
     };
-    format!("\\TypedPress\\Html::styleOf({php}, [{}])", names.join(", "))
+    format!("\\SpacePress\\Html::styleOf({php}, [{}])", names.join(", "))
 }
 
 /// SVG elements whose names are camelCase in the specification; they keep their case.
@@ -14075,13 +14075,13 @@ mod host_secret_tests {
 
     #[test]
     fn host_secrets_match_the_runtime() {
-        let php = include_str!("../runtime/TypedPress/Env.php");
+        let php = include_str!("../runtime/SpacePress/Env.php");
         let start = php.find("HOST_SECRETS = [").expect("Env::HOST_SECRETS");
         let list = &php[start..start + php[start..].find("];").unwrap()];
         let runtime: Vec<&str> = list.split('\'').skip(1).step_by(2).collect();
         assert_eq!(
             runtime, HOST_SECRETS,
-            "runtime/TypedPress/Env.php and src/compile.rs disagree"
+            "runtime/SpacePress/Env.php and src/compile.rs disagree"
         );
     }
 }
@@ -14093,13 +14093,13 @@ mod php_layout_tests {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
         for name in ["pantry", "kitchen-sink", "blog"] {
             let project = root.join("examples").join(name);
-            let program = crate::loader::load(&project.join("typedpress.config.ts")).unwrap();
+            let program = crate::loader::load(&project.join("spacepress.config.ts")).unwrap();
             let built =
                 crate::pipeline::build(&project, &program, || Ok(crate::pipeline::Previous::none()), |_| None).unwrap();
             assert_eq!(crate::php_layout::format(&built.functions_php), built.functions_php);
             if name == "blog" {
                 assert!(built.functions_php.contains("@return bool|array"));
-                assert!(!built.functions_php.contains("@return bool|\\TypedPress\\JsObject"));
+                assert!(!built.functions_php.contains("@return bool|\\SpacePress\\JsObject"));
             }
             for line in built.functions_php.lines() {
                 assert!(
@@ -14122,15 +14122,15 @@ mod php_binding_tests {
         let entry = project.path().join("function action__probe(.ts");
         std::fs::write(
             &entry,
-            r#"import { mutation, defineConfig } from "typedpress";
-import { work } from "./tp/work.js";
+            r#"import { mutation, defineConfig } from "spacepress";
+import { work } from "./sp/work.js";
 export const probe = mutation({}, async () => await work());
 export default defineConfig({ name: "documentation-queue" });"#,
         )
         .unwrap();
-        std::fs::create_dir(project.path().join("tp")).unwrap();
+        std::fs::create_dir(project.path().join("sp")).unwrap();
         std::fs::write(
-            project.path().join("tp/work.js"),
+            project.path().join("sp/work.js"),
             "export async function work() { return 42; }",
         )
         .unwrap();
@@ -14145,7 +14145,7 @@ export default defineConfig({ name: "documentation-queue" });"#,
         assert!(built.functions_php.contains("callback at `function action__probe(.ts:"));
         assert!(built.functions_php.contains("\nfunction action__probe__root("));
         assert_eq!(built.functions_php.matches("\nfunction action__probe(").count(), 1);
-        assert!(built.functions_php.contains("@return \\TypedPress\\JsPromise"));
+        assert!(built.functions_php.contains("@return \\SpacePress\\JsPromise"));
     }
 
     #[test]
@@ -14179,8 +14179,8 @@ export default defineConfig({ name: "documentation-queue" });"#,
         assert!(docs("bindings").contains("@param int|float $item_id"));
         assert!(docs("bindings").contains("TypeScript parameter `itemId`."));
         assert!(docs("bindings").contains("TypeScript parameter `item_id`."));
-        assert!(docs("exits").contains("@throws \\TypedPress\\JsError"));
-        assert!(docs("fallthrough").contains("@return string|\\TypedPress\\JsUndefined"));
+        assert!(docs("exits").contains("@throws \\SpacePress\\JsError"));
+        assert!(docs("fallthrough").contains("@return string|\\SpacePress\\JsUndefined"));
         assert!(!bindings.contains("$itemId"), "{bindings}");
         assert!(!bindings.contains("$httpStatus"), "{bindings}");
         assert!(!bindings.contains("$HTTPStatus"), "{bindings}");
@@ -14220,7 +14220,7 @@ export default defineConfig({ name: "documentation-queue" });"#,
             assert!(declarations.contains(handler.as_str()), "missing {name}: {handler}");
             assert!(handlers.insert(handler), "shared handler for {name}: {handler}");
         }
-        assert!(!body("exits").contains("return \\TypedPress\\Js::undefined();"));
-        assert!(body("fallthrough").contains("return \\TypedPress\\Js::undefined();"));
+        assert!(!body("exits").contains("return \\SpacePress\\Js::undefined();"));
+        assert!(body("fallthrough").contains("return \\SpacePress\\Js::undefined();"));
     }
 }

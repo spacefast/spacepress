@@ -2,7 +2,7 @@
  * Type declarations to extend WordPress core-data types.
  *
  * These augmentations add DataViews-related settings that are returned for
- * post types in the TypedPress Admin API responses.
+ * post types in the SpacePress Admin API responses.
  */
 
 import type {

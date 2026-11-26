@@ -1,1 +1,1 @@
-export { CollectionList as default } from '@typedpress-admin/schema';
+export { CollectionList as default } from '@spacepress-admin/schema';

@@ -1,4 +1,4 @@
-// Untyped JavaScript for tests/differential/language/control-flow.ts: these run through TypedPress's
+// Untyped JavaScript for tests/differential/language/control-flow.ts: these run through SpacePress's
 // checked JavaScript dispatch rather than typed TypeScript compilation.
 
 export function controlFlowUntyped() {

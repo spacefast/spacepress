@@ -18,21 +18,21 @@ const repo = fileURLToPath(new URL('../../', import.meta.url));
 
 /** Per package: files that must be in the tarball, and the license npm must report. */
 export const PACKAGES = {
-  typedpress: {
+  spacepress: {
     directory: 'packages/cli', license: 'MIT',
-    required: ['package.json', 'README.md', 'LICENSE', 'bin/typedpress.mjs', 'bin/install.mjs', 'lib/release.mjs', 'lib/commands.json', 'types/index.d.ts'],
+    required: ['package.json', 'README.md', 'LICENSE', 'bin/spacepress.mjs', 'bin/install.mjs', 'lib/release.mjs', 'lib/commands.json', 'types/index.d.ts'],
   },
-  'create-typedpress': {
-    directory: 'packages/create-typedpress', license: 'MIT',
-    required: ['package.json', 'README.md', 'LICENSE', 'bin/create-typedpress.mjs', 'template/typedpress.config.ts', 'template/gitignore', 'template/tp/app/page.tsx', 'template/content/notes/first-walk.md'],
+  'create-spacepress': {
+    directory: 'packages/create-spacepress', license: 'MIT',
+    required: ['package.json', 'README.md', 'LICENSE', 'bin/create-spacepress.mjs', 'template/spacepress.config.ts', 'template/gitignore', 'template/sp/app/page.tsx', 'template/content/notes/first-walk.md'],
   },
-  '@typedpress/astro': {
+  '@spacepress/astro': {
     directory: 'packages/astro', license: 'MIT',
     required: ['package.json', 'README.md', 'LICENSE', 'src/index.js', 'src/index.d.ts', 'src/emdash/integration.js'],
   },
-  '@typedpress/blocks': {
+  '@spacepress/blocks': {
     directory: 'packages/blocks', license: 'MIT AND GPL-2.0-or-later',
-    required: ['package.json', 'README.md', 'LICENSE', 'LICENSE-GPL', 'CHANGELOG.md', 'bin/typedpress-blocks.mjs', 'dist/index.js', 'dist/index.d.ts', 'vendor/wp.cjs', 'vendor/NOTICE.md', 'vendor/wp.cjs.LEGAL.txt', 'vendor/licenses/@wordpress/blocks/'],
+    required: ['package.json', 'README.md', 'LICENSE', 'LICENSE-GPL', 'CHANGELOG.md', 'bin/spacepress-blocks.mjs', 'dist/index.js', 'dist/index.d.ts', 'vendor/wp.cjs', 'vendor/NOTICE.md', 'vendor/wp.cjs.LEGAL.txt', 'vendor/licenses/@wordpress/blocks/'],
   },
 };
 
@@ -41,7 +41,7 @@ const FORBIDDEN = [
   [/(^|\/)(test|tests|__tests__|fixtures?|e2e)\//, 'tests or fixtures'],
   [/\.test\.[cm]?[jt]sx?$/, 'a test file'],
   [/(^|\/)\.env(\.|$)/, 'an environment file'],
-  [/(^|\/)(\.npmrc|\.git|\.github|\.tp|\.spacefast|\.claude|node_modules)(\/|$)/, 'local or repository state'],
+  [/(^|\/)(\.npmrc|\.git|\.github|\.sp|\.spacefast|\.claude|node_modules)(\/|$)/, 'local or repository state'],
   [/\.(pem|key|p12|pfx|sqlite|sqlite3|db|sql|log|tgz)$/, 'a key, database, log or tarball'],
   [/(^|\/)(id_rsa|id_ed25519|credentials|secrets?)(\.|$)/i, 'a credential file'],
   [/(^|\/)wp-entry\.mjs$/, 'a build-only bundle entry'],
@@ -74,7 +74,7 @@ export async function check(name, pack, read) {
   }
   const manifest = JSON.parse(await read('package.json'));
   if (manifest.license !== spec.license) problems.push(`license is ${manifest.license}, expected ${spec.license}`);
-  if (manifest.repository?.url !== 'https://github.com/spacefast/zero.git' || manifest.repository?.directory !== spec.directory) problems.push('repository must name spacefast/zero and the package directory');
+  if (manifest.repository?.url !== 'https://github.com/spacefast/spacepress.git' || manifest.repository?.directory !== spec.directory) problems.push('repository must name spacefast/spacepress and the package directory');
   if (!manifest.homepage) problems.push('no homepage');
   if (name.startsWith('@') && manifest.publishConfig?.access !== 'public') problems.push('a scoped package needs publishConfig.access "public"');
   for (const file of files) {

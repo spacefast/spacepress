@@ -11,17 +11,17 @@ import { buildFrontend } from '../src/index.mjs';
 
 const require = createRequire(new URL('../../../tests/differential/client/package.json', import.meta.url));
 const { chromium } = require('playwright-core');
-const compiler = process.env.TP_BIN ?? fileURLToPath(new URL('../../../target/debug/typedpress', import.meta.url));
+const compiler = process.env.SP_BIN ?? fileURLToPath(new URL('../../../target/debug/spacepress', import.meta.url));
 
 test('one WordPress route loads interactive React, Preact, Solid and Vue components', async (t) => {
   const root = await mkdtemp(fileURLToPath(new URL('./.frontend-frameworks-', import.meta.url)));
   t.after(() => rm(root, { recursive: true, force: true }));
   const files = {
-    'typedpress.config.ts': `
-      import { defineConfig } from 'typedpress';
+    'spacepress.config.ts': `
+      import { defineConfig } from 'spacepress';
       export default defineConfig({ name: 'mixed-frameworks' });
     `,
-    'tp/app/page.tsx': `
+    'sp/app/page.tsx': `
       import { frontend } from '../_generated/frontend';
       export const metadata = frontend.main;
       export default function Page() {
@@ -86,8 +86,8 @@ test('one WordPress route loads interactive React, Preact, Solid and Vue compone
   execFileSync(compiler, ['build', root]);
 
   const runner = fileURLToPath(new URL('../../../tests/php/wp.php', import.meta.url));
-  const server = spawn('php', [runner, 'serve', path.join(root, 'tp/dist/wp-content')], {
-    env: { ...process.env, TP_WP_THEMES: '1' },
+  const server = spawn('php', [runner, 'serve', path.join(root, 'sp/dist/wp-content')], {
+    env: { ...process.env, SP_WP_THEMES: '1' },
     stdio: ['ignore', 'pipe', 'inherit'],
   });
   t.after(() => server.kill('SIGTERM'));

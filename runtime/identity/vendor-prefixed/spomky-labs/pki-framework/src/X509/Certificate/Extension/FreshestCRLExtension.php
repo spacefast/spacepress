@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension;
+namespace SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension;
 
-use TypedPress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\DistributionPoint\DistributionPoint;
+use SpacePress\Identity\Vendor\SpomkyLabs\Pki\X509\Certificate\Extension\DistributionPoint\DistributionPoint;
 
 /**
  * Implements 'Freshest CRL' certificate extension.

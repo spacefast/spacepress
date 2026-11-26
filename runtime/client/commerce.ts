@@ -200,7 +200,7 @@ export function createCartClient(options: CartTransportOptions & { session?: "co
   // A browser sends another origin no Woo cookie, so every write there would start a new, empty cart.
   if (options.session === "cookie" && crossOrigin) throw new Error(`A cookie cart needs WooCommerce on this page's origin. Use session: "token" for ${root}.`);
   const tokenMode = options.session === "token" || (options.session === undefined && crossOrigin);
-  const storageKey = `typedpress:woo-cart:${root}`;
+  const storageKey = `spacepress:woo-cart:${root}`;
   let token: string | null = null;
   let nonce: string | null = null;
   let pending: Promise<unknown> = Promise.resolve();

@@ -1047,17 +1047,23 @@ impl Analysis {
     /// One action or callback: an async handler is a generator (each `await` a `yield`), and a
     /// handler that touches the event's sync-only API is wrapped in `withSyncEvent`.
     fn function(&self, name: &str, f: &Func, pad: &str) -> Result<String> {
-        let mut scope = Scope {
-            awaits: if f.is_async { Awaits::Yield } else { Awaits::Refuse },
-            ..Scope::default()
-        };
-        let params = self.params(f, &mut scope)?;
+        let mut scope = Scope::default();
+        let params = self.params(f, &mut scope)?.join(", ");
+        scope.awaits = if f.is_async { Awaits::Yield } else { Awaits::Refuse };
+        // Defaults run before the function body. Give nontrivial parameters an enclosing scope
+        // that already holds the component context and any captured Interactivity scope.
+        let wrap = f
+            .params
+            .iter()
+            .any(|p| !matches!(p.pat, Pat::Id(..)) || p.default.is_some());
         let inner = format!("{pad}  ");
+        let indent = if wrap { format!("{inner}  ") } else { inner.clone() };
         let body = match &f.body {
-            FnBody::Expr(e) => format!("{inner}return {};\n", self.js(e, &scope)?),
-            FnBody::Block(stmts) => self.stmts(stmts, &mut scope, &inner)?,
+            FnBody::Expr(e) => format!("{indent}return {};\n", self.js(e, &scope)?),
+            FnBody::Block(stmts) => self.stmts(stmts, &mut scope, &indent)?,
         };
-        let body = format!("{}{body}", prologue(&body, &inner));
+        let source = format!("{params}\n{body}");
+        let prologue = prologue(&source, &inner);
         let sync = [
             "preventDefault",
             "stopPropagation",
@@ -1066,14 +1072,25 @@ impl Analysis {
             "dataTransfer",
         ]
         .iter()
-        .any(|m| body.contains(&format!(".{m}")));
+        .any(|m| source.contains(&format!(".{m}")));
         let star = if f.is_async { "*" } else { "" };
+        let signature = if wrap { "...__spArgs" } else { &params };
         let head = if sync {
-            format!("{pad}{name}: withSyncEvent(function{star} ({}) {{\n", params.join(", "))
+            format!("{pad}{name}: withSyncEvent(function{star} ({signature}) {{\n")
         } else {
-            format!("{pad}{star}{name}({}) {{\n", params.join(", "))
+            format!("{pad}{star}{name}({signature}) {{\n")
         };
-        Ok(format!("{head}{body}{pad}}}{},\n", if sync { ")" } else { "" }))
+        let body = if !wrap {
+            body
+        } else if f.is_async {
+            format!("{inner}return yield* (function* ({params}) {{\n{body}{inner}}})(...__spArgs);\n")
+        } else {
+            format!("{inner}return (({params}) => {{\n{body}{inner}}})(...__spArgs);\n")
+        };
+        Ok(format!(
+            "{head}{prologue}{body}{pad}}}{},\n",
+            if sync { ")" } else { "" }
+        ))
     }
 
     /// Statements one level in from `pad`.
@@ -1081,12 +1098,14 @@ impl Analysis {
         self.stmts(stmts, scope, &format!("{pad}  "))
     }
 
-    /// Statements at `pad`. A function declared among them is in scope in all of them, as a
-    /// block's function declarations are hoisted in JavaScript.
+    /// Statements at `pad`. A binding belongs to the whole block, even before its declaration.
+    /// JavaScript itself checks whether a lexical binding has been initialized when it is read.
     fn stmts(&self, stmts: &[Stmt], scope: &mut Scope, pad: &str) -> Result<String> {
         for s in stmts {
-            if let Stmt::Func(f) = s {
-                scope.locals.extend(f.name.clone());
+            match s {
+                Stmt::Func(f) => scope.locals.extend(f.name.clone()),
+                Stmt::Decl { pat, .. } => scope.bind_pattern(pat),
+                _ => {}
             }
         }
         let mut o = String::new();
@@ -1097,7 +1116,6 @@ impl Analysis {
     }
 
     /// A binding pattern (`x`, `{ a, b: [c] }`, `[first, ...rest]`), its names added to `scope`.
-    /// Default values are read in the scope before the pattern's own names.
     fn pat(&self, p: &Pat, scope: &mut Scope) -> Result<String> {
         Ok(match p {
             Pat::Id(n, _) => {
@@ -1145,6 +1163,9 @@ impl Analysis {
         // The lowerer gives a function that reads `this` a hidden receiver parameter. Client code
         // has no receiver to pass, so it is left out and the read itself is refused.
         let params = if f.receives_this { &f.params[1..] } else { &f.params[..] };
+        for p in params {
+            scope.bind_pattern(&p.pat);
+        }
         let mut out = Vec::new();
         for p in params {
             let mut param = self.pat(&p.pat, scope)?;
@@ -1181,11 +1202,8 @@ impl Analysis {
                 kind, pat, init, span, ..
             } => {
                 let k = Self::decl_kind(*kind, *span)?;
-                // The declared names are in scope in their own initializer, as in JavaScript: a
-                // function can call itself (`const tick = () => requestAnimationFrame(tick)`).
-                let mut names = Vec::new();
-                pat.bindings(&mut names);
-                scope.locals.extend(names.into_iter().map(|(n, _)| n.to_string()));
+                // The loop header calls `stmt` directly, without the block's pre-pass.
+                scope.bind_pattern(pat);
                 let value = init.as_ref().map(|e| self.js(e, scope)).transpose()?;
                 let target = self.pat(pat, scope)?;
                 match value {
@@ -1622,7 +1640,7 @@ impl Analysis {
                         // Another handler of this component, called through the store as the
                         // runtime calls it: a plain one returns its value, an async one (a
                         // generator) a Promise, which an `await` around the call waits for.
-                        Some(Binding::Action) => scope.scoped(format!("actions.{n}({})", argv()?)),
+                        Some(Binding::Action) => format!("{}({})", scope.scoped(format!("actions.{n}")), argv()?),
                         _ => format!("{}{}({})", js(callee)?, if *optional { "?." } else { "" }, argv()?),
                     },
                     ExprKind::Member {
@@ -1787,6 +1805,12 @@ pub struct Scope {
 const SCOPED: &str = "__spScope";
 
 impl Scope {
+    fn bind_pattern(&mut self, pat: &Pat) {
+        let mut names = Vec::new();
+        pat.bindings(&mut names);
+        self.locals.extend(names.into_iter().map(|(name, _)| name.to_string()));
+    }
+
     /// An expression that calls `getContext()` or `getElement()` when it runs (a derived value,
     /// an action, a ref). The runtime has a scope while a handler runs, but not in a timer,
     /// listener or promise callback it set up; there the expression runs in the handler's scope.
@@ -2040,7 +2064,23 @@ fn stmt_exprs(s: &Stmt, f: &mut dyn FnMut(&Expr)) {
     }
 }
 
+fn pattern_defaults(pat: &Pat, f: &mut dyn FnMut(&Expr)) {
+    match pat {
+        Pat::Default(pat, default) => {
+            f(default);
+            pattern_defaults(pat, f);
+        }
+        Pat::Obj { props, .. } => props.iter().for_each(|(_, pat)| pattern_defaults(pat, f)),
+        Pat::Arr { elems, .. } => elems.iter().flatten().for_each(|pat| pattern_defaults(pat, f)),
+        Pat::Id(..) => {}
+    }
+}
+
 fn func_exprs(func: &Func, f: &mut dyn FnMut(&Expr)) {
+    for param in &func.params {
+        param.default.iter().for_each(&mut *f);
+        pattern_defaults(&param.pat, f);
+    }
     match &func.body {
         FnBody::Expr(e) => f(e),
         FnBody::Block(b) => b.iter().for_each(|s| stmt_exprs(s, f)),
@@ -2225,7 +2265,7 @@ export function A() {
         assert!(out.contains("const __spScope = withScope((read) => read());"), "{out}");
         // In the callbacks: through the captured scope.
         assert!(out.contains("(context.n = __spScope(() => state.doubled))"), "{out}");
-        assert!(out.contains("__spScope(() => actions.bump())"), "{out}");
+        assert!(out.contains("__spScope(() => actions.bump)()"), "{out}");
         assert!(out.contains("__spScope(() => attached(\"box\"))"), "{out}");
         // A handler passed as a value is the store's, bound to the scope it is read in.
         assert!(out.contains("setTimeout(actions.bump, 20)"), "{out}");
@@ -2366,8 +2406,8 @@ export function A({{ step }}: {{ step: number }}) {{
         ))
         .unwrap();
         for expected in [
-            "add(by = context.step, ...more) {",
-            "pick({ \"detail\": { \"x\": x } }, [first] = [context.step]) {",
+            "add(...__spArgs) {\n      const context = getContext();\n      return ((by = context.step, ...more) => {",
+            "pick(...__spArgs) {\n      const context = getContext();\n      return (({ \"detail\": { \"x\": x } }, [first] = [context.step]) => {",
             "(({ \"detail\": detail }, ...rest) => (context.n = (detail + rest.length)))",
             "(([a, b = context.step]) => (context.n = (a + b)))",
             "(async (url = \"/x\") => {",

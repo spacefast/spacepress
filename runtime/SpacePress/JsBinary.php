@@ -122,6 +122,11 @@ final class JsBinary
         };
         if ($own !== null) { return $own; }
         if ($value instanceof JsBlob && $value->name === null && in_array($key, ['name', 'lastModified'], true)) { return JsUndefined::Value; }
+        if ($value instanceof JsTypedArray && $value->nodeBuffer && Node\Buffer::has($key)) {
+            return Node\Module::method('Buffer:' . $key, static fn (mixed $self, array $args): mixed => Node\Buffer::isBuffer($self)
+                ? Node\Buffer::call($self, $key, $args)
+                : throw new JsError('Illegal invocation', 'TypeError'));
+        }
         if (self::hasMethod($value, $key) || $key === 'toString' || $key === 'valueOf') { return self::method($value, $key); }
         return JsUndefined::Value;
     }
@@ -146,6 +151,7 @@ final class JsBinary
 
     public static function call(object $value, string $name, array $a): mixed
     {
+        if ($value instanceof JsTypedArray && $value->nodeBuffer && Node\Buffer::has($name)) { return Node\Buffer::call($value, $name, $a); }
         if ($name === 'valueOf') { return $value; }
         if ($name === 'toString' && !$value instanceof JsTypedArray) { return Js::dynamicObjectTag($value); }
         if ($value instanceof JsArrayBuffer) {

@@ -10,6 +10,22 @@
 
 **Spec:** `docs/superpowers/specs/2026-11-26-node-builtins-design.md`
 
+## Interface changes during Task 1-2
+
+The Task 1 and 2 names are unchanged (`Node\Module::get/member/call/register`, `Node\Buffer::bytes/wrap/decode/encode`). Added, for later tasks to use:
+
+- `interface SpacePress\Node\Dispatch { public function read(string $key): mixed; public function invoke(string $name, array $args): mixed; }`. Every Node runtime object a module returns (`Hash`, `KeyObject`, `Sign`, `Cipheriv`, ...) implements it; `Js::dynamicGet` calls `read`, `Js::dynamicCallMethod` calls `invoke`, `Object.keys` gives `[]`. (PHP can't have a static `Module::get` and an instance `get`, which is why it is `read`.)
+- `Node\Module::exports` source: `Module::MODULES` maps a bare name to classes with `public static function exports(): array`. A later task adds its class there (for example `'crypto' => [Crypto::class, Keys::class]`) or calls `Module::register` from its `exports()`.
+- `Node\Module::method(string $key, \Closure $call): \Closure`: one function value per method name, for `read()` to return; `$call($thisArg, $args)` must check its receiver.
+- `Node\Module::inherited(object $receiver, string $name)`: Object.prototype `toString`/`valueOf` for `invoke` fallbacks.
+- `final class SpacePress\Node\Ctor implements Dispatch`: `new Ctor(string $name, array $statics, \Closure $isInstance, ?\Closure $construct = null)`, for exported classes; `instanceof` and `new` dispatch to it.
+- `JsError::node(string $message, string $name, string $code): JsError` and `public ?string $nodeCode`: Node's `error.code`, read as `e.code`.
+- `Node\Buffer::encoding(mixed): ?string` (Node's encoding names, case-insensitive, or null), `Node\Buffer::knownEncoding(mixed): string` (throws `ERR_UNKNOWN_ENCODING`; undefined is utf8), `Node\Buffer::isBuffer(mixed): bool`, `Node\Buffer::isView(mixed): bool`, `Node\Buffer::received(mixed): string` (Node's "Received ..." text).
+- `SpacePress\Crypto::envKey(string $name): string` (trimmed `process.env` HMAC key, 500 when blank), emitted by the compiler for `createHmac(alg, process.env.NAME)`.
+- `Js::dynamicAs(mixed $value, string $type)`: typed TypeScript's `x as string|number|boolean` on a JavaScript value checks `typeof` at run time (TypeError on mismatch) and gives the static type. A chained assertion (`x as unknown as number`) stays dynamic.
+- Typed TypeScript accepts the annotations `Buffer`, `Uint8Array`, `ArrayBuffer`, `TextEncoder`, `TextDecoder` (all a JavaScript value) and the globals `ArrayBuffer`, `Uint8Array`, `TextEncoder`, `TextDecoder`, `Buffer` (`eval::TYPED_BINARY_GLOBALS`).
+- Rust: `BuiltinModule::name()` (bare name), `BuiltinModule::export(name, span) -> Result<&'static str, Diag>`; `builtins::module` only resolves modules whose `exports()` is non-empty, so a later task makes `node:path` importable by listing its exports there. `Builtin::NodeModule(BuiltinModule, Option<&'static str>)` replaces `Builtin::NodeCrypto`.
+
 ## Global Constraints
 
 - Only PHP extensions WP Cloud ships: `openssl`, `sodium`, `hash`, `zlib`, `mbstring`. No new Composer dependency, no pure-PHP crypto.

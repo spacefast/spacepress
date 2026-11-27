@@ -37,12 +37,13 @@ final class Js
             $v instanceof JsSet, $v instanceof JsMap, $v instanceof JsNamespace, $v instanceof JsWeakMap, $v instanceof JsWeakSet, $v instanceof JsAbortSignal, $v instanceof JsAbortController => self::dynamicObjectTag($v),
             $v instanceof JsSymbol => throw new JsError('Cannot convert a Symbol value to a string', 'TypeError'),
             $v instanceof JsUrl, $v instanceof JsUrlSearchParams => $v->toString(),
-            $v instanceof JsTypedArray => $v->call('join', []),
+            $v instanceof JsTypedArray => $v->nodeBuffer ? Node\Buffer::encode($v->bytes(), 'utf8') : $v->call('join', []),
             JsBinary::is($v) => self::dynamicObjectTag($v),
             $v instanceof JsDate => throw new JsError('Date string coercion is not supported', 'TypeError'),
-            $v instanceof JsError => $v->jsName . ($v->getMessage() === '' ? '' : ': ' . $v->getMessage()),
+            $v instanceof JsError => $v->jsName . ($v->nodeCode === null ? '' : ' [' . $v->nodeCode . ']') . ($v->getMessage() === '' ? '' : ': ' . $v->getMessage()),
             $v instanceof RegExp => (string) $v,
-            $v instanceof \Closure => throw new JsError('Function string coercion is not supported', 'TypeError'),
+            $v instanceof \Closure, $v instanceof Node\Ctor => throw new JsError('Function string coercion is not supported', 'TypeError'),
+            $v instanceof Node\Dispatch => self::dynamicObjectTag($v),
             $v instanceof \Stringable => (string) $v,
             default => '[object Object]',
         };
@@ -524,10 +525,21 @@ final class Js
             is_int($v), is_float($v) => 'number',
             is_bool($v) => 'boolean',
             $v instanceof JsBigInt => 'bigint',
-            $v instanceof \Closure, $v instanceof JsClass, $v instanceof JsConstructor => 'function',
+            $v instanceof \Closure, $v instanceof JsClass, $v instanceof JsConstructor, $v instanceof Node\Ctor => 'function',
             $v instanceof JsSymbol => 'symbol',
             default => 'object',
         };
+    }
+
+    /**
+     * Typed TypeScript's `value as string` (or number, boolean) on a checked JavaScript value: the
+     * value itself when it has that type, otherwise a TypeError instead of a wrong value later.
+     */
+    public static function dynamicAs(mixed $value, string $type): mixed
+    {
+        $actual = self::typeOf($value);
+        if ($actual !== $type) { throw new JsError("Expected a $type here, got $actual", 'TypeError'); }
+        return $value;
     }
 
     /** Explicit `String(value)`: unlike implicit conversion, a symbol has a string form. */
@@ -2034,6 +2046,7 @@ final class Js
             if ($seen->offsetExists($value)) { return $seen[$value]; }
             if ($value instanceof JsError) {
                 $copy = new JsError($value->getMessage(), $value->jsName, $value->hasMessage);
+                $copy->nodeCode = $value->nodeCode;
                 $seen[$value] = $copy;
                 return $copy;
             }

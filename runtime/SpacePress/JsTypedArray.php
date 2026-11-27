@@ -19,6 +19,9 @@ final class JsTypedArray
 
     public readonly int $size;
 
+    /** A Node Buffer (Node\Buffer): this Uint8Array with Buffer's methods. */
+    public bool $nodeBuffer = false;
+
     public function __construct(public readonly string $kind, public readonly JsArrayBuffer $buffer, public readonly int $offset, public readonly int $length)
     {
         $this->size = self::KINDS[$kind][0];

@@ -4,35 +4,118 @@
 use crate::diag::Diag;
 use crate::diag::Span;
 
-/// A Node built-in module the compiler supplies itself. Nothing is loaded for it; its functions
-/// lower in compile/host.rs.
+/// A Node built-in module the compiler supplies itself. Nothing is loaded for it: an import is the
+/// runtime module object `SpacePress\Node\Module::get(<name>)`, reached through checked JavaScript
+/// dispatch in typed TypeScript and imported JavaScript alike (compile/host.rs).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BuiltinModule {
-    /// `"node:crypto"` / `"crypto"`, lowered onto `SpacePress\Crypto`.
-    NodeCrypto,
+    Crypto,
+    Buffer,
+    Path,
+    QueryString,
+    StringDecoder,
+    Events,
+    Util,
+    Zlib,
 }
 
 impl BuiltinModule {
-    /// The functions the module exports in SpacePress code.
+    const ALL: [BuiltinModule; 8] = [
+        BuiltinModule::Crypto,
+        BuiltinModule::Buffer,
+        BuiltinModule::Path,
+        BuiltinModule::QueryString,
+        BuiltinModule::StringDecoder,
+        BuiltinModule::Events,
+        BuiltinModule::Util,
+        BuiltinModule::Zlib,
+    ];
+
+    /// The bare name, which is also the runtime module's name.
+    pub const fn name(self) -> &'static str {
+        match self {
+            BuiltinModule::Crypto => "crypto",
+            BuiltinModule::Buffer => "buffer",
+            BuiltinModule::Path => "path",
+            BuiltinModule::QueryString => "querystring",
+            BuiltinModule::StringDecoder => "string_decoder",
+            BuiltinModule::Events => "events",
+            BuiltinModule::Util => "util",
+            BuiltinModule::Zlib => "zlib",
+        }
+    }
+
+    pub const fn specifier(self) -> &'static str {
+        match self {
+            BuiltinModule::Crypto => "node:crypto",
+            BuiltinModule::Buffer => "node:buffer",
+            BuiltinModule::Path => "node:path",
+            BuiltinModule::QueryString => "node:querystring",
+            BuiltinModule::StringDecoder => "node:string_decoder",
+            BuiltinModule::Events => "node:events",
+            BuiltinModule::Util => "node:util",
+            BuiltinModule::Zlib => "node:zlib",
+        }
+    }
+
+    /// The exports SpacePress code may import. A module with none isn't available yet.
     pub const fn exports(self) -> &'static [&'static str] {
         match self {
-            BuiltinModule::NodeCrypto => &[
+            BuiltinModule::Crypto => &[
                 "createHash",
                 "createHmac",
                 "randomBytes",
                 "randomUUID",
                 "timingSafeEqual",
             ],
+            BuiltinModule::Buffer => &["Buffer", "constants", "kMaxLength", "atob", "btoa"],
+            BuiltinModule::Path
+            | BuiltinModule::QueryString
+            | BuiltinModule::StringDecoder
+            | BuiltinModule::Events
+            | BuiltinModule::Util
+            | BuiltinModule::Zlib => &[],
         }
+    }
+
+    /// `name` among the exports, or a located refusal naming the closest one.
+    pub fn export(self, name: &str, span: Span) -> Result<&'static str, Diag> {
+        let exports = self.exports();
+        if let Some(f) = exports.iter().find(|f| **f == name) {
+            return Ok(f);
+        }
+        let d = Diag::new(
+            span,
+            format!("\"{}\" has no `{name}` in SpacePress code", self.specifier()),
+        );
+        Err(match crate::diag::suggest(name, exports.iter().copied()) {
+            Some(s) => d.help(format!("did you mean `{s}`?")),
+            None => d.help(format!(
+                "SpacePress compiles {} from {} to PHP",
+                exports.join(", "),
+                self.specifier()
+            )),
+        })
     }
 }
 
-/// The one lookup for Node built-in modules, shared by `import ... from` and `require(...)`.
+/// The one lookup for Node built-in modules, shared by `import ... from` and `require(...)`:
+/// `node:x` or the bare `x`, as Node resolves a core module before any package.
 pub fn module(spec: &str) -> Option<BuiltinModule> {
-    match spec {
-        "node:crypto" | "crypto" => Some(BuiltinModule::NodeCrypto),
-        _ => None,
-    }
+    let name = spec.strip_prefix("node:").unwrap_or(spec);
+    BuiltinModule::ALL
+        .into_iter()
+        .find(|m| m.name() == name && !m.exports().is_empty())
+}
+
+/// The available modules' specifiers, for diagnostics.
+pub fn available_modules() -> String {
+    let names: Vec<_> = BuiltinModule::ALL
+        .into_iter()
+        .filter(|m| !m.exports().is_empty())
+        .map(|m| format!("\"{}\"", m.specifier()))
+        .collect();
+    names.join(", ")
 }
 
 #[derive(Clone, Copy)]

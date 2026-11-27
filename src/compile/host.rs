@@ -1,15 +1,14 @@
 //! Standard host globals, lowered onto the PHP runtime: the global `fetch` (`SpacePress\Fetch`),
 //! `Response`/`Headers`/`URLSearchParams`, `process.env.NAME` (`SpacePress\Env`), `process.platform` and
-//! `navigator.platform` (`SpacePress\Host`), the global `crypto`'s `randomUUID` and the `node:crypto`
-//! subset (`SpacePress\Crypto`).
+//! `navigator.platform` (`SpacePress\Host`), the global `crypto`'s `randomUUID` (`SpacePress\Crypto`),
+//! and the Node built-in modules and global `Buffer` (`SpacePress\Node\Module`), which are checked
+//! JavaScript values in typed TypeScript as in imported JavaScript.
 //!
 //! Every outbound call, crypto call and environment read is reported to [`Compiler::host_use`]
 //! before its PHP is emitted, so one function sees all of them. Forms that cannot be lowered
 //! soundly are refused here with a location and a fix.
 use super::*;
 use crate::builtins::BuiltinModule;
-
-const NODE_CRYPTO: &[&str] = BuiltinModule::NodeCrypto.exports();
 use crate::types::HostTy;
 
 /// What a host lowering reaches outside the handler.
@@ -17,16 +16,13 @@ use crate::types::HostTy;
 pub(crate) enum HostUse<'n> {
     /// An outbound HTTP request (`fetch`), to the URL's static host when the source names one.
     Fetch(Option<&'n str>),
-    /// A `node:crypto` or Web Crypto function, by its standard name.
+    /// A Node built-in module or Web Crypto function, by its standard name.
     Crypto(&'static str),
     /// A runtime variable read (`process.env.NAME`, or a `createHmac` key read from it).
     EnvRead(&'n str),
     /// The server's operating system, read when PHP runs: `process.platform` or `navigator.platform`.
     Platform(&'static str),
 }
-
-const ALGORITHMS: &[&str] = &["md5", "sha1", "sha256", "sha384", "sha512"];
-const ENCODINGS: &[&str] = &["hex", "base64", "base64url"];
 
 impl Compiler<'_, '_> {
     /// The one place every host effect passes through, before its PHP is emitted. A plugin's
@@ -102,26 +98,48 @@ impl Compiler<'_, '_> {
         ))
     }
 
-    /// A `node:crypto` function named by `e`: an imported binding or a namespace member.
-    fn node_fn(&mut self, e: &Expr) -> Result<Option<&'static str>> {
+    /// The Node built-in export `e` names: an imported binding, or a member of a module namespace.
+    fn node_export(&mut self, e: &Expr) -> Result<Option<(BuiltinModule, &'static str)>> {
         match &e.kind {
             ExprKind::Ident(n) => Ok(match self.resolve(n, e.span) {
-                Ok(Resolved::Value(Value::Builtin(Builtin::NodeCrypto(Some(f))), _)) => Some(f),
+                Ok(Resolved::Value(Value::Builtin(Builtin::NodeModule(m, Some(f))), _)) => Some((m, f)),
                 _ => None,
             }),
             ExprKind::Member {
                 obj, prop, prop_span, ..
-            } if self.is_node_namespace(obj) => match NODE_CRYPTO.iter().find(|f| **f == prop) {
-                Some(f) => Ok(Some(f)),
-                None => Err(unknown_node_crypto(prop, *prop_span)),
+            } => match self.node_namespace(obj) {
+                Some(m) => Ok(Some((m, m.export(prop, *prop_span)?))),
+                None => Ok(None),
             },
             _ => Ok(None),
         }
     }
 
-    fn is_node_namespace(&mut self, e: &Expr) -> bool {
-        matches!(&e.kind, ExprKind::Ident(n)
-            if matches!(self.resolve(n, e.span), Ok(Resolved::Value(Value::Builtin(Builtin::NodeCrypto(None)), _))))
+    fn node_namespace(&mut self, e: &Expr) -> Option<BuiltinModule> {
+        match &e.kind {
+            ExprKind::Ident(n) => match self.resolve(n, e.span) {
+                Ok(Resolved::Value(Value::Builtin(Builtin::NodeModule(m, None)), _)) => Some(m),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    /// A Node built-in module, or one of its exports, as a run-time value.
+    pub(super) fn node_value(&self, module: BuiltinModule, export: Option<&str>) -> Out {
+        let get = format!("\\SpacePress\\Node\\Module::get({})", php_str(module.name()));
+        Out::atom(
+            match export {
+                Some(f) => format!("{get}->member({})", php_str(f)),
+                None => get,
+            },
+            Ty::Dynamic,
+        )
+    }
+
+    /// The global `Buffer`: `node:buffer`'s `Buffer`, as Node defines it.
+    pub(super) fn buffer_value(&self) -> Out {
+        self.node_value(BuiltinModule::Buffer, Some("Buffer"))
     }
 
     /// `process.platform` / `navigator.platform`: Node's names for the server's operating system,
@@ -183,21 +201,18 @@ impl Compiler<'_, '_> {
             };
         }
         if self.is_global(obj, "Buffer") {
-            return err_help(
-                prop_span,
-                "Buffer values aren't available in SpacePress code",
-                "compare with `timingSafeEqual(Buffer.from(a), Buffer.from(b))` or measure with `Buffer.byteLength(text)`",
-            );
-        }
-        if self.is_node_namespace(obj) {
-            return match NODE_CRYPTO.iter().find(|f| **f == prop) {
-                Some(f) => err_help(
-                    prop_span,
-                    format!("`{f}` can't be used as a value"),
-                    "call it where it's used",
+            return Ok(Some(Out::atom(
+                format!(
+                    "\\SpacePress\\Js::dynamicGet({}, {})",
+                    self.buffer_value().php,
+                    php_str(prop)
                 ),
-                None => Err(unknown_node_crypto(prop, prop_span)),
-            };
+                Ty::Dynamic,
+            )));
+        }
+        if let Some(m) = self.node_namespace(obj) {
+            let f = m.export(prop, prop_span)?;
+            return Ok(Some(self.node_value(m, Some(f))));
         }
         Ok(None)
     }
@@ -214,7 +229,7 @@ impl Compiler<'_, '_> {
                 ),
             };
         }
-        if ["process", "navigator", "crypto", "Buffer"]
+        if ["process", "navigator", "crypto"]
             .iter()
             .any(|g| self.is_global(obj, g))
         {
@@ -244,9 +259,12 @@ impl Compiler<'_, '_> {
         Ok(())
     }
 
-    /// Calls: `fetch`, `crypto.*`, `node:crypto`, `Buffer.byteLength`, and refusals for `require`
+    /// Calls: `fetch`, `crypto.*`, Node built-in exports, `Buffer.*`, and refusals for `require`
     /// and `process.*`. None for every other call.
     pub(super) fn host_call(&mut self, callee: &Expr, args: &[ArrEl], span: Span) -> Result<Option<Out>> {
+        if let Some((module, f)) = self.node_export(callee)? {
+            return self.node_call(module, f, args, span).map(Some);
+        }
         match &callee.kind {
             ExprKind::Ident(n) => match self.resolve(n, callee.span) {
                 Ok(Resolved::Global("fetch")) => self.fetch_call(args, span).map(Some),
@@ -255,48 +273,29 @@ impl Compiler<'_, '_> {
                     "`require` only works at the top level of static CommonJS sources",
                     "use `import`, including `import { createHash } from \"node:crypto\"`",
                 ),
-                Ok(Resolved::Value(Value::Builtin(Builtin::NodeCrypto(Some(f))), _)) => {
-                    self.node_crypto_call(f, args, span).map(Some)
-                }
                 _ => Ok(None),
             },
             ExprKind::Member {
                 obj, prop, prop_span, ..
             } => {
-                match prop.as_str() {
-                    "digest" => {
-                        if let Some(out) = self.subtle_digest(obj, args, span)? {
-                            return Ok(Some(out));
-                        }
-                        if let Some(out) = self.digest(obj, args, span)? {
-                            return Ok(Some(out));
-                        }
-                    }
-                    "update" if self.hash_chain(callee)?.is_some() => {
-                        return err_help(
-                            span,
-                            "a hash is compiled as one expression",
-                            "finish it in place: `createHash(\"sha256\").update(text).digest(\"hex\")`",
-                        );
-                    }
-                    "toString" => {
-                        if let ExprKind::Call {
-                            callee: inner,
-                            args: size,
-                            ..
-                        } = &obj.kind
-                            && self.node_fn(inner)? == Some("randomBytes")
-                        {
-                            return self.random_bytes(size, args, obj.span, span).map(Some);
-                        }
-                    }
-                    _ => {}
+                if prop == "digest"
+                    && let Some(out) = self.subtle_digest(obj, args, span)?
+                {
+                    return Ok(Some(out));
                 }
                 if self.is_global(obj, "crypto") {
                     return self.web_crypto_call(prop, args, *prop_span, span).map(Some);
                 }
                 if self.is_global(obj, "Buffer") {
-                    return self.buffer_call(prop, args, *prop_span, span).map(Some);
+                    let argv = self.javascript_args(args)?;
+                    return Ok(Some(Out::atom(
+                        format!(
+                            "(\\SpacePress\\Js::dynamicMethod({}, {}))(...({argv})->a)",
+                            self.buffer_value().php,
+                            php_str(prop)
+                        ),
+                        Ty::Dynamic,
+                    )));
                 }
                 if self.is_global(obj, "process") || self.is_process_env(obj) {
                     return err_help(
@@ -308,15 +307,51 @@ impl Compiler<'_, '_> {
                 if self.is_global(obj, "navigator") {
                     return Err(crate::eval::navigator_member_refusal(prop, *prop_span));
                 }
-                if self.is_node_namespace(obj)
-                    && let Some(f) = self.node_fn(callee)?
-                {
-                    return self.node_crypto_call(f, args, span).map(Some);
-                }
                 Ok(None)
             }
             _ => Ok(None),
         }
+    }
+
+    /// A call of a Node built-in export, dispatched by the runtime module. A `createHmac` key
+    /// read from `process.env.NAME` keeps the documented rule: trimmed, and refused when blank.
+    fn node_call(&mut self, module: BuiltinModule, f: &'static str, args: &[ArrEl], span: Span) -> Result<Out> {
+        self.host_use(HostUse::Crypto(f), span)?;
+        let mut parts = Vec::new();
+        for (i, arg) in args.iter().enumerate() {
+            match arg {
+                ArrEl::Item(e) if i == 1 && (module, f) == (BuiltinModule::Crypto, "createHmac") => {
+                    if let Some(name) = self.env_name(e) {
+                        self.host_use(HostUse::EnvRead(&name), e.span)?;
+                        parts.push(format!("\\SpacePress\\Crypto::envKey({})", php_str(&name)));
+                    } else {
+                        let v = self.expr(e)?;
+                        parts.push(self.finish_value(v, e.span)?.php);
+                    }
+                }
+                ArrEl::Item(e) => {
+                    let v = if matches!(e.kind, ExprKind::Undefined) {
+                        Out::atom("\\SpacePress\\Js::undefined()", Ty::Dynamic)
+                    } else {
+                        self.expr(e)?
+                    };
+                    parts.push(self.finish_value(v, e.span)?.php);
+                }
+                ArrEl::Spread(e) => {
+                    let v = self.expr(e)?;
+                    parts.push(format!("...(\\SpacePress\\Js::dynamicIterable({}))->a", v.php));
+                }
+            }
+        }
+        Ok(Out::atom(
+            format!(
+                "\\SpacePress\\Node\\Module::get({})->call({}, [{}])",
+                php_str(module.name()),
+                php_str(f),
+                parts.join(", ")
+            ),
+            Ty::Dynamic,
+        ))
     }
 
     /// `new Headers(init)`. `URL`, `URLSearchParams` and `AbortController` are standard objects
@@ -349,6 +384,13 @@ impl Compiler<'_, '_> {
                     span,
                     format!("`{g}` isn't available in SpacePress code"),
                     "send a string or URLSearchParams body",
+                );
+            }
+            "Buffer" => {
+                return err_help(
+                    span,
+                    "`new Buffer` is deprecated in Node",
+                    "use `Buffer.from(value)` or `Buffer.alloc(size)`",
                 );
             }
             _ => return Ok(None),
@@ -474,219 +516,6 @@ impl Compiler<'_, '_> {
         ))
     }
 
-    /// `createHash(alg)` / `createHmac(alg, key)` under zero or more `.update(text)` calls:
-    /// (function, its arguments, update calls outermost first).
-    #[allow(clippy::type_complexity)]
-    fn hash_chain<'e>(&mut self, mut e: &'e Expr) -> Result<Option<(&'static str, &'e [ArrEl], Vec<&'e [ArrEl]>)>> {
-        let mut updates = Vec::new();
-        loop {
-            let ExprKind::Call { callee, args, .. } = &e.kind else {
-                return Ok(None);
-            };
-            match &callee.kind {
-                ExprKind::Member { obj, prop, .. } if prop == "update" => {
-                    updates.push(args.as_slice());
-                    e = obj;
-                }
-                _ => {
-                    return Ok(match self.node_fn(callee)? {
-                        Some(f @ ("createHash" | "createHmac")) => Some((f, args.as_slice(), updates)),
-                        _ => None,
-                    });
-                }
-            }
-        }
-    }
-
-    /// `<hash chain>.digest(encoding)`; None when `chain` isn't a hash.
-    fn digest(&mut self, chain: &Expr, args: &[ArrEl], span: Span) -> Result<Option<Out>> {
-        let Some((f, base, mut updates)) = self.hash_chain(chain)? else {
-            return Ok(None);
-        };
-        updates.reverse();
-        let encoding = self.encoding(args, span, "digest")?;
-        self.host_use(HostUse::Crypto(f), span)?;
-        let algorithm = match base.first() {
-            Some(ArrEl::Item(Expr {
-                kind: ExprKind::Str(a), ..
-            })) if ALGORITHMS.contains(&a.to_lowercase().as_str()) => a.to_lowercase(),
-            Some(ArrEl::Item(e)) => {
-                return err_help(
-                    e.span,
-                    format!("{f}() needs a literal algorithm name"),
-                    format!("use one of {}", ALGORITHMS.join(", ")),
-                );
-            }
-            _ => return err(chain.span, format!("{f}() needs an algorithm")),
-        };
-        let mut parts = Vec::new();
-        for u in &updates {
-            if u.len() != 1 {
-                return err_help(
-                    span,
-                    "update() takes one string in SpacePress code",
-                    "input encodings aren't supported; pass text",
-                );
-            }
-            let e = self.arg(u, 0, span, "data")?;
-            parts.push(self.string_arg(
-                e,
-                "update()",
-                "Buffer and typed-array inputs aren't available; pass text",
-            )?);
-        }
-        let parts = format!("[{}]", parts.join(", "));
-        let php = match (f, base.len()) {
-            ("createHash", 1) => format!(
-                "\\SpacePress\\Crypto::hash({}, {parts}, {})",
-                php_str(&algorithm),
-                php_str(encoding)
-            ),
-            ("createHmac", 2) => {
-                let key = self.arg(base, 1, span, "a key")?;
-                if let Some(name) = self.env_name(key) {
-                    self.host_use(HostUse::EnvRead(&name), key.span)?;
-                    format!(
-                        "\\SpacePress\\Crypto::hmacEnv({}, {}, {parts}, {})",
-                        php_str(&algorithm),
-                        php_str(&name),
-                        php_str(encoding)
-                    )
-                } else {
-                    let key = self.string_arg(
-                        key,
-                        "createHmac()",
-                        "pass the key as a string, e.g. `process.env.SECRET!`",
-                    )?;
-                    format!(
-                        "\\SpacePress\\Crypto::hmac({}, {key}, {parts}, {})",
-                        php_str(&algorithm),
-                        php_str(encoding)
-                    )
-                }
-            }
-            _ => {
-                return err_help(
-                    chain.span,
-                    format!(
-                        "{f}() takes {} here",
-                        if f == "createHash" {
-                            "an algorithm"
-                        } else {
-                            "an algorithm and a key"
-                        }
-                    ),
-                    "options objects aren't supported",
-                );
-            }
-        };
-        Ok(Some(Out::atom(php, Ty::Str)))
-    }
-
-    /// `randomBytes(size).toString(encoding)`.
-    fn random_bytes(&mut self, size: &[ArrEl], args: &[ArrEl], at: Span, span: Span) -> Result<Out> {
-        let encoding = self.encoding(args, span, "toString")?;
-        self.host_use(HostUse::Crypto("randomBytes"), span)?;
-        if size.len() != 1 {
-            return err_help(
-                at,
-                "randomBytes() takes a size here",
-                "callbacks aren't supported; write randomBytes(n).toString(\"hex\")",
-            );
-        }
-        let e = self.arg(size, 0, at, "a size")?;
-        let n = self.expr(e)?;
-        let n = self.finish_value(n, e.span)?;
-        if n.ty != Ty::Dynamic && (!n.ty.is_num() || n.ty.is_nullable()) {
-            return err(
-                e.span,
-                format!("randomBytes() needs a number of bytes, not {}", n.ty.describe()),
-            );
-        }
-        Ok(Out::atom(
-            format!("\\SpacePress\\Crypto::randomBytes({}, {})", n.php, php_str(encoding)),
-            Ty::Str,
-        ))
-    }
-
-    /// A direct call of a `node:crypto` function.
-    fn node_crypto_call(&mut self, f: &'static str, args: &[ArrEl], span: Span) -> Result<Out> {
-        match f {
-            "randomUUID" => {
-                if !args.is_empty() {
-                    return err(span, "randomUUID() takes no options in SpacePress code");
-                }
-                self.host_use(HostUse::Crypto(f), span)?;
-                Ok(Out::atom("\\SpacePress\\Crypto::randomUUID()", Ty::Str))
-            }
-            "timingSafeEqual" => {
-                let mut argv = Vec::new();
-                for i in 0..2 {
-                    let e = self.arg(args, i, span, "a Buffer")?;
-                    let Some(text) = self.buffer_from(e)? else {
-                        return err_help(
-                            e.span,
-                            "timingSafeEqual() compares Buffers made from text",
-                            "pass `Buffer.from(a)` and `Buffer.from(b)`; check `Buffer.byteLength` first, as unequal lengths throw",
-                        );
-                    };
-                    argv.push(self.string_arg(text, "Buffer.from()", "pass text")?);
-                }
-                if args.len() != 2 {
-                    return err(span, "timingSafeEqual() takes two Buffers");
-                }
-                self.host_use(HostUse::Crypto(f), span)?;
-                Ok(Out::atom(
-                    format!("\\SpacePress\\Crypto::timingSafeEqual({})", argv.join(", ")),
-                    Ty::Bool,
-                ))
-            }
-            "randomBytes" => err_help(
-                span,
-                "randomBytes() returns a Buffer, which SpacePress doesn't compile",
-                "write `randomBytes(n).toString(\"hex\")`",
-            ),
-            _ => err_help(
-                span,
-                format!("{f}() returns a stateful object, which SpacePress compiles only as one expression"),
-                if f == "createHash" {
-                    "write `createHash(\"sha256\").update(text).digest(\"hex\")`"
-                } else {
-                    "write `createHmac(\"sha256\", key).update(text).digest(\"hex\")`"
-                },
-            ),
-        }
-    }
-
-    /// `Buffer.from(text)` or `Buffer.from(text, "utf8")`: the text expression.
-    fn buffer_from<'e>(&mut self, e: &'e Expr) -> Result<Option<&'e Expr>> {
-        let ExprKind::Call { callee, args, .. } = &e.kind else {
-            return Ok(None);
-        };
-        let ExprKind::Member { obj, prop, .. } = &callee.kind else {
-            return Ok(None);
-        };
-        if prop != "from" || !self.is_global(obj, "Buffer") {
-            return Ok(None);
-        }
-        utf8_only(args, e.span, "Buffer.from()")?;
-        self.arg(args, 0, e.span, "text").map(Some)
-    }
-
-    fn buffer_call(&mut self, prop: &str, args: &[ArrEl], prop_span: Span, span: Span) -> Result<Out> {
-        if prop != "byteLength" {
-            return err_help(
-                prop_span,
-                "Buffer values aren't available in SpacePress code",
-                "compare with `timingSafeEqual(Buffer.from(a), Buffer.from(b))` or measure with `Buffer.byteLength(text)`",
-            );
-        }
-        utf8_only(args, span, "Buffer.byteLength()")?;
-        let e = self.arg(args, 0, span, "text")?;
-        let text = self.string_arg(e, "Buffer.byteLength()", "pass text")?;
-        Ok(Out::atom(format!("\\strlen({text})"), Ty::Num))
-    }
-
     /// `crypto.subtle.digest(algorithm, data)` in imported JavaScript: a promise of an ArrayBuffer,
     /// as Web Crypto returns. files-sdk hashes upload bodies this way. Typed code keeps the
     /// `node:crypto` hash, which the refusal on `crypto.subtle` names.
@@ -737,26 +566,6 @@ impl Compiler<'_, '_> {
                 span,
                 format!("`crypto.{prop}` isn't available in SpacePress code"),
                 "the global crypto has `randomUUID()`; import hashes and MACs from \"node:crypto\"",
-            ),
-        }
-    }
-
-    fn encoding(&self, args: &[ArrEl], span: Span, call: &str) -> Result<&'static str> {
-        match args {
-            [
-                ArrEl::Item(Expr {
-                    kind: ExprKind::Str(e), ..
-                }),
-            ] if ENCODINGS.contains(&e.as_str()) => Ok(ENCODINGS.iter().find(|x| **x == e).expect("listed")),
-            [] => err_help(
-                span,
-                format!("{call}() without an encoding returns a Buffer, which SpacePress doesn't compile"),
-                format!("write {call}(\"hex\")"),
-            ),
-            _ => err_help(
-                span,
-                format!("{call}() needs a literal encoding"),
-                format!("use one of {}", ENCODINGS.join(", ")),
             ),
         }
     }
@@ -893,39 +702,10 @@ impl Compiler<'_, '_> {
     }
 }
 
-/// `(text)` or `(text, "utf8")`: Buffers here are always the UTF-8 bytes of a string.
-fn utf8_only(args: &[ArrEl], span: Span, call: &str) -> Result<()> {
-    match args {
-        [_] => Ok(()),
-        [
-            _,
-            ArrEl::Item(Expr {
-                kind: ExprKind::Str(enc),
-                ..
-            }),
-        ] if matches!(enc.as_str(), "utf8" | "utf-8") => Ok(()),
-        [_, ArrEl::Item(x) | ArrEl::Spread(x)] => {
-            err_help(x.span, format!("{call} reads text as UTF-8 here"), "omit the encoding")
-        }
-        _ => err(span, format!("{call} takes text here")),
-    }
-}
-
 fn host_methods(h: &HostTy) -> &'static [&'static str] {
     match h {
         HostTy::Response => &["text", "json"],
         HostTy::Headers => &["get", "has", "set", "append", "delete", "forEach"],
-    }
-}
-
-fn unknown_node_crypto(name: &str, span: Span) -> Diag {
-    let d = Diag::new(span, format!("\"node:crypto\" has no `{name}` in SpacePress code"));
-    match suggest(name, NODE_CRYPTO.iter().copied()) {
-        Some(s) => d.help(format!("did you mean `{s}`?")),
-        None => d.help(format!(
-            "SpacePress compiles {} from \"node:crypto\" to PHP",
-            NODE_CRYPTO.join(", ")
-        )),
     }
 }
 

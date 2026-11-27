@@ -48,7 +48,7 @@ export const random = mutation({}, () => {
   const a = randomBytes(16).toString("hex");
   return [
     uuid.test(crypto.randomUUID()),
-    uuid.test(randomUUID()),
+    uuid.test(randomUUID() as string),
     a.length,
     a !== randomBytes(16).toString("hex"),
     randomBytes(0).toString("hex"),

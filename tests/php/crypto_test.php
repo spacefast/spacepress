@@ -9,15 +9,28 @@ use SpacePress\Crypto;
 use SpacePress\Env;
 use SpacePress\HttpError;
 use SpacePress\JsError;
-use SpacePress\JsObject;
+use SpacePress\Node\Module;
+
+$crypto = Module::get('crypto');
+/** `createHash(algorithm).update(...parts).digest(encoding)` through the module object. */
+$hash = static function (string $algorithm, array $parts, string $encoding) use ($crypto): string {
+    $h = $crypto->call('createHash', [$algorithm]);
+    foreach ($parts as $part) { $h->update($part); }
+    return $h->digest($encoding);
+};
+$hmac = static function (string $algorithm, mixed $key, array $parts, string $encoding) use ($crypto): string {
+    $h = $crypto->call('createHmac', [$algorithm, $key]);
+    foreach ($parts as $part) { $h->update($part); }
+    return $h->digest($encoding);
+};
 
 // Published test vectors, plus the other digests.
-eq('SHA-256 of "abc" is the FIPS 180-2 B.1 digest', Crypto::hash('sha256', ['abc'], 'hex'),
+eq('SHA-256 of "abc" is the FIPS 180-2 B.1 digest', $hash('sha256', ['abc'], 'hex'),
     'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
 eq('digests are over the UTF-8 bytes of every update, in hex, base64 or base64url',
-    [Crypto::hash('sha1', ['abc'], 'hex'), Crypto::hash('md5', [''], 'hex'), substr(Crypto::hash('SHA512', ['abc'], 'hex'), 0, 16),
-        substr(Crypto::hash('sha384', ['abc'], 'hex'), 0, 16), Crypto::hash('sha256', ['é'], 'hex'),
-        Crypto::hash('sha256', ['a', 'bc'], 'base64'), Crypto::hash('sha256', ['abc'], 'base64url')],
+    [$hash('sha1', ['abc'], 'hex'), $hash('md5', [''], 'hex'), substr($hash('SHA512', ['abc'], 'hex'), 0, 16),
+        substr($hash('sha384', ['abc'], 'hex'), 0, 16), $hash('sha256', ['é'], 'hex'),
+        $hash('sha256', ['a', 'bc'], 'base64'), $hash('sha256', ['abc'], 'base64url')],
     ['a9993e364706816aba3e25717850c26c9cd0d89d', 'd41d8cd98f00b204e9800998ecf8427e', 'ddaf35a193617aba',
         'cb00753f45a35e8b', hash('sha256', "\xc3\xa9"), 'ungWv48Bz+pBQUDeXa4iI7ADYaOWF3qctBD/YfIAFa0=',
         'ungWv48Bz-pBQUDeXa4iI7ADYaOWF3qctBD_YfIAFa0']);
@@ -25,8 +38,8 @@ eq('digests are over the UTF-8 bytes of every update, in hex, base64 or base64ur
 Env::isolate(['WEBHOOK_SECRET' => " Jefe \n", 'EMPTY_SECRET' => '  ']);
 eq('HMAC matches RFC 4231 cases 1 and 2, with a key as given and a key read from process.env (trimmed)',
     [
-        Crypto::hmac('sha256', str_repeat("\x0b", 20), ['Hi There'], 'hex'),
-        Crypto::hmacEnv('sha256', 'WEBHOOK_SECRET', ['what do ya ', 'want for nothing?'], 'hex'),
+        $hmac('sha256', str_repeat("\x0b", 20), ['Hi There'], 'hex'),
+        $hmac('sha256', Crypto::envKey('WEBHOOK_SECRET'), ['what do ya ', 'want for nothing?'], 'hex'),
     ],
     ['b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7',
         '5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843']);
@@ -37,34 +50,46 @@ $code = static function (callable $f): string {
     } catch (HttpError $e) {
         return $e->errorCode;
     } catch (JsError $e) {
-        return $e->jsName . ': ' . $e->getMessage();
+        return $e->jsName . ($e->nodeCode === null ? '' : ' ' . $e->nodeCode) . ': ' . $e->getMessage();
     }
 };
 eq('a missing or blank process.env key is crypto_key_unavailable; bad inputs throw as Node does',
     [
-        $code(fn () => Crypto::hmacEnv('sha256', 'MISSING', ['x'], 'hex')),
-        $code(fn () => Crypto::hmacEnv('sha256', 'EMPTY_SECRET', ['x'], 'hex')),
-        $code(fn () => Crypto::hash('whirlpool', ['x'], 'hex')),
-        $code(fn () => Crypto::hash('sha256', [null], 'hex')),
-        $code(fn () => Crypto::hash('sha256', [str_repeat('x', Crypto::MAX_DATA), 'x'], 'hex')),
+        $code(fn () => Crypto::envKey('MISSING')),
+        $code(fn () => Crypto::envKey('EMPTY_SECRET')),
+        $code(fn () => $hash('whirlpool', ['x'], 'hex')),
+        $code(fn () => $crypto->call('createHash', ['sha256'])->update(null)),
+        $code(fn () => $hash('sha256', [str_repeat('x', Crypto::MAX_DATA), 'x'], 'hex')),
         // A key is capped like the data it signs.
-        $code(fn () => Crypto::hmac('sha256', str_repeat('k', Crypto::MAX_DATA + 1), ['x'], 'hex')),
+        $code(fn () => $hmac('sha256', str_repeat('k', Crypto::MAX_DATA + 1), ['x'], 'hex')),
     ],
     ['crypto_key_unavailable', 'crypto_key_unavailable', 'Error: Digest method not supported',
-        'TypeError: Hash.update needs a string', 'crypto_input_too_large', 'crypto_input_too_large']);
-eq('a key at the cap still signs', strlen(Crypto::hmac('sha256', str_repeat('k', Crypto::MAX_DATA), ['x'], 'hex')), 64);
+        'TypeError ERR_INVALID_ARG_TYPE: The "data" argument must be of type string or an instance of Buffer, TypedArray, or DataView',
+        'crypto_input_too_large', 'crypto_input_too_large']);
+eq('a key at the cap still signs', strlen($hmac('sha256', str_repeat('k', Crypto::MAX_DATA), ['x'], 'hex')), 64);
 Env::isolate([]);
 
-eq('timingSafeEqual compares UTF-8 bytes and throws on different byte lengths, as Node does', [
-    Crypto::timingSafeEqual('abc', 'abc'), Crypto::timingSafeEqual('abc', 'abd'),
-    $code(fn () => Crypto::timingSafeEqual('é', 'e')),
-], [true, false, 'RangeError: Input buffers must have the same byte length']);
+$from = static fn (string $text) => Module::get('buffer')->member('Buffer')->invoke('from', [$text]);
+eq('timingSafeEqual compares bytes and throws on different byte lengths, as Node does', [
+    $crypto->call('timingSafeEqual', [$from('abc'), $from('abc')]), $crypto->call('timingSafeEqual', [$from('abc'), $from('abd')]),
+    $code(fn () => $crypto->call('timingSafeEqual', [$from('é'), $from('e')])),
+    $code(fn () => $crypto->call('timingSafeEqual', ['a', 'a'])),
+], [true, false, 'RangeError ERR_CRYPTO_TIMING_SAFE_EQUAL_LENGTH: Input buffers must have the same byte length',
+    'TypeError ERR_INVALID_ARG_TYPE: The "buf1" argument must be an instance of ArrayBuffer, Buffer, TypedArray, or DataView.']);
 
 $uuid = Crypto::randomUUID();
-eq('randomUUID is RFC 4122 version 4; randomBytes has the asked length in each encoding',
-    [preg_match('/\A[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\z/', $uuid), strlen(Crypto::randomBytes(16, 'hex')),
-        Crypto::randomBytes(8, 'hex') === Crypto::randomBytes(8, 'hex'), Crypto::randomBytes(0, 'base64'), strlen(Crypto::randomBytes(9, 'base64')),
-        $code(fn () => Crypto::randomBytes(1025, 'hex')), $code(fn () => Crypto::randomBytes(1.5, 'hex'))],
-    [1, 32, false, '', 12, 'RangeError: randomBytes takes 0 to 1024 bytes in SpacePress code', 'RangeError: The "size" argument must be a whole number']);
+$random = static fn (mixed $n) => $crypto->call('randomBytes', [$n]);
+eq('randomUUID is RFC 4122 version 4; randomBytes is a Buffer of the asked length, 0 to 1024',
+    [preg_match('/\A[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\z/', $uuid), $random(16)->length,
+        $random(8)->bytes() === $random(8)->bytes(), $random(0)->length, $random(9)->nodeBuffer,
+        $code(fn () => $random(1025)), $code(fn () => $random('1'))],
+    [1, 16, false, 0, true, 'RangeError: randomBytes takes 0 to 1024 bytes in SpacePress code',
+        'TypeError ERR_INVALID_ARG_TYPE: The "size" argument must be of type number']);
+
+eq('a digest is finalized once, as in Node', $code(function () use ($crypto) {
+    $h = $crypto->call('createHash', ['sha256']);
+    $h->digest();
+    $h->digest();
+}), 'Error ERR_CRYPTO_HASH_FINALIZED: Digest already called');
 
 finish('crypto');

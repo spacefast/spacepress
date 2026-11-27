@@ -1115,8 +1115,8 @@ fn binary_globals_refuse_shared_memory_and_typed_code_with_fixes() {
         ),
         (
             "helper.ts",
-            "export function make(): number { return new Uint8Array(2).length; }",
-            "`Uint8Array` is only available in imported JavaScript so far",
+            "export function make(): number { return new DataView(new ArrayBuffer(2)).byteLength; }",
+            "`DataView` is only available in imported JavaScript so far",
             "pass text across",
         ),
         (
@@ -1786,6 +1786,62 @@ echo \SpacePress\Js::jsonStringify($out);
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     assert!(out.stderr.is_empty(), "{}", String::from_utf8_lossy(&out.stderr));
     let actual: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(actual, expected, "generated PHP differs from Node");
+}
+
+/// Node built-in modules in typed TypeScript: imports are checked JavaScript values, so stateful
+/// hashes, Buffers and namespace calls compile without a JavaScript helper and match Node.
+#[test]
+fn node_modules_typed_use_matches_node() {
+    let dir = root().join("tests/differential");
+    let tmp = tempfile::tempdir().unwrap();
+    project_from(tmp.path(), &dir.join("node/typed.ts"), &[]);
+    let js = tmp.path().join("node");
+    let transpiled = Command::new(std::env::var_os("TSC").unwrap_or_else(|| "tsc".into()))
+        .args(["--noCheck", "--target", "ES2022", "--module", "ESNext", "--outDir"])
+        .arg(&js)
+        .arg(dir.join("node/typed.ts"))
+        .output()
+        .unwrap();
+    assert!(
+        transpiled.status.success(),
+        "{}",
+        String::from_utf8_lossy(&transpiled.stdout)
+    );
+    let module = std::fs::read_to_string(js.join("typed.js")).unwrap();
+    std::fs::write(js.join("spacepress.config.mjs"), module).unwrap();
+    let node = Command::new("node")
+        .arg(dir.join("run-node.mjs"))
+        .arg(js.join("spacepress.config.mjs"))
+        .output()
+        .unwrap();
+    assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
+    let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
+    assert_eq!(expected["complete"], true);
+    let expected = expected["cases"].clone();
+    assert!(
+        expected.as_object().unwrap().values().all(|c| c.get("data").is_some()),
+        "{expected}"
+    );
+    let content = build_wp(tmp.path());
+    let actual = php(
+        r#"
+        require $argv[1];
+        $schema = require $argv[2] . '/schema.php';
+        require $argv[2] . '/functions.php';
+        $out = [];
+        foreach ($schema['actions'] as $name => $action) {
+            $fn = '\\SpacePressApp\\' . $action['handler'];
+            try { $out[$name] = ['data' => $fn(new \SpacePress\JsObject(), \SpacePress\Seam::ctx(['user' => null]))]; }
+            catch (\Throwable $e) { $out[$name] = ['error' => $e->getMessage()]; }
+        }
+        echo \SpacePress\Js::jsonStringify($out);
+    "#,
+        &[
+            &content.join("plugins/spacepress-runtime/sp/bootstrap.php"),
+            &content.join("plugins/spacepress-app-node-typed/sp/app"),
+        ],
+    );
     assert_eq!(actual, expected, "generated PHP differs from Node");
 }
 

@@ -4498,7 +4498,22 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     return err(span, format!("can't treat {} as {}", v.ty.describe(), t.describe()));
                 }
                 if v.ty == Ty::Dynamic {
-                    return Ok(v);
+                    // Typed code narrows a JavaScript value to a primitive with a run-time check,
+                    // so `buf.toString("hex") as string` is a string from there on. A chained
+                    // assertion (`1n as unknown as number`) stays a checked JavaScript value.
+                    let primitive = match t {
+                        _ if matches!(x.kind, ExprKind::As(..)) => None,
+                        Ty::Str => Some("string"),
+                        Ty::Num => Some("number"),
+                        Ty::Bool => Some("boolean"),
+                        _ => None,
+                    };
+                    return Ok(match primitive {
+                        Some(kind) if !self.javascript_module(module) => {
+                            Out::atom(format!("\\SpacePress\\Js::dynamicAs({}, {})", v.php, php_str(kind)), t)
+                        }
+                        _ => v,
+                    });
                 }
                 Out { ty: t, ..v }
             }
@@ -4906,6 +4921,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     Ty::Dynamic,
                 ))
             }
+            Resolved::Global("Buffer") => Ok(self.buffer_value()),
             Resolved::Global(g @ ("process" | "navigator")) => err_help(
                 span,
                 format!(
@@ -5086,11 +5102,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 format!("`{n}` can't be used as a value"),
                 format!("call it directly: `{n}(...)`"),
             ),
-            Value::Builtin(Builtin::NodeCrypto(_)) => err_help(
-                span,
-                format!("`{n}` from \"node:crypto\" can't be used as a value"),
-                "call it where it's used, e.g. `createHash(\"sha256\").update(text).digest(\"hex\")`",
-            ),
+            Value::Builtin(Builtin::NodeModule(module, export)) => Ok(self.node_value(*module, *export)),
             Value::Builtin(Builtin::Mail) => err_help(
                 span,
                 "`mail` can't be used as a value",
@@ -5225,7 +5237,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 Ok(Out::atom(format!("\\SpacePressApp\\{name}()"), Ty::Dynamic))
             }
             Value::Native(native) => {
-                if !self.javascript_module(self.fx.as_ref().expect("fn").module) {
+                if !self.javascript_module(self.fx.as_ref().expect("fn").module)
+                    && !crate::eval::TYPED_BINARY_GLOBALS.contains(&native.constructor)
+                {
                     return err_help(
                         span,
                         format!("`{n}` is {}, which typed code can't use yet", v.describe()),
@@ -10009,7 +10023,14 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 format!("\\SpacePress\\Js::isFinite(\\SpacePress\\Js::toNumber({}))", v.php),
                 Ty::Bool,
             ),
-            ("process" | "navigator" | "crypto" | "Buffer", _) => {
+            ("Buffer", _) => {
+                return err_help(
+                    span,
+                    "`Buffer()` is deprecated in Node",
+                    "use `Buffer.from(value)` or `Buffer.alloc(size)`",
+                );
+            }
+            ("process" | "navigator" | "crypto", _) => {
                 return err_help(
                     span,
                     format!("`{g}` can't be called"),

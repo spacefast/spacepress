@@ -323,7 +323,7 @@ Evidence: `tests/compiler_contracts.rs` (`language_constructs_match_node_through
 
 Status: **supported**.
 
-Imported JavaScript compiles ArrayBuffer, the integer and float typed arrays, DataView, TextEncoder, TextDecoder (UTF-8 only, fatal and ignoreBOM), Blob, File, atob and btoa through checked runtime dispatch. Views share one buffer: subarray and buffer-offset views write through, slice copies. Element writes use the ECMAScript conversions (ToUint8 wraparound, Uint8Clamped round-half-even, Int32 modulo), and integer elements are little-endian. Invalid UTF-8 decodes with WHATWG maximal-subpart replacement. Blob.stream() is a ReadableStream of Uint8Array chunks, one per non-empty part as in Node. Module-scope byte constructions with plain-data arguments are rebuilt once per request. JSON.stringify of a typed array is an object of indexes; action and ability results that contain bytes throw a TypeError with a text fix, because JSON has no byte type. TextDecoder streaming, FileReader, and typed TypeScript use of byte globals are refused. See docs/decisions/2026-11-07-binary-data.md.
+Imported JavaScript compiles ArrayBuffer, the integer and float typed arrays, DataView, TextEncoder, TextDecoder (UTF-8 only, fatal and ignoreBOM), Blob, File, atob and btoa through checked runtime dispatch. Views share one buffer: subarray and buffer-offset views write through, slice copies. Element writes use the ECMAScript conversions (ToUint8 wraparound, Uint8Clamped round-half-even, Int32 modulo), and integer elements are little-endian. Invalid UTF-8 decodes with WHATWG maximal-subpart replacement. Blob.stream() is a ReadableStream of Uint8Array chunks, one per non-empty part as in Node. Module-scope byte constructions with plain-data arguments are rebuilt once per request. JSON.stringify of a typed array is an object of indexes; action and ability results that contain bytes throw a TypeError with a text fix, because JSON has no byte type. Typed TypeScript may use ArrayBuffer, Uint8Array, TextEncoder, TextDecoder and Buffer as JavaScript values (see node-modules); the other byte globals, TextDecoder streaming and FileReader are refused there. See docs/decisions/2026-11-07-binary-data.md.
 
 Evidence: `tests/compiler_contracts.rs` (`binary_data_matches_node_through_generated_php`)
 
@@ -803,9 +803,17 @@ Evidence: `tests/fixtures/reject-plugin-db`
 
 Status: **supported**.
 
-Handlers use the standard host forms, type-checked by @types/node: the global fetch(url, { method, headers, body, redirect }) with a Response (status, statusText, ok, url, redirected, bodyUsed, headers.get/has/forEach, text(), json()), Headers and URLSearchParams; process.env.NAME and process.env["NAME"] (string | undefined); crypto.randomUUID(); and from "node:crypto" (import or a top-level const require) createHash and createHmac chains ending in digest("hex" | "base64" | "base64url"), randomBytes(n).toString(encoding), randomUUID and timingSafeEqual(Buffer.from(a), Buffer.from(b)). They lower in src/compile/host.rs onto SpacePress\Fetch (HTTPS-only egress policy), SpacePress\Env and SpacePress\Crypto. See config-api.md.
+Handlers use the standard host forms, type-checked by @types/node: the global fetch(url, { method, headers, body, redirect }) with a Response (status, statusText, ok, url, redirected, bodyUsed, headers.get/has/forEach, text(), json()), Headers and URLSearchParams; process.env.NAME and process.env["NAME"] (string | undefined); crypto.randomUUID(); and the Node built-in modules (see node-modules). They lower in src/compile/host.rs onto SpacePress\Fetch (HTTPS-only egress policy), SpacePress\Env, SpacePress\Crypto and SpacePress\Node\Module. See config-api.md.
 
 Evidence: `tests/compiler_contracts.rs` (`host_globals_match_node_through_generated_php`)
+
+## node-modules
+
+Status: **supported**.
+
+An import or top-level require of a Node built-in module ("node:crypto" or "crypto", "node:buffer" or "buffer") and the global Buffer are run-time module objects (SpacePress\Node\Module), reached through checked JavaScript dispatch in typed TypeScript as in imported JavaScript. createHash and createHmac return stateful objects with update(data, inputEncoding?) and digest(encoding?), where digest() without an encoding returns a Buffer; randomBytes(n) returns a Buffer; timingSafeEqual takes buffers, typed arrays, DataViews or ArrayBuffers. In typed code their results are JavaScript values: narrow them with `as string`, `as number` or `as boolean`, which checks the type when PHP runs and throws a TypeError on a mismatch. Documented differences from Node: a createHmac key read from process.env.NAME is trimmed and refused when blank (500 crypto_key_unavailable), hash and HMAC input is capped at 1 MiB in total (413 crypto_input_too_large), and randomBytes takes 0 to 1024 bytes.
+
+Evidence: `tests/compiler_contracts.rs` (`node_modules_typed_use_matches_node`)
 
 ## fetch-signal
 
@@ -907,7 +915,7 @@ Evidence: `tests/fixtures/reject-crypto-subtle`
 
 Status: **refused**. Diagnostic: `F4001`.
 
-Typed arrays are not compiled. Use randomBytes(n).toString("hex") from "node:crypto", or crypto.randomUUID().
+Use randomBytes(n) from "node:crypto", or crypto.randomUUID().
 
 Evidence: `tests/fixtures/reject-crypto-random-values`
 
@@ -915,25 +923,9 @@ Evidence: `tests/fixtures/reject-crypto-random-values`
 
 Status: **refused**. Diagnostic: `F2001`.
 
-node:crypto provides createHash, createHmac, randomBytes, randomUUID and timingSafeEqual. Ciphers, keys, KDFs and streams are not compiled.
+node:crypto provides createHash, createHmac, randomBytes, randomUUID and timingSafeEqual. Ciphers, keys, KDFs and streams are not compiled yet.
 
 Evidence: `tests/fixtures/reject-node-crypto-member`
-
-## node-crypto-buffers
-
-Status: **refused**. Diagnostic: `F4001`.
-
-Finish a hash in one expression with a string encoding: createHash("sha256").update(text).digest("hex"). Buffers exist only inside timingSafeEqual(Buffer.from(a), Buffer.from(b)) and Buffer.byteLength(text).
-
-Evidence: `tests/fixtures/reject-digest-buffer`
-
-## timing-safe-equal-strings
-
-Status: **refused**. Diagnostic: `F4001`.
-
-Pass Buffer.from(a) and Buffer.from(b). As in Node, inputs of different byte lengths throw RangeError, so check Buffer.byteLength first.
-
-Evidence: `tests/fixtures/reject-timing-safe-equal`
 
 ## node-builtins
 

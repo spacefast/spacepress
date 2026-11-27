@@ -302,6 +302,8 @@ impl Compiler<'_, '_> {
                     ("AbortSignal", []) => Ty::AbortSignal,
                     ("URL", []) => Ty::Url,
                     ("URLSearchParams", []) => Ty::UrlParams,
+                    // Bytes are checked JavaScript values in typed code (compile/host.rs).
+                    ("Buffer" | "Uint8Array" | "ArrayBuffer" | "TextEncoder" | "TextDecoder", []) => Ty::Dynamic,
                     // The built-in subclasses are the same runtime value as `Error`; `name` tells them apart.
                     (name, []) if ERROR_CONSTRUCTORS.contains(&name) => Ty::Error,
                     // JSX's result type, with the names TypeScript's React typings use for it.

@@ -303,8 +303,9 @@ pub enum Builtin {
     Files,
     Env,
     Once,
-    /// `"node:crypto"`: the module namespace (`None`) or one of its supported functions.
-    NodeCrypto(Option<&'static str>),
+    /// A Node built-in module (`None`) or one of its exports: a runtime value of
+    /// `SpacePress\Node\Module`, never evaluated at build time.
+    NodeModule(crate::builtins::BuiltinModule, Option<&'static str>),
     /// `mail.send(message)` from "spacepress" / "spacepress", compiled to `SpacePress\Mail::send`.
     Mail,
     /// `connectors.call(role, tool, args?)` and `connectors.enqueue(role, tool, args?, opts?)` from "spacepress" / "spacepress", compiled to `SpacePress\Connectors::call` / `::enqueue`.

@@ -243,6 +243,19 @@ try {
     await page.waitForSelector("form.subscribe", { timeout: 15000 });
     await page.waitForTimeout(300);
     out.linkScroll.missingFragment = await page.evaluate(() => [new URL(location.href).hash, window.scrollY]);
+    // A fragment that is an id but not a CSS selector (`#1note`, which the router's querySelector
+    // rejects): the next page still opens at that element, as a page load does.
+    await page.evaluate(() => {
+      const link = document.querySelector("a.other");
+      link.href = new URL("/other/#1note", location.href).href;
+      Object.assign(link.style, { position: "fixed", top: "8px", left: "8px" });
+      window.scrollTo(0, 0);
+    });
+    await page.click("a.other");
+    await page.waitForSelector(".other-page", { timeout: 15000 });
+    await page.waitForTimeout(500);
+    // The body's 3000px bottom padding (outside the region) leaves room to scroll the note to the top.
+    out.linkScroll.selectorFragment = await page.evaluate(() => [new URL(location.href).hash, window.scrollY > 0 && Math.abs(document.getElementById("1note").getBoundingClientRect().top) < 2]);
     await page.close();
   }
 

@@ -205,24 +205,30 @@ store("sp/router", {
           !routerLink(ref) || !sameTemplate(ref)) return;
       event.preventDefault();
       // Counted before anything waits: a submit whose answer comes in after this click drops it.
-      forms.navigations++;
+      const navigation = ++forms.navigations;
+      const ticket = forms.ticket;
       const { actions } = yield import("@wordpress/interactivity-router");
       const href = ref.href;
-      yield actions.navigate(href);
-      // A page load starts at the link's fragment, which the router scrolls to, or else at the top.
-      // The router only swaps the region, so the window stays where the click was: it is put at the
-      // top here, as a load would, also when the fragment names nothing on the new page. Not when a
-      // later click took over (the URL is then that page's), and instantly, past a page's
-      // `scroll-behavior: smooth`.
-      const { hash } = new URL(href);
-      let id = hash.slice(1);
+      try {
+        yield actions.navigate(href);
+      } catch {
+        // The router swapped the page and pushed its URL, then failed to scroll to a fragment that
+        // isn't a valid selector (`#1intro`); the fragment is found by id below instead.
+      }
+      // A page load starts at the element the fragment names, or else at the top. The router only
+      // swaps the region, so the window stays where the click was: it is put where a load would
+      // put it, instantly, past a page's `scroll-behavior: smooth`. Not when another click or a
+      // form submit started since, or the router never showed this page (it returns early then).
+      if (forms.navigations !== navigation || forms.ticket !== ticket || window.location.href !== href) return;
+      let id = new URL(href).hash.slice(1);
       try {
         id = decodeURIComponent(id);
       } catch {
         // A malformed escape names an id as written, as a page load reads it.
       }
       const target = id === "" ? null : document.getElementById(id);
-      if (window.location.href === href && target === null) window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+      if (target) target.scrollIntoView();
+      else window.scrollTo({ top: 0, left: 0, behavior: "instant" });
     }),
     *prefetch() {
       const { ref } = getElement();

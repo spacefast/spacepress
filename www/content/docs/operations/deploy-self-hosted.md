@@ -53,10 +53,11 @@ If your host sets `DISALLOW_FILE_MODS` or deploys immutable plugin directories v
 npx spacepress build
 ```
 
-Deploy every generated plugin from `sp/dist/wp-content/plugins/` (`spacepress-runtime`, `spacepress-identity`, `spacepress-admin`, `spacepress-app-<name>`, plus any pinned third-party plugins) into your WordPress `wp-content/plugins/` directory and activate them in order:
+Deploy every generated plugin from `sp/dist/wp-content/plugins/` into your WordPress `wp-content/plugins/` directory: the platform plugins (`action-scheduler`, `secure-custom-fields`, `two-factor`, `mcp-adapter`), any plugins you pinned, then `spacepress-runtime`, `spacepress-identity`, `spacepress-app-<name>` and `spacepress-admin`. Activate them in that order; SpacePress Admin goes last because it registers only after the app has:
 
 ```bash
-wp plugin activate spacepress-runtime spacepress-identity spacepress-admin spacepress-app-my-app
+wp plugin activate action-scheduler secure-custom-fields two-factor mcp-adapter
+wp plugin activate spacepress-runtime spacepress-identity spacepress-app-my-app spacepress-admin
 wp spacepress migrate
 wp spacepress seed
 ```

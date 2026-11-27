@@ -5,7 +5,7 @@ const PROJECT_TREE = `my-app/
   tsconfig.json          TypeScript paths ("spacepress", "spacepress/server/db")
   sp/
     schema.ts            Collections, SQL tables, globals, taxonomies
-    server.ts            Actions, background jobs, helpers
+    server.ts            Queries, mutations, background jobs
     app/
       layout.tsx         Root layout & shared metadata
       page.tsx           Home page (/)
@@ -14,13 +14,13 @@ const PROJECT_TREE = `my-app/
       api/feed.json/route.ts Custom HTTP route
     components/          Server & "use client" components
     wp-hooks/            Typed WordPress core actions & filters
-    _generated/          Compiler-emitted db.d.ts, routes.d.ts, client/, migrations/
+    _generated/          db.d.ts, api.js, types/ ($types per route), client/, migrations/
     dist/wp-content/     Built WordPress plugins (ready to deploy)
   content/               Markdown/JSON files synced with WordPress
   emails/                React Email templates rendered by mail.render()
   public/                Static assets served at site root`;
 
-const COMPILER_SANDBOX = `import { collection, table, text, integer, slug, ref, action, defineConfig } from "spacepress";
+const COMPILER_SANDBOX = `import { collection, table, text, integer, slug, ref, mutation, defineConfig } from "spacepress";
 import { db } from "spacepress/server";
 
 export const guides = collection({
@@ -39,13 +39,9 @@ export const votes = table({
   access: { read: "anyone", create: "anyone", update: "admin", delete: "admin" },
 });
 
-export const rateGuide = action({
-  input: { guideId: integer(), score: integer().min(1).max(5) },
-  access: "anyone",
-  async handler({ guideId, score }) {
-    const [row] = await db.insert(votes).values({ guideId, score }).returning();
-    return row;
-  },
+export const rateGuide = mutation({ access: "anyone" }, async ({ guideId, score }: { guideId: number; score: number }) => {
+  const [row] = await db.insert(votes).values({ guideId, score }).returning();
+  return row;
 });
 
 export default defineConfig({ name: "guide-demo" });`;
@@ -62,7 +58,7 @@ export default defineConfig({ name: "bookmarks" });`;
 
 const MIGRATION_EVOLVED_GUIDE = `import { table, text, boolean, select, integer, timestamp, defineConfig } from "spacepress";
 
-// Try renaming \`title\` -> \`label: text().max(140).was("title")\` or adding another column!
+// Try adding a column, or rename \`title\` to \`label: text().max(140).column("title")\` (no SQL needed)
 export const bookmarks = table({
   title: text().max(140),
   url: text().max(191).unique(),
@@ -132,7 +128,7 @@ export function Part1Foundation() {
         <Tree text={PROJECT_TREE} />
         <h3>Explore a complete multi-file SpacePress app</h3>
         <p>
-          Click any file in the tree below to inspect how schema, server actions, layouts, dynamic routes, and interactive client islands fit together in a single project.
+          Click any file in the tree below to inspect how schema, mutations, layouts, dynamic routes, and interactive client islands fit together in a single project.
         </p>
         <ProjectExplorer project="editorial" open="sp/schema.ts" />
       </section>
@@ -155,11 +151,11 @@ export function Part1Foundation() {
             <tbody>
               <tr>
                 <td><code>collection()</code>, <code>table()</code>, <code>global()</code>, <code>taxonomy()</code>, <code>store()</code></td>
-                <td><code>sp/app/schema.php</code> + numbered SQL migrations in <code>sp/_generated/migrations/</code></td>
+                <td><code>sp/app/schema.php</code> + forward-only SQL migrations in <code>sp/_generated/migrations/</code></td>
                 <td>WordPress PHP runtime &amp; MySQL/SQLite</td>
               </tr>
               <tr>
-                <td><code>action()</code>, <code>job()</code>, <code>.on()</code> hooks, <code>.validate()</code>, access functions, <code>route.ts</code></td>
+                <td><code>query()</code>, <code>mutation()</code>, <code>job()</code>, <code>.on()</code> hooks, <code>.validate()</code>, access functions, <code>route.ts</code></td>
                 <td><code>sp/app/functions.php</code></td>
                 <td>Native PHP in WordPress / Action Scheduler</td>
               </tr>
@@ -174,8 +170,8 @@ export function Part1Foundation() {
                 <td>PHP first paint + browser Interactivity API hydration</td>
               </tr>
               <tr>
-                <td>Schema &amp; actions graph</td>
-                <td><code>sp/_generated/db.d.ts</code>, <code>routes.d.ts</code>, <code>openapi.json</code>, <code>client/</code></td>
+                <td>Schema &amp; server functions</td>
+                <td><code>sp/_generated/db.d.ts</code>, <code>api.js</code> + <code>api.d.ts</code>, per-route <code>types/</code>, <code>openapi.json</code>, <code>client/</code></td>
                 <td>IDE type checking, external browsers, React &amp; Astro</td>
               </tr>
             </tbody>
@@ -192,7 +188,7 @@ export function Part1Foundation() {
           presets={[
             {
               label: "spacepress.config.ts",
-              description: "Edit fields, bounds, or action logic — watch schema.php, functions.php, SQL migrations, db.d.ts, openapi.json, and client/types.ts update immediately.",
+              description: "Edit fields, bounds, or mutation logic — watch schema.php, functions.php, SQL migrations, db.d.ts, openapi.json, and client/types.ts update immediately.",
               code: COMPILER_SANDBOX,
             },
           ]}
@@ -285,8 +281,8 @@ export function Part1Foundation() {
               </tr>
               <tr>
                 <td>Migrations &amp; Renames</td>
-                <td><code>field.was(&quot;oldName&quot;)</code>, <code>table(..., &#123; was: &quot;old_table&quot;, existingTable &#125;)</code></td>
-                <td>Preserves existing rows and column values across deploys without data loss</td>
+                <td><code>field.column(&quot;old_name&quot;)</code>, <code>.alias(&quot;oldName&quot;)</code>, <code>table(..., &#123; storageName, existingTable &#125;)</code></td>
+                <td>Migrations are forward-only: a rename maps the field onto the existing column with no DDL, and removed columns are retired, never dropped</td>
               </tr>
             </tbody>
           </table>
@@ -294,7 +290,7 @@ export function Part1Foundation() {
 
         <h3>Interactive Schema Evolution &amp; SQL Migration Diff</h3>
         <p>
-          The first migration creates a <code>bookmarks</code> table with three columns. Add a field or rename <code>title</code> using <code>.was(&quot;title&quot;)</code> below to see the SQL for the next migration.
+          The first migration creates a <code>bookmarks</code> table with three columns. Add a field below to see the SQL for the next migration. To rename <code>title</code>, keep its column with <code>.column(&quot;title&quot;)</code>; the migration has no SQL to run.
         </p>
         <Sandbox
           title="Interactive Migration Generator (with Live Diff)"
@@ -323,7 +319,7 @@ export function Part1Foundation() {
             <strong>Visitor-scoped Kind API (<code>import &#123; posts &#125; from &quot;spacepress/server/db&quot;</code>):</strong> Every call (<code>list</code>, <code>paginate</code>, <code>get</code>, <code>count</code>, <code>create</code>, <code>update</code>, <code>delete</code>) enforces the current visitor&apos;s access rules, draft visibility, and field masks. Use <code>posts.system.*</code> only when intentionally escalating to trusted system access.
           </li>
           <li>
-            <strong>Trusted Database API (<code>import &#123; db &#125; from &quot;spacepress/server&quot;</code>):</strong> Drizzle-inspired relational queries (<code>db.query.&lt;kind&gt;.findMany()</code>, <code>findFirst()</code>), writes (<code>db.insert()</code>, <code>db.update()</code>, <code>db.delete()</code> with <code>.returning()</code>), and <code>db.globals.&lt;key&gt;.get()</code> / <code>.update()</code>. Ideal inside hooks, background jobs, and already-authorized server actions.
+            <strong>Trusted Database API (<code>import &#123; db &#125; from &quot;spacepress/server&quot;</code>):</strong> Drizzle-inspired relational queries (<code>db.query.&lt;kind&gt;.findMany()</code>, <code>findFirst()</code>), writes (<code>db.insert()</code>, <code>db.update()</code>, <code>db.delete()</code> with <code>.returning()</code>), and <code>db.globals.&lt;key&gt;.get()</code> / <code>.update()</code>. Ideal inside hooks, background jobs, and mutations that already checked their caller. Access rules may also run read-only <code>db.query</code> lookups, memoized per request.
           </li>
         </ul>
 
@@ -341,7 +337,7 @@ const { rows, cursor } = await posts.paginate({
   limit: 20,
 });
 
-// Trusted system query inside an action or background job
+// Trusted system query inside a mutation or background job
 const draftCount = await db.query.posts.findMany({
   where: { OR: [{ status: "draft" }, { status: "scheduled" }] },
   columns: { id: true },

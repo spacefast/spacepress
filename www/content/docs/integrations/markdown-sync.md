@@ -11,6 +11,8 @@ publishedAt: 2026-11-21T09:09:00.000Z
 Add a `sync` glob to any `collection()`, `wp.posts.extend()`, `taxonomy()`, `product()`, or `table()`:
 
 ```ts
+import { collection, richText, slug, text } from "spacepress";
+
 export const docs = collection({
   title: text(),
   slug: slug({ source: "title" }),
@@ -22,7 +24,9 @@ export const docs = collection({
 });
 ```
 
-A `**` folder pattern maps subdirectories into parent/child hierarchy (`index.md` represents the folder item). Every synced record receives an immutable `uid` so renames and slug changes stay linked.
+On a `hierarchical` collection, a `**` pattern maps folders to parents and children; a folder's `index.md` is the folder's own page. Every synced record gets a `uid` in its front matter that never changes, so renames and slug changes stay linked.
+
+A synced page can use the app's [block components](/docs/core/pages-and-islands#components-from-npm-packages) as tags on lines of their own, such as `<Callout type="warning">`, and code fences with `title="…"`, marked lines `{2,4-5}` and `group="…"`. `spacepress sync` writes them back the same way. [`@spacepress/docs`](/docs/integrations/docs-package) ships a ready-made set.
 
 ## Running sync & CI workflows
 

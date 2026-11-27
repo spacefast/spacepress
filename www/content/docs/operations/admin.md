@@ -1,4 +1,5 @@
 ---
+uid: zr_626d1bb925432e521de2
 title: SpacePress Admin
 description: Native content editing and experimental Gutenberg collaboration.
 order: 6
@@ -16,10 +17,23 @@ If a plugin hides a collection's taxonomy from core REST, SpacePress uses its ow
 
 SpacePress Admin integrates Gutenberg 24.4.1's experimental collaborative editing on WordPress 7.1. Eligible editors can work on a document's title, blocks, and typed fields in the **Fields** panel together. Gutenberg supplies Yjs, cursors, presence, and HTTP sync. SpacePress handles saves, access checks, hooks, staged versions, and revisions.
 
-1. Add `gutenberg: "24.4.1"` to `plugins` in `spacepress.config.ts`.
-2. Build and install the artifact. Activate Gutenberg alongside the other plugins in the manifest.
-3. In Gutenberg's **Experiments** settings, enable **Real-time collaboration**.
-4. Save a document, then open its SpacePress Admin editor in two separate WordPress user sessions.
+<Steps>
+<Step title="Pin Gutenberg">
+Add `gutenberg: "24.4.1"` to `plugins` in `spacepress.config.ts`.
+</Step>
+
+<Step title="Build and install">
+Build and install the artifact. Activate Gutenberg alongside the other plugins in the manifest.
+</Step>
+
+<Step title="Turn on the experiment">
+In Gutenberg's **Experiments** settings, enable **Real-time collaboration**.
+</Step>
+
+<Step title="Try it">
+Save a document, then open its SpacePress Admin editor in two separate WordPress user sessions.
+</Step>
+</Steps>
 
 ## Eligibility and save behavior
 

@@ -27,16 +27,19 @@ export default function Invitation({ name, url }: { name: string; url: string })
 
 ## Transactional sending
 
-Call `mail.render(Template, props)` to produce `{ html, text }`, then queue delivery with `mail.send()`:
+Import the template's default export and `mail` from `"spacepress/server"`. `mail.render(Template, props)` returns `{ html, text }`; `mail.send()` queues the message:
 
 ```ts
-const rendered = mail.render(Invitation, { name, url });
-await mail.send({
-  to: recipientEmail,
-  subject: "You're invited",
-  html: rendered.html,
-  text: rendered.text,
+// sp/server.ts
+import { mutation } from "spacepress";
+import { mail } from "spacepress/server";
+import Invitation from "../emails/invitation";
+
+export const invite = mutation({ access: "editor" }, async ({ name, email, url }: { name: string; email: string; url: string }) => {
+  const rendered = mail.render(Invitation, { name, url });
+  await mail.send({ to: email, subject: "You're invited", html: rendered.html, text: rendered.text });
+  return { sent: true };
 });
 ```
 
-`mail.send()` queues the message inside the current database transaction and dispatches it after commit with retries — if a hook or action rolls back, no email is sent.
+`mail.send()` queues the message in the current database transaction and hands it to the site's mail transport after commit, retrying a refusal. If the hook, query or mutation rolls back, nothing is sent. Without a host transport, messages go through WordPress's `wp_mail()`.

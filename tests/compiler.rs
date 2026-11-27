@@ -2076,6 +2076,37 @@ export const m = mutation({}, async ({ a, b }: { a: "x" | "y"; b: "b" | "c" }) =
         assert_eq!(out.status.code(), Some(1), "{source}\n{stderr}");
         assert!(stderr.contains(message), "{source}\nexpected {message:?} in:\n{stderr}");
     }
+
+    // A type guard's fact holds after its own call, even when the guard escaped (`const guard =
+    // isNamed`) so the call may write its argument. Only a write in the other operand drops it.
+    let out = check(
+        r#"type Candidate = { kind: string; label?: string };
+type Named = Candidate & { kind: "named"; label: string };
+function isNamed(item: Candidate): item is Named {
+  return item.kind === "named" && typeof item.label === "string";
+}
+function guardedLabel(item: Candidate | undefined): string {
+  if (!item || !isNamed(item)) return "";
+  return item.label;
+}
+export const m = mutation({}, async ({ items }: { items: Candidate[] }) => {
+  const guard = isNamed;
+  return [guardedLabel(items[0]), items.filter(guard).length];
+});"#,
+    );
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let out = check(
+        r#"export const m = mutation({}, async ({ start }: { start: string | null }) => {
+  let x: string | null = start;
+  if (x !== null && ((x = null), true)) return x.length;
+  return 0;
+});"#,
+    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("can't read `length`: this might be null (string | null)"),
+        "{stderr}"
+    );
 }
 
 #[test]

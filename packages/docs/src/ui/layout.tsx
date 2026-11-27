@@ -232,7 +232,7 @@ function formatDate(iso: string): string {
   return `${months[month - 1]} ${day}, ${year}`;
 }
 
-/** The three-column doc page. `children` goes after the content (feedback, comments). */
+/** The three-column doc page. `headerAction` sits beside the breadcrumbs. `children` follows the content. */
 export function DocPage({
   item,
   tree,
@@ -243,6 +243,7 @@ export function DocPage({
   site,
   source,
   home,
+  headerAction,
   children,
 }: {
   item: DocItem;
@@ -254,6 +255,7 @@ export function DocPage({
   site: DocsSite;
   source?: string;
   home?: { title: string; href: string };
+  headerAction?: ReactNode;
   children?: ReactNode;
 }) {
   // Client navigation diffs the next page into this one. Keyed by the page, the article and the
@@ -274,7 +276,14 @@ export function DocPage({
         </div>
       </aside>
       <article className="sd-article" data-sd-article="" data-wp-key={markdown}>
-        <Breadcrumbs items={tree} home={home} />
+        {headerAction ? (
+          <div className="sd-article-top">
+            <Breadcrumbs items={tree} home={home} />
+            <div className="sd-header-action">{headerAction}</div>
+          </div>
+        ) : (
+          <Breadcrumbs items={tree} home={home} />
+        )}
         <header className="sd-article-head">
           <h1>{item.title}</h1>
           <PageActions title={item.title} markdown={markdown} site={site} source={source} />

@@ -2696,7 +2696,7 @@ fn forms_submit_in_place_in_the_browser() {
     assert_eq!(seen["errors"], serde_json::json!([]), "{seen}");
     assert_eq!(
         seen["linkScroll"],
-        serde_json::json!({ "scrolledBefore": true, "after": 0, "marker": "same document" }),
+        serde_json::json!({ "scrolledBefore": true, "after": 0, "marker": "same document", "missingFragment": ["#missing", 0] }),
         "{seen}"
     );
     assert_eq!(

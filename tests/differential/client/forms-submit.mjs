@@ -231,6 +231,18 @@ try {
       after: await page.evaluate(() => window.scrollY),
       marker: await page.evaluate(() => window.spMarker ?? null),
     };
+    // A fragment the next page has no element for: the top too, as a page load would leave it.
+    await page.evaluate(() => {
+      document.body.style.padding = "0 0 3000px";
+      const link = document.querySelector('a[href$="/"]');
+      link.href = `${link.href}#missing`;
+      Object.assign(link.style, { position: "fixed", top: "8px", left: "8px" });
+      window.scrollTo(0, document.documentElement.scrollHeight);
+    });
+    await page.click('a[href$="/#missing"]');
+    await page.waitForSelector("form.subscribe", { timeout: 15000 });
+    await page.waitForTimeout(300);
+    out.linkScroll.missingFragment = await page.evaluate(() => [new URL(location.href).hash, window.scrollY]);
     await page.close();
   }
 

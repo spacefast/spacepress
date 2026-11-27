@@ -87,6 +87,40 @@ test("reference navigation opens synced Markdown and its code examples", async (
   await page.waitForFunction(async (value) => await navigator.clipboard.readText() === value, anchorUrl);
 });
 
+test("reference pages reached by navigation draw their own code and close the page menu", async (t) => {
+  const page = await open(t, "/docs/core/pages-and-islands/", { viewport: { width: 1400, height: 900 } });
+  // What each code block shows: its highlighted code, or "" when nothing was drawn into it.
+  const shown = () => page.evaluate(() => [...document.querySelectorAll(".sd-prose sp-code")].map((node) =>
+    (node.querySelector("diffs-container")?.shadowRoot?.querySelector("pre")?.textContent ?? "").replace(/\s+/g, " ").trim()));
+  const served = async (path) => [...(await (await fetch(base + path)).text()).matchAll(/<pre[^>]*>/g)].length;
+  // The page at `path` is in once its title is, with as many blocks drawn as it serves.
+  const arrived = async (path) => {
+    await page.waitForURL(`**${path}`);
+    const title = (await (await fetch(base + path)).text()).match(/<h1>([^<]*)<\/h1>/)[1].replace(/&amp;/g, "&");
+    await page.waitForFunction(([heading, count]) => document.querySelector("h1")?.textContent === heading &&
+      [...document.querySelectorAll(".sd-prose sp-code")].filter((n) => n.querySelector("diffs-container")?.shadowRoot?.querySelector("pre")).length === count,
+      [title, await served(path)]);
+  };
+  const visit = async (path) => {
+    await page.locator(`.sd-desktop-nav a[href$="${path}"]`).click();
+    await arrived(path);
+    const blocks = await shown();
+    assert.ok(blocks.every((text) => text !== ""), `${path}: an empty code block`);
+    assert.equal(await page.locator(".sd-action-menu").evaluate((menu) => menu.open), false, `${path}: the page menu stayed open`);
+    return blocks;
+  };
+  await arrived("/docs/core/pages-and-islands/");
+  const first = await shown();
+  await page.getByLabel("More page actions").click();
+  const other = await visit("/docs/core/actions-jobs-routes/");
+  assert.notDeepEqual(other, first);
+  // Back to a page the router has shown before: the same code as on the first load, drawn again.
+  assert.deepEqual(await visit("/docs/core/pages-and-islands/"), first);
+  await page.goBack();
+  await arrived("/docs/core/actions-jobs-routes/");
+  assert.deepEqual(await shown(), other);
+});
+
 async function tasks(t) {
   const page = await open(t, "/play/?example=tasks");
   const play = page.locator("sp-play[data-ready]");

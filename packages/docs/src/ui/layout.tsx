@@ -256,10 +256,13 @@ export function DocPage({
   home?: { title: string; href: string };
   children?: ReactNode;
 }) {
+  // Client navigation diffs the next page into this one. Keyed by the page, the article and the
+  // mobile menu are built fresh instead: a menu someone opened closes, and code blocks a script
+  // drew are replaced by the next page's, not patched with its text.
   return (
     <div className="sd-docs">
       <aside className="sd-docs-sidebar">
-        <details className="sd-mobile-nav">
+        <details className="sd-mobile-nav" data-wp-key={markdown}>
           <summary>
             <Icon name="menu" size={16} />
             <span>Menu</span>
@@ -270,7 +273,7 @@ export function DocPage({
           <Sidebar items={tree} label={home?.title} />
         </div>
       </aside>
-      <article className="sd-article" data-sd-article="">
+      <article className="sd-article" data-sd-article="" data-wp-key={markdown}>
         <Breadcrumbs items={tree} home={home} />
         <header className="sd-article-head">
           <h1>{item.title}</h1>

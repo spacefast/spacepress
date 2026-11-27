@@ -213,9 +213,7 @@ final class Blocks
         $fence = null;
         for ($i = 0, $n = count($lines); $i < $n; $i++) {
             $line = $lines[$i];
-            if (preg_match('/^ {0,3}(`{3,}|~{3,})/', $line, $m) === 1) {
-                $fence = $fence === null ? $m[1] : (str_starts_with(ltrim($line), $fence) ? null : $fence);
-            }
+            $fence = Code::fence($line, $fence);
             $open = $fence === null ? self::openTag($line) : null;
             if ($open === null) {
                 $text[] = $line;
@@ -231,13 +229,18 @@ final class Blocks
             if (!$selfClosing) {
                 $depth = 1;
                 for ($i++; $i < $n; $i++) {
-                    if (self::openTag($lines[$i])?->offsetGet(0) === $tag && !(self::openTag($lines[$i])?->offsetGet(2) ?? false)) {
+                    $fence = Code::fence($lines[$i], $fence);
+                    $nested = $fence === null ? self::openTag($lines[$i]) : null;
+                    if ($nested !== null && $nested[0] === $tag && !$nested[2]) {
                         $depth++;
                     }
-                    if (trim($lines[$i]) === "</$tag>" && --$depth === 0) {
+                    if ($fence === null && preg_match("#^ {0,3}</$tag>\\s*\$#", $lines[$i]) === 1 && --$depth === 0) {
                         break;
                     }
                     $inner[] = $lines[$i];
+                }
+                if ($depth !== 0 && $fence !== null) {
+                    throw new \SpacePress\HttpError(422, 'invalid_input', "<$tag> holds a $fence code fence that is never closed: close it before </$tag>");
                 }
                 if ($depth !== 0) {
                     throw new \SpacePress\HttpError(422, 'invalid_input', "<$tag> is never closed: put </$tag> on a line of its own");
@@ -266,7 +269,7 @@ final class Blocks
      */
     private static function openTag(string $line): ?\ArrayObject
     {
-        if (preg_match('/^\s*<([A-Z][A-Za-z0-9]*)((?:\s+[a-z][A-Za-z0-9]*(?:=(?:"[^"]*"|\{[^}]*\}))?)*)\s*(\/?)>\s*$/', $line, $m) !== 1) {
+        if (preg_match('/^ {0,3}<([A-Z][A-Za-z0-9]*)((?:\s+[a-z][A-Za-z0-9]*(?:=(?:"[^"]*"|\{[^}]*\}))?)*)\s*(\/?)>\s*$/', $line, $m) !== 1) {
             return null;
         }
         $attrs = [];

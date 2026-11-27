@@ -331,6 +331,24 @@ foreach ([
 }
 // A tag inside a code fence is code, not a block.
 $out['blocks fenced'] = \SpacePress\Sync\Markdown::toBlocks("```md\n<Callout type=\"note\">\n```\n");
+// Inside a block too: a fenced tag with an expression prop, or a fenced closing tag, is code.
+foreach ([
+    // A fence line with an info string never closes a fence; the fenced </Callout> stays code.
+    'info string' => "<Callout type=\"note\">\n```md\n```tsx\n</Callout>\n```\n</Callout>\n",
+    // A backtick in a ``` info string makes the line text, not a fence.
+    'not a fence' => "<Callout type=\"note\">\n``` a`b\n</Callout>\n",
+    // Indented four spaces, a tag is code in a list item, not a component.
+    'indented' => "<Callout type=\"note\">\n1. Run:\n\n    <Shell search={entries()}>\n</Callout>\n",
+    'unclosed fence' => "<Callout type=\"note\">\n```\ncode\n</Callout>\n",
+] as $case => $markdown) {
+    try {
+        $stored = \SpacePress\Sync\Markdown::toBlocks($markdown);
+        $out['blocks fence cases'][$case] = [substr_count($stored, '<!-- wp:docskind/callout'), substr_count($stored, '<!-- /wp:docskind/callout -->'), str_contains($stored, '&lt;/Callout&gt;')];
+    } catch (\SpacePress\HttpError $e) {
+        $out['blocks fence cases'][$case] = $e->getMessage();
+    }
+}
+$out['blocks fenced inside'] = \SpacePress\Sync\Markdown::toBlocks("<Callout type=\"note\">\n```tsx\n<Shell search={entries()}>\n</Callout>\n```\n</Callout>\n\nAfter.\n");
 
 // Code blocks (docs/decisions/2026-11-13-code-blocks.md): highlighted on the route, with titles,
 // marked lines and a tab group, no script; written back as the same fences.

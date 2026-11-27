@@ -37,19 +37,28 @@ final class Code
         $out = [];
         $open = null;
         foreach (explode("\n", $markdown) as $line) {
-            if ($open === null) {
-                if (preg_match('/^ {0,3}(`{3,}|~{3,})(.*)$/', $line, $m) === 1 && !str_contains($m[1][0] === '`' ? $m[2] : '', '`')) {
-                    $open = $m[1];
-                    $out[] = self::options(trim($m[2]));
-                }
-                continue;
+            $next = self::fence($line, $open);
+            if ($open === null && $next !== null) {
+                $out[] = self::options(trim(substr(ltrim($line), strlen($next))));
             }
-            if (preg_match('/^ {0,3}(`{3,}|~{3,})\s*$/', $line, $m) === 1 && $m[1][0] === $open[0] && strlen($m[1]) >= strlen($open)) {
-                $open = null;
-            }
+            $open = $next;
         }
 
         return $out;
+    }
+
+    /**
+     * The code fence open after `$line`, given the one open before it (CommonMark): a run of three
+     * or more ` or ~ indented at most three spaces opens one (a ` fence's info string has no `);
+     * the same character, at least as long and with nothing after it, closes it.
+     */
+    public static function fence(string $line, ?string $open): ?string
+    {
+        if ($open === null) {
+            return preg_match('/^ {0,3}(`{3,}|~{3,})(.*)$/', $line, $m) === 1 && !str_contains($m[1][0] === '`' ? $m[2] : '', '`') ? $m[1] : null;
+        }
+
+        return preg_match('/^ {0,3}(`{3,}|~{3,})\s*$/', $line, $m) === 1 && $m[1][0] === $open[0] && strlen($m[1]) >= strlen($open) ? null : $open;
     }
 
     /** `ts title="a.ts" {1,3-4} group="install"` → the attributes after the language. */

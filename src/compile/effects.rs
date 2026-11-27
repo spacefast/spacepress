@@ -289,13 +289,20 @@ impl Effects {
         )
     }
 
-    pub fn changes_refinement(&self, expression: Span, binding: Span, view: &[Step]) -> bool {
-        self.places_in(&self.expression_writes, expression)
-            .is_some_and(|mut writes| {
-                writes.any(|p| {
-                    p.binding == binding
-                        && (projected_suffix(&p.path, view).is_some() || projected_suffix(view, &p.path).is_some())
-                })
+    /// What a refinement of `view` holds across the writes `expression` makes. A write strictly
+    /// below the view (a call that may set `item.label`) widens it there, as `write_type` widens a
+    /// later read, and keeps what the refinement says of the value itself (`item` isn't null).
+    /// A write at the view or above it may replace that value: `None`.
+    pub fn refinement_type(&self, expression: Span, binding: Span, view: &[Step], ty: &Ty) -> Option<Ty> {
+        let Some(writes) = self.places_in(&self.expression_writes, expression) else {
+            return Some(ty.clone());
+        };
+        writes
+            .filter(|p| p.binding == binding)
+            .try_fold(ty.clone(), |ty, p| match p.path.strip_prefix(view) {
+                Some(rest) if !rest.is_empty() => Some(widen(&ty, rest)),
+                _ if projected_suffix(&p.path, view).is_some() || projected_suffix(view, &p.path).is_some() => None,
+                _ => Some(ty),
             })
     }
 

@@ -65,8 +65,17 @@ fn build(work: &Path, source: &str, seeded: bool) -> (PathBuf, Option<PathBuf>) 
         copy(&root().join(source), &project);
     }
     if source == "www" {
-        // The guide's pages import the text of www/examples/ from a generated module.
+        // The guide's pages import the text of www/examples/ and the docs' Markdown from generated
+        // modules, and the docs pages come from @spacepress/docs, installed as a copy as npm's
+        // install-links makes it.
         run(Command::new("node").arg(project.join("scripts/sources.mjs")));
+        run(Command::new("node")
+            .arg("--input-type=module")
+            .arg("-e")
+            .arg("import { generateAiAssets } from './scripts/generate-ai-assets.mjs'; generateAiAssets();")
+            .current_dir(&project));
+        let docs = project.join("node_modules/@spacepress/docs");
+        copy(&root().join("packages/docs"), &docs);
     }
     run(spacepress().arg("build").arg(&project).arg("--quiet"));
     let seed = seeded.then(|| {
@@ -168,7 +177,9 @@ fn website_reads_stay_within_budget() {
     // A doc page is two statements: the doc, and the navigation tree's rows (one read for the
     // sidebar and the pager). It was 4 (5 signed in), and its sidebar asked the object cache for
     // each of its 14 docs on its own: 44 round trips, now 32, and still 32 with 24 published docs.
-    // The API list has 24 published rows and costs what drive-store's 4 do. It was 75.
+    // The API list has 24 published rows and costs what drive-store's 4 do. It was 75. The
+    // @spacepress/docs guide (integrations/docs-package.md) added a doc in the list's section:
+    // two more object-cache reads, cold and warm.
     // A GET route handler that only reads sends no START TRANSACTION and no COMMIT: 3, now 1.
     hold(
         "www",
@@ -178,8 +189,8 @@ fn website_reads_stay_within_budget() {
             ("doc/signed-in", 2, 30, 36),
             ("route-handler/anonymous", 1, 15, 18),
             ("route-handler/signed-in", 1, 17, 21),
-            ("api-list/anonymous", 6, 32, 29),
-            ("api-list/signed-in", 6, 35, 32),
+            ("api-list/anonymous", 6, 34, 31),
+            ("api-list/signed-in", 6, 37, 34),
         ],
     );
     assert_eq!(report["api-list/anonymous"]["rows"], 24, "{report:#}");

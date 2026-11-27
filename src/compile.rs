@@ -3555,7 +3555,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 // test. Drop facts on paths that the test can change.
                 for fact in left
                     .into_iter()
-                    .filter(|fact| self.refinement_survives(test, &fact.path))
+                    .filter_map(|fact| self.surviving_refinement(test, fact))
                 {
                     if !left_by_path.contains_key(&fact.path) {
                         order.push(fact.path.clone());
@@ -3564,7 +3564,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 }
                 for fact in right
                     .into_iter()
-                    .filter(|fact| self.refinement_survives(test, &fact.path))
+                    .filter_map(|fact| self.surviving_refinement(test, fact))
                 {
                     if !left_by_path.contains_key(&fact.path) && !right_by_path.contains_key(&fact.path) {
                         order.push(fact.path.clone());
@@ -3593,14 +3593,27 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
     }
 
-    fn refinement_survives(&self, expression: &Expr, path: &str) -> bool {
-        let mut parts = path.split('.');
+    /// A refinement as it holds after the rest of the test `expression` has run: widened below its
+    /// path where the test may write there, gone where the test may replace the path itself.
+    fn surviving_refinement(&self, expression: &Expr, fact: Refinement) -> Option<Refinement> {
+        let mut parts = fact.path.split('.');
         let name = parts.next().expect("path");
         let Some(local) = self.scope_local(name) else {
-            return true;
+            return Some(fact);
         };
         let view: Vec<_> = parts.map(|part| effects::Step::Field(part.to_string())).collect();
-        !self.effects.changes_refinement(expression.span, local.binding, &view)
+        let keep = |ty: Option<Ty>| match ty {
+            Some(ty) => self
+                .effects
+                .refinement_type(expression.span, local.binding, &view, &ty)
+                .map(Some),
+            None => Some(None),
+        };
+        Some(Refinement {
+            yes: keep(fact.yes)?,
+            no: keep(fact.no)?,
+            path: fact.path,
+        })
     }
 
     /// `ctx.user` → ("ctx.user", its type) for paths rooted at a local. For `x!` it is the type of

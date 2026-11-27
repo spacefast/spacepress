@@ -1978,6 +1978,22 @@ export const m = mutation({}, async ({ input }: { input: { role: string } | null
   if (input && input?.role === "a") return onlyA(input.role);
   return "other";
 });"#,
+        // A call on the right of `||` may write below `item`, never replace it: `!item` still
+        // holds, and so does a type guard's refinement (tests/differential/cases.ts guardedLabel).
+        r#"type Candidate = { kind: string; label?: string };
+type Named = Candidate & { kind: "named"; label: string };
+function isNamed(item: Candidate): item is Named { return item.kind === "named" && typeof item.label === "string"; }
+function guardedLabel(item: Candidate | undefined): string {
+  if (!item || !isNamed(item)) return "";
+  return item.label;
+}
+export const m = mutation({}, async () => guardedLabel({ kind: "named", label: "x" }));"#,
+        r#"type Candidate = { kind: string; label?: string };
+function clear(item: Candidate): boolean { item.label = undefined; return true; }
+export const m = mutation({}, async ({ item }: { item?: Candidate }) => {
+  if (!item || !clear(item)) return "";
+  return item.kind;
+});"#,
     ] {
         let out = check(source);
         assert!(
@@ -2056,6 +2072,26 @@ export const m = mutation({}, async ({ a, b }: { a: "x" | "y"; b: "b" | "c" }) =
   return role;
 });"#,
             "string | undefined isn't assignable to string",
+        ),
+        // What the right side of `||` writes below a narrowed path is widened there again...
+        (
+            r#"type Candidate = { kind: string; label?: string };
+function clear(item: Candidate): boolean { item.label = undefined; return true; }
+export const m = mutation({}, async ({ item }: { item?: Candidate }) => {
+  if (!item || typeof item.label !== "string" || !clear(item)) return 0;
+  return item.label.length;
+});"#,
+            "can't read `length`: this might be null (string | undefined)",
+        ),
+        // ...and a path it may replace loses its narrowing.
+        (
+            r#"type Candidate = { kind: string };
+function swap(box: { item?: Candidate }): boolean { box.item = undefined; return true; }
+export const m = mutation({}, async ({ box }: { box: { item?: Candidate } }) => {
+  if (!box.item || !swap(box)) return "";
+  return box.item.kind;
+});"#,
+            "can't read `kind`: this might be null",
         ),
         // `x!` doesn't remove `null` from `x` on the false branch (tsc: TS18047).
         (

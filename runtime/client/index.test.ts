@@ -330,6 +330,24 @@ test("problem documents become SpacePressError with every field; non-problem fai
   const denied = await first.actions.approveComment({ id: 1 }).catch((e: unknown) => e);
   assert.deepEqual([denied.status, denied.code], [401, "unauthenticated"]);
 
+  // Core replaces permission error data with status and puts the original data in additional_data.
+  const permissionError = {
+    code: "sp_forbidden",
+    message: "You cannot approve this comment.",
+    data: { status: 403 },
+    additional_data: [null, { title: 12 }, { title: "Permission denied" }, { title: "Later title" }],
+  };
+  for (const [body, title] of [
+    [permissionError, "Permission denied"],
+    [{ ...permissionError, data: { status: 403, title: "Primary data" } }, "Primary data"],
+    [{ ...permissionError, title: "Primary title", data: { status: 403, title: "Primary data" } }, "Primary title"],
+    [{ ...permissionError, additional_data: [{ title: 12 }] }, "forbidden"],
+  ] as const) {
+    reply = () => ({ status: 403, body: JSON.stringify(body) });
+    const error = await first.actions.approveComment({ id: 1 }).catch((e: unknown) => e);
+    assert.deepEqual([error.status, error.code, error.title, error.message], [403, "forbidden", title, permissionError.message]);
+  }
+
   // HTML from a proxy, and an unreachable server: status 0, code "network".
   reply = () => ({ status: 502, type: "text/html", body: "<h1>Bad gateway</h1>" });
   const html = await first.posts.list().catch((e: unknown) => e);

@@ -72,6 +72,11 @@ pub const HOOKS: &[(&str, &str, &str)] = &[
         "the URL the private-files probe fetches, when the public URL is not reachable from the server",
     ),
     (
+        "sp_private_dir",
+        "filter",
+        "optional: the directory private files (`files()` buckets with local uploads) are kept in, outside anything the web server serves. Returning one replaces `wp-content/uploads/spacepress-private`, its `.htaccess` and the probe: the host vouches that the directory is never served directly. Set it before a site stores any private file; files already under the default directory are not moved",
+    ),
+    (
         "sp_prebuild_url",
         "filter",
         "the URL a prebuilt page is rendered from, when the site cannot reach its own address (`output: \"server\"` with `prerender`)",

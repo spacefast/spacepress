@@ -14,6 +14,9 @@ use SpacePress\Media\Files;
  * Nothing guarantees the web server reads `.htaccess` (nginx ignores it), so the runtime proves it:
  * on activation and daily on admin_init it writes a probe file and fetches its direct URL. Anything
  * but a refusal sets `sp_runtime_private_ok` false, and uploads answer 503 until a probe passes.
+ *
+ * A host that keeps the files outside its web root names the directory with `sp_private_dir`.
+ * The host vouches that nothing serves it directly, so there is no `.htaccess` and no probe.
  */
 final class WpFiles implements FileStorage {
 
@@ -83,7 +86,7 @@ final class WpFiles implements FileStorage {
 			return;
 		}
 		self::ensureSecret();
-		if ( ! Uploads::active() ) {
+		if ( ! Uploads::active() && null === self::hosted() ) {
 			self::protect();
 			self::probe();
 		}
@@ -95,7 +98,7 @@ final class WpFiles implements FileStorage {
 		if ( BrandUpgrade::pending() ) {
 			return;
 		}
-		if ( ! Uploads::active() && (int) get_option( self::CHECKED, 0 ) < time() - DAY_IN_SECONDS ) {
+		if ( ! Uploads::active() && null === self::hosted() && (int) get_option( self::CHECKED, 0 ) < time() - DAY_IN_SECONDS ) {
 			self::probe();
 		}
 	}
@@ -111,9 +114,19 @@ final class WpFiles implements FileStorage {
 		return $secret;
 	}
 
-	/** `WP_CONTENT_DIR/uploads/spacepress-private` exactly, whatever the media upload directory is. */
+	/**
+	 * The host's directory from `sp_private_dir`, else `WP_CONTENT_DIR/uploads/spacepress-private`
+	 * exactly, whatever the media upload directory is.
+	 */
 	public static function root(): string {
-		return WP_CONTENT_DIR . '/uploads/' . self::dir();
+		return self::hosted() ?? WP_CONTENT_DIR . '/uploads/' . self::dir();
+	}
+
+	/** The directory a host keeps private files in, outside anything its web server serves. */
+	private static function hosted(): ?string {
+		$dir = apply_filters( 'sp_private_dir', null );
+
+		return is_string( $dir ) && '' !== $dir ? rtrim( $dir, '/' ) : null;
 	}
 
 	/**
@@ -130,6 +143,9 @@ final class WpFiles implements FileStorage {
 		$root = self::root();
 		if ( ! is_dir( $root ) && ! wp_mkdir_p( $root ) ) {
 			throw new \RuntimeException( "Cannot create $root" );
+		}
+		if ( null !== self::hosted() ) {
+			return;
 		}
 		// The runtime's rules where it made the directory. A pre-release site's kept root has the rules
 		// its owner and server already rely on: a different `.htaccess` there is theirs and stays
@@ -202,7 +218,7 @@ final class WpFiles implements FileStorage {
 			Uploads::store();
 			return null;
 		}
-		if ( get_option( self::OK ) === '1' ) {
+		if ( null !== self::hosted() || get_option( self::OK ) === '1' ) {
 			return null;
 		}
 
@@ -302,6 +318,12 @@ final class WpFiles implements FileStorage {
 		if ( Uploads::active() ) {
 			return array(
 				'backend'   => 's3',
+				'protected' => true,
+				'checkedAt' => null,
+			);
+		}
+		if ( null !== self::hosted() ) {
+			return array(
 				'protected' => true,
 				'checkedAt' => null,
 			);

@@ -442,4 +442,26 @@ eq(
 	)
 );
 
+// ================================================================ host directory
+// A host whose web server ignores `.htaccess` names a directory outside its web root with
+// `sp_private_dir`: uploads open without a passing probe and the bytes land there, not under uploads.
+$hostDir = sys_get_temp_dir() . '/sp-host-private-' . bin2hex( random_bytes( 4 ) );
+$hostDirFilter = static fn () => $hostDir;
+update_option( WpFiles::OK, '0', true );
+eq( 'a failed probe closes uploads', is_string( ( new WpFiles( $wp->connection(), 'talks' ) )->unavailable() ), true );
+add_filter( 'sp_private_dir', $hostDirFilter );
+eq( 'the host directory opens uploads without a probe', ( new WpFiles( $wp->connection(), 'talks' ) )->unavailable(), null );
+eq( 'the host directory is the private root', WpFiles::root(), $hostDir );
+[$s, $hosted] = $upload( 'decks', 'host bytes', 'h.txt', 'alice' );
+eq( 'upload into the host directory', $s, 201 );
+check( 'bytes stored under the host directory', count( glob( "$hostDir/talks/decks/*" ) ) === 1 );
+check( 'no .htaccess written into the host directory', ! file_exists( "$hostDir/.htaccess" ) );
+[$s, , $body] = $download( $hosted['url'] );
+eq( 'the signed url streams it from the host directory', array( $s, $body ), array( 200, 'host bytes' ) );
+eq( 'GET /_schema reports the host directory as protected', call( 'GET', '/_schema' )[1]['runtime']['privateFiles'] ?? null, array( 'protected' => true, 'checkedAt' => null ) );
+call( 'DELETE', "/files/decks/{$hosted['id']}", 'alice' );
+check( 'delete removes the bytes from the host directory', glob( "$hostDir/talks/decks/*" ) === array() );
+remove_filter( 'sp_private_dir', $hostDirFilter );
+update_option( WpFiles::OK, '1', true );
+
 finish( 'files_test' );

@@ -69,6 +69,7 @@ The app API is `/wp-json/spacepress/v1`; actions are `POST /wp-json/spacepress/v
 | `sp_mail_transport` | filter | optional: delivers `mail.send` messages itself by returning `true`, refuses one for a retry with `false` or a throw, or returns `null` to leave it to WordPress's `wp_mail()` (before this, `null` was a refusal and managed builds refused mail without a transport) |
 | `sp_purge_urls` | action | the root-relative URLs a committed content write changed, for a host's page cache, each with the query string a page was cached under (only parameters the page declares as `search`; a request with any other parameter is answered `private, no-store` and never named here); `/*` after a new build goes live |
 | `sp_private_probe_url` | filter | the URL the private-files probe fetches, when the public URL is not reachable from the server |
+| `sp_private_dir` | filter | optional: the directory private files (`files()` buckets with local uploads) are kept in, outside anything the web server serves. Returning one replaces `wp-content/uploads/spacepress-private`, its `.htaccess` and the probe: the host vouches that the directory is never served directly. Set it before a site stores any private file; files already under the default directory are not moved |
 | `sp_prebuild_url` | filter | the URL a prebuilt page is rendered from, when the site cannot reach its own address (`output: "server"` with `prerender`) |
 | `sp_identity_providers` | filter | OpenID Connect sign-in providers SpacePress Identity offers |
 | `sp_identity_rest_cookie_auth` | filter | lets the identity session cookie authenticate the app's REST API (a host serving its own frontend) |
@@ -131,6 +132,7 @@ the ordinary 35-character limit shown below.
     "sp_mail_transport",
     "sp_purge_urls",
     "sp_private_probe_url",
+    "sp_private_dir",
     "sp_prebuild_url",
     "sp_identity_providers",
     "sp_identity_rest_cookie_auth",

@@ -13,9 +13,9 @@ export function ChecklistEditor({
 }) {
   const [items, setItems] = useState(initialItems);
   const [draft, setDraft] = useState("");
-  const addItem = useMutation(api.actions.addChecklistItem);
-  const removeItem = useMutation(api.actions.removeChecklistItem);
-  const toggleItem = useMutation(api.actions.toggleChecklistItem);
+  const addItem = useMutation(api.addChecklistItem);
+  const removeItem = useMutation(api.removeChecklistItem);
+  const toggleItem = useMutation(api.toggleChecklistItem);
 
   const busy = addItem.pending || removeItem.pending || toggleItem.pending;
   const doneCount = items.filter((entry) => entry.done).length;

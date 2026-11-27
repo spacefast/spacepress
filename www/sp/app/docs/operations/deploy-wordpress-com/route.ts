@@ -1,4 +1,4 @@
-export const guard = "anyone";
+export const access = "anyone";
 
 export function GET() {
   return {

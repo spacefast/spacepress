@@ -1,20 +1,18 @@
-import { integer } from "spacepress";
+import { f } from "spacepress";
 import type { PageProps } from "./$types";
-import { db } from "spacepress/server";
-import { events } from "spacepress/server/db";
 import { Link, Pagination } from "spacepress/app";
 import { WorkshopBoard } from "../components/WorkshopBoard";
 
-export const search = { page: integer().min(1).default(1) };
+export const search = { page: f.integer().min(1).default(1) };
 export const metadata = { description: "Workshops, recipes, and supplies at the Community Kitchen." };
 
-export default async function Home({ search }: PageProps<{ page: number }>) {
+export default async function Home({ search, db }: PageProps<{ page: number }>) {
   const pageSize = 10;
-  const workshops = await events.list({
+  const workshops = await db.events.list({
     orderBy: { startsOn: "asc" }, offset: (search.page - 1) * pageSize, limit: pageSize,
   });
-  const count = await events.count();
-  const journal = await db.query.posts.findMany({ limit: 5 });
+  const count = await db.events.count();
+  const journal = await db.posts.list({ limit: 5 });
   return (
     <>
       <h1>Workshops</h1>

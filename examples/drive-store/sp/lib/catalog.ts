@@ -1,5 +1,5 @@
 import type { InferSelectModel } from "spacepress";
-import { drives } from "spacepress/server/db";
+import { db } from "spacepress/server";
 import { drives as driveKind } from "../schema";
 
 type Drive = InferSelectModel<typeof driveKind>;
@@ -17,7 +17,7 @@ export async function catalog(q: string, media: Drive["media"], condition: Drive
     const term = { like: `%${q}%` };
     where.OR = [{ name: term }, { model: term }, { brand: term }, { description: term }];
   }
-  return await drives.list({
+  return await db.drives.list({
     where,
     orderBy: { price: "asc" },
     limit: 100,

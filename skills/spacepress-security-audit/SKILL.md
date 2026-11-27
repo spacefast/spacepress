@@ -1,6 +1,6 @@
 ---
 name: spacepress-security-audit
-description: "Use when auditing or hardening a SpacePress project's authorization and safety: checking collection/table access rules, field-level .access(), visitor-scoped spacepress/server/db vs trusted db from spacepress/server, HTTP route guards, and WordPress Abilities readonly/destructive annotations."
+description: "Use when auditing or hardening a SpacePress project's authorization and safety: checking collection/table access rules, field-level .access(), viewer-scoped db.<kind> vs db.system.<kind>, HTTP route access rules, and WordPress Abilities readonly/destructive annotations."
 compatibility: "Targets SpacePress 0.3 (WordPress 7.1+, PHP 8.2+). Requires the `spacepress` CLI and Node.js 22+."
 ---
 
@@ -24,8 +24,8 @@ compatibility: "Targets SpacePress 0.3 (WordPress 7.1+, PHP 8.2+). Requires the 
    - Verify private fields (emails, tokens, internal notes) declare field-level `.access()` so REST, pages, and clients strip them automatically.
 
 2. Audit every `sp/app/**/page.tsx` and `sp/app/**/route.ts`:
-   - Confirm visitor-facing reads import kinds from `"spacepress/server/db"` (which enforces `.access()` rules) instead of bypassing them with trusted `db` from `"spacepress/server"`.
-   - Confirm custom `route.ts` handlers export an explicit `guard` (or verify webhook signatures before mutating data).
+   - Confirm visitor-facing reads use viewer-scoped `db.<kind>` (which enforces `.access()` rules) instead of bypassing them with `db.system.<kind>`.
+   - Confirm custom `route.ts` handlers export an explicit `access` rule (or verify webhook signatures before mutating data).
 
 3. Audit every `query()`, `mutation()`, and `job()`:
    - Confirm `access` matches the least-privileged role needed and never trusts a client-supplied `userId` for ownership checks.
@@ -33,13 +33,13 @@ compatibility: "Targets SpacePress 0.3 (WordPress 7.1+, PHP 8.2+). Requires the 
 
    ```ts
    // sp/security-example.ts
-   import { table, text, integer, mutation } from "spacepress";
-   import { db, HttpError } from "spacepress/server";
+   import { table, f, mutation } from "spacepress";
+   import { HttpError } from "spacepress/server";
 
    export const privateNotes = table({
-     ownerId: integer(),
-     body: text().min(1).max(2000),
-     secretNote: text().optional().access({ read: "admin" }),
+     ownerId: f.integer(),
+     body: f.text().min(1).max(2000),
+     secretNote: f.text().optional().access({ read: "admin" }),
    }, {
      access: {
        read: ({ user }) => (user ? { ownerId: user.id } : false),
@@ -51,10 +51,11 @@ compatibility: "Targets SpacePress 0.3 (WordPress 7.1+, PHP 8.2+). Requires the 
 
    export const deletePrivateNote = mutation(
      { access: "authenticated", destructive: true },
-     async ({ id }: { id: number }, { user }) => {
+     async ({ db, user }, { id }: { id: number }) => {
        if (!user) throw new HttpError(401, "unauthorized", "Sign in required");
-       const [row] = await db.delete(privateNotes).where({ id, ownerId: user.id }).returning();
-       if (!row) throw new HttpError(404, "not_found", "Note not found");
+       const existing = await db.privateNotes.get({ id, ownerId: user.id });
+       if (!existing) throw new HttpError(404, "not_found", "Note not found");
+       const row = await db.privateNotes.delete(existing.id);
        return { deleted: row.id };
      },
    );
@@ -68,7 +69,7 @@ Run `spacepress check` and `spacepress doctor` to confirm every updated rule and
 
 ## Failure modes / debugging
 
-- **Empty query results for signed-out visitors:** Confirm the kind's `access.read` permits `"anyone"` when public pages read from `"spacepress/server/db"`.
+- **Empty query results for signed-out visitors:** Confirm the kind's `access.read` permits `"anyone"` when public pages read from `db.<kind>`.
 - **Field missing in API response:** Check whether a field-level `.access()` rule restricts it for the caller's role.
 
 ## Escalation

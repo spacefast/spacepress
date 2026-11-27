@@ -1,8 +1,8 @@
-import { collection, defineConfig, text } from "spacepress";
+import { collection, defineConfig, f } from "spacepress";
 import { seoFields } from "./sp/seo";
 
 export const articles = collection({
-  title: text(),
+  title: f.text(),
   ...seoFields(),
 }, { title: "title" });
 

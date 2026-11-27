@@ -26,31 +26,31 @@ compatibility: "Targets SpacePress 0.3 (WordPress 7.1+, PHP 8.2+). Requires the 
    `sp/DATABASE.md`, on how tables work.
 
 2. Export the kind from a file under `sp/` (by convention `sp/schema.ts`). The export name is
-   the kind's name in TypeScript: the typed client and `spacepress/server/db`. Its storage name, the snake_case
+   the kind's name in TypeScript: the typed client and `db.<kind>`. Its storage name, the snake_case
    form (`shoppingList` is `shopping_list`), is what the API path and the site commands take; the
    `schema` tool lists both (`path` is the storage name).
 
    ```ts
    // sp/schema.ts
-   import { collection, table, text, integer, boolean, richText, select, slug, ref } from "spacepress";
+   import { collection, table, f } from "spacepress";
 
    export const recipes = collection({
-     title: text().max(160),
-     slug: slug({ source: "title" }),
-     body: richText().optional(),
-     difficulty: select(["easy", "medium", "hard"]).default("easy"),
+     title: f.text().max(160),
+     slug: f.slug({ source: "title" }),
+     body: f.richText().optional(),
+     difficulty: f.select(["easy", "medium", "hard"]).default("easy"),
    }, { access: { read: "anyone", create: "author", update: "editor", delete: "editor" } });
 
    export const ratings = table({
-     recipe: ref(recipes).onDelete("cascade"),
-     stars: integer().min(1).max(5),
-     verified: boolean().default(false),
+     recipe: f.ref(recipes).onDelete("cascade"),
+     stars: f.integer().min(1).max(5),
+     verified: f.boolean().default(false),
    }, { access: { read: "anyone", create: "subscriber" } });
 
    // Stored, and reached on the API, as `shopping_list`.
    export const shoppingList = table({
-     item: text().max(120),
-     done: boolean().default(false),
+     item: f.text().max(120),
+     done: f.boolean().default(false),
    }, { access: { read: "authenticated", create: "subscriber", update: "subscriber" } });
    ```
 

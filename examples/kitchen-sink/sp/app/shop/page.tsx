@@ -1,10 +1,9 @@
-import { db } from "spacepress/server";
-import { Link } from "spacepress/app";
+import { Link, type PageProps } from "spacepress/app";
 
 export const metadata = { title: "Kitchen supplies" };
 
-export default async function Supplies() {
-  const supplies = await db.query.supplies.findMany({ limit: 20 });
+export default async function Supplies({ db }: PageProps) {
+  const supplies = await db.supplies.list({ limit: 20 });
   return (
     <>
       <h1>Kitchen supplies</h1>

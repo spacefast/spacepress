@@ -1,13 +1,13 @@
-import { collection, defineConfig, media, richText, text } from "spacepress";
+import { collection, defineConfig, f } from "spacepress";
 
 // Native WordPress titles and blocks; the remaining fields are editable in SCF.
 export const posts = collection({
-  title: text(),
-  body: richText().optional(),
-  excerpt: text({ multiline: true }).optional(),
-  cover: media({ accept: "image" }).optional(),
-  seoTitle: text().optional(),
-  seoDescription: text({ multiline: true }).optional(),
+  title: f.text(),
+  body: f.richText().optional(),
+  excerpt: f.text({ multiline: true }).optional(),
+  cover: f.media({ accept: "image" }).optional(),
+  seoTitle: f.text().optional(),
+  seoDescription: f.text({ multiline: true }).optional(),
 }, {
   label: "Publication posts", title: "title", content: "body", revisions: true, comments: true,
   access: {
@@ -17,10 +17,10 @@ export const posts = collection({
 });
 
 export const pages = collection({
-  title: text(),
-  body: richText().optional(),
-  seoTitle: text().optional(),
-  seoDescription: text({ multiline: true }).optional(),
+  title: f.text(),
+  body: f.richText().optional(),
+  seoTitle: f.text().optional(),
+  seoDescription: f.text({ multiline: true }).optional(),
 }, {
   label: "Publication pages", title: "title", content: "body", revisions: true,
   access: {

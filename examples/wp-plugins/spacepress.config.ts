@@ -1,7 +1,7 @@
-import { collection, defineConfig, text } from "spacepress";
+import { collection, defineConfig, f } from "spacepress";
 
 export const notes = collection({
-  title: text(),
+  title: f.text(),
 });
 
 export const collections = { notes };

@@ -1,8 +1,6 @@
-import { integer, text } from "spacepress";
+import { f } from "spacepress";
 import type { PageProps } from "./$types";
-import { db } from "spacepress/server";
 import { get_current_user_id, get_post, get_userdata, home_url, is_user_logged_in, wp_login_url } from "spacepress/server/wp";
-import { buckets, tasks } from "spacepress/server/db";
 import { Comments, Link, Live, useFormState } from "spacepress/app";
 import { ChecklistEditor } from "../components/ChecklistEditor";
 import { KanbanDragController } from "../components/KanbanDragController";
@@ -51,15 +49,15 @@ import {
 } from "../server";
 
 export const search = {
-  view: text().optional(),
-  bucket: text().optional(),
-  q: text().optional(),
-  task: integer().optional(),
-  layout: text().optional(),
-  groupBy: text().optional(),
-  priority: text().optional(),
-  flag: text().optional(),
-  showDone: text().optional(),
+  view: f.text().optional(),
+  bucket: f.text().optional(),
+  q: f.text().optional(),
+  task: f.integer().optional(),
+  layout: f.text().optional(),
+  groupBy: f.text().optional(),
+  priority: f.text().optional(),
+  flag: f.text().optional(),
+  showDone: f.text().optional(),
 };
 
 export const metadata = { title: "Workspace" };
@@ -106,6 +104,7 @@ function commentCountFor(taskId: number): number {
 
 export default async function TodoWorkspacePage({
   search,
+  db,
 }: PageProps<{
     view?: string;
     bucket?: string;
@@ -118,7 +117,7 @@ export default async function TodoWorkspacePage({
     showDone?: string;
   }
 >) {
-  const settings = await db.globals.settings.get();
+  const settings = await db.settings.get();
   const activeView: TodoView = asTodoView(search.view);
   const activeBucketSlug = search.bucket && search.bucket.trim() !== "" ? search.bucket.trim() : null;
   const queryText = search.q && search.q.trim() !== "" ? search.q.trim() : null;
@@ -146,7 +145,7 @@ export default async function TodoWorkspacePage({
   const snoozeState = useFormState(snoozeTask);
   const deleteState = useFormState(deleteTask);
 
-  const rawBuckets = await buckets.system.list({ orderBy: { sortOrder: "asc" }, limit: 200 });
+  const rawBuckets = await db.system.buckets.list({ orderBy: { sortOrder: "asc" }, limit: 200 });
   const allBuckets: TodoBucket[] = rawBuckets.map((row) => ({
     id: row.id,
     name: decodeWpText(row.name),
@@ -158,12 +157,12 @@ export default async function TodoWorkspacePage({
   }));
 
   const PAGE_SIZE = 250;
-  const firstBatch = await tasks.list({ orderBy: { updatedAt: "desc" }, limit: PAGE_SIZE, offset: 0 });
+  const firstBatch = await db.tasks.list({ orderBy: { updatedAt: "desc" }, limit: PAGE_SIZE, offset: 0 });
   const rawTasks = [...firstBatch];
   let offset = PAGE_SIZE;
   let lastCount = firstBatch.length;
   while (lastCount === PAGE_SIZE) {
-    const batch = await tasks.list({ orderBy: { updatedAt: "desc" }, limit: PAGE_SIZE, offset });
+    const batch = await db.tasks.list({ orderBy: { updatedAt: "desc" }, limit: PAGE_SIZE, offset });
     for (const row of batch) rawTasks.push(row);
     lastCount = batch.length;
     offset += PAGE_SIZE;
@@ -266,7 +265,7 @@ export default async function TodoWorkspacePage({
     ? rawTasks.find((t) => t.id === selectedTaskId) ?? null
     : null;
   if (selectedTaskId !== null && selectedRawTask === null) {
-    selectedRawTask = await tasks.get(selectedTaskId);
+    selectedRawTask = await db.tasks.get(selectedTaskId);
   }
   const selectedTask: TodoTask | null = selectedRawTask
     ? {
@@ -295,7 +294,7 @@ export default async function TodoWorkspacePage({
     selectedTask !== null &&
     selectedTask.blockedBy !== null &&
     !openTasks.some((t) => t.id === selectedTask.blockedBy)
-      ? await tasks.get(selectedTask.blockedBy)
+      ? await db.tasks.get(selectedTask.blockedBy)
       : null;
 
   const baseState: QueryState = {

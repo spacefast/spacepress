@@ -1,8 +1,7 @@
 import { defineConfig, mutation } from "spacepress";
-import { mail } from "spacepress/server";
 import Welcome from "./emails/welcome";
 
-export const invite = mutation({ access: "anyone" }, async ({ html, plainText }: {
+export const invite = mutation({ access: "anyone" }, async ({ mail }, { html, plainText }: {
   html: string;
   plainText: string;
 }) => {
@@ -14,7 +13,7 @@ export const invite = mutation({ access: "anyone" }, async ({ html, plainText }:
   })).id;
 });
 
-export const welcome = mutation({ access: "anyone" }, async ({ email, name, dashboardUrl }: {
+export const welcome = mutation({ access: "anyone" }, async ({ mail }, { email, name, dashboardUrl }: {
   email: string;
   name: string;
   dashboardUrl: string;

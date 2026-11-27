@@ -28,26 +28,25 @@ compatibility: "Targets SpacePress 0.3 (WordPress 7.1+, PHP 8.2+). Requires the 
    // sp/server/ratings.ts
    import { query, mutation, job } from "spacepress";
    import { HttpError } from "spacepress/server";
-   import { ratings } from "spacepress/server/db";
 
    export const rate = mutation({ access: "subscriber" },
-     async ({ recipe, stars }: { recipe: number; stars: number }) => {
+     async ({ db }, { recipe, stars }: { recipe: number; stars: number }) => {
        if (stars < 1 || stars > 5) throw new HttpError(422, "invalid_input", "stars must be 1 to 5", "/stars");
-       const row = await ratings.create({ recipe, stars });
+       const row = await db.ratings.create({ recipe, stars });
        await verifyRating.enqueue({ id: row.id });
        return { id: row.id };
      });
 
    export const topRated = query({ access: "anyone" },
-     async ({ limit = 10 }: { limit?: number }) =>
-       await ratings.list({ orderBy: { stars: "desc" }, limit }));
+     async ({ db }, { limit = 10 }: { limit?: number }) =>
+       await db.ratings.list({ orderBy: { stars: "desc" }, limit }));
 
-   export const verifyRating = job({ retries: 3 }, async ({ id }: { id: number }) => {
-     await ratings.system.update(id, { verified: true });
+   export const verifyRating = job({ retries: 3 }, async ({ db }, { id }: { id: number }) => {
+     await db.ratings.update(id, { verified: true });
    });
    ```
 
-2. The input is the handler's first parameter type. SpacePress validates the input against it,
+2. The handler receives `(ctx, input)` — context first (`{ db, user, mail, files, ... }`), validated input second. SpacePress validates the input against its TypeScript type,
    at every depth, before the handler runs: `number`, `string`, `boolean`, literal unions, and
    arrays and objects of those; `unknown` takes any JSON. An optional property (`limit?: number`)
    may be left out; give it a default in the destructuring. `T | null` must be sent. Checks beyond
@@ -60,9 +59,9 @@ compatibility: "Targets SpacePress 0.3 (WordPress 7.1+, PHP 8.2+). Requires the 
    a `GET`), at the line that writes. Its Ability is marked read-only, and no form posts to it. A
    `mutation()` runs in one transaction.
 
-4. Import kinds from `"spacepress/server/db"`. In a query or mutation they read and write as the caller, so
+4. Use `db` from `ctx` (`async ({ db }, input) => ...`). In a query or mutation `db.<kind>` reads and writes as the caller, so
    the kind's access rules apply: `list`, `get`, `count`, `paginate`, `create`, `update`, `delete`.
-   Use `<kind>.system.*` only where the caller's rights must not limit the work. A job has no
+   Use `db.system.<kind>.*` only where the caller's rights must not limit the work. A job has no
    caller and always runs as the system.
 
 5. Options: `access` (default `"editor"`), `rateLimit: "10/min"` (a mutation open to `"anyone"`

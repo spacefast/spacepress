@@ -13,7 +13,7 @@ compatibility: "Targets SpacePress 0.3 (WordPress 7.1+, PHP 8.2+). Requires the 
 
 ## Inputs required
 
-- Which collection, `wp.posts.extend()`, taxonomy, or product kind should sync, and its target glob (for example `content/guides/**/*.md`).
+- Which collection, `extend("posts" | "pages")`, taxonomy, or product kind should sync, and its target glob (for example `content/guides/**/*.md`).
 - Target site URL when syncing against a remote site (local dev site is the default).
 
 ## Procedure
@@ -22,15 +22,14 @@ compatibility: "Targets SpacePress 0.3 (WordPress 7.1+, PHP 8.2+). Requires the 
 
    ```ts
    // sp/guides-sync.ts
-   import { collection, text, slug, richText } from "spacepress";
+   import { collection, f } from "spacepress";
 
    export const guides = collection({
-     title: text().min(1).max(160),
-     slug: slug({ source: "title" }),
-     content: richText().optional(),
+     title: f.text().min(1).max(160),
+     slug: f.slug({ source: "title" }),
+     content: f.richText().optional(),
    }, {
      hierarchical: true,
-     url: "/guides/:path",
      sync: "content/guides/**/*.md",
    });
    ```

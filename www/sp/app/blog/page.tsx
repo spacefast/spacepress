@@ -1,13 +1,12 @@
-import { posts } from "spacepress/server/db";
-import { Link } from "spacepress/app";
+import { Link, type PageProps } from "spacepress/app";
 
 export const metadata = {
   title: "Blog",
   description: "Engineering notes, announcements, and release updates from SpacePress.",
 };
 
-export default async function BlogIndexPage() {
-  const rows = await posts.list({ orderBy: { publishedAt: "desc", id: "desc" }, limit: 50 });
+export default async function BlogIndexPage({ db }: PageProps) {
+  const rows = await db.posts.list({ orderBy: { publishedAt: "desc", id: "desc" }, limit: 50 });
 
   return (
     <>
@@ -15,7 +14,7 @@ export default async function BlogIndexPage() {
         <div className="sp-container-narrow">
           <h1>SpacePress Blog</h1>
           <p>
-            Powered by WordPress&apos;s native posts via <code>wp.posts.extend()</code> and synced from <code>content/posts/*.md</code>.
+            Powered by WordPress&apos;s native posts via <code>extend(&quot;posts&quot;)</code> and synced from <code>content/posts/*.md</code>.
           </p>
         </div>
       </section>

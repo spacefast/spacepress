@@ -1,14 +1,12 @@
-import { docs } from "spacepress/server/db";
-import { Link } from "spacepress/app";
-import { nav } from "spacepress/content";
+import { Link, type PageProps } from "spacepress/app";
 
 export const metadata = {
   title: "Reference",
   description: "Technical reference for SpacePress — schema, queries, TSX pages, actions, jobs, Markdown sync, WooCommerce, React Email, and CLI.",
 };
 
-export default async function DocsIndexPage() {
-  const tree = await nav(docs);
+export default async function DocsIndexPage({ db }: PageProps) {
+  const tree = await db.docs.nav();
 
   return (
     <>

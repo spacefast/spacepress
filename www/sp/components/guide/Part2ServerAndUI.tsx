@@ -1,13 +1,13 @@
 import { Code, ProjectExplorer, Sandbox } from "../Code";
 
-const HOOKS_SANDBOX = `import { table, text, integer, timestamp, job, defineConfig } from "spacepress";
+const HOOKS_SANDBOX = `import { table, job, defineConfig, f } from "spacepress";
 import { db, HttpError } from "spacepress/server";
 
 export const invoices = table({
-  customer: text().max(120),
-  cents: integer().min(1),
-  code: text().max(40).optional(),
-  syncedAt: timestamp().optional(),
+  customer: f.text().max(120),
+  cents: f.integer().min(1),
+  code: f.text().max(40).optional(),
+  syncedAt: f.timestamp().optional(),
 }).on({
   beforeCreate(data) {
     data.customer = data.customer.trim();
@@ -29,7 +29,7 @@ export const syncInvoice = job({ retries: 3 }, async ({ invoiceId }: { invoiceId
 
 export default defineConfig({ name: "hooks-demo" });`;
 
-const ACTIONS_FILES_SANDBOX = `import { table, text, file, files, mutation, job, env, defineConfig } from "spacepress";
+const ACTIONS_FILES_SANDBOX = `import { table, files, mutation, job, env, defineConfig, f } from "spacepress";
 import { db, HttpError } from "spacepress/server";
 
 // Private file bucket: downloads use signed 5-minute URLs when loaded via \`with\`
@@ -40,9 +40,9 @@ export const briefs = files({
 });
 
 export const submissions = table({
-  title: text().min(1).max(140),
-  brief: file(briefs).optional(),
-  status: text().default("pending"),
+  title: f.text().min(1).max(140),
+  brief: f.file(briefs).optional(),
+  status: f.text().default("pending"),
 });
 
 // Every query and mutation is also a typed WordPress Ability
@@ -88,7 +88,7 @@ const ROUTE_CODE = `// sp/app/api/feed.json/route.ts
 import { type RouteRequest } from "spacepress";
 import { db } from "spacepress/server";
 
-export const guard = "anyone";
+export const access = "anyone";
 
 export async function GET(req: RouteRequest) {
   const limit = Number(req.query.get("limit") ?? "10");
@@ -162,7 +162,7 @@ export function Part2ServerAndUI() {
           <li><code>beforeCreate(data, ctx)</code> / <code>afterCreate(row, ctx)</code> — normalize input, enforce invariants, compute derived fields, or enqueue post-commit jobs.</li>
           <li><code>beforeUpdate(patch, existing, ctx)</code> / <code>afterUpdate(row, previous, ctx)</code> — react to field transitions with both old and new rows.</li>
           <li><code>beforeDelete(row, ctx)</code> / <code>afterDelete(row, ctx)</code> — run on permanent delete (trashing a WordPress post fires update hooks; emptying trash fires delete hooks).</li>
-          <li><code>afterPublish(row, ctx)</code> — fires whenever a collection item transitions to published (on create, update, or scheduled publish).</li>
+          <li><code>onPublish(row, ctx)</code> — fires whenever a collection item transitions to published (on create, update, or scheduled publish).</li>
         </ul>
 
         <Sandbox
@@ -199,7 +199,7 @@ export function Part2ServerAndUI() {
             <strong>Background Jobs (<code>job()</code>):</strong> <code>job(options, handler)</code>, queued with <code>myJob.enqueue(input, &#123; delay?, key? &#125;)</code> onto WordPress&apos;s <strong>Action Scheduler</strong>. Enqueueing inside a hook or mutation commits atomically with the database write, supports automatic <code>retries</code>, dedupe <code>key</code>s, and idempotency guards via <code>once(key, fn)</code>. Recurring work uses <code>job(&#123; every: &quot;1h&quot; &#125;, ...)</code> or <code>cron(&quot;0 3 * * *&quot;, ...)</code>. Jobs get longer outbound <code>fetch()</code> limits (60&nbsp;s, 16&nbsp;MiB) than requests do.
           </li>
           <li>
-            <strong>Custom HTTP Routes (<code>sp/app/.../route.ts</code>):</strong> Export <code>GET</code>, <code>POST</code>, <code>PUT</code>, <code>PATCH</code>, or <code>DELETE</code> handlers plus <code>export const guard</code> to serve JSON feeds, webhooks, robots.txt, or custom endpoints at any clean URL outside <code>/wp-json</code>.
+            <strong>Custom HTTP Routes (<code>sp/app/.../route.ts</code>):</strong> Export <code>GET</code>, <code>POST</code>, <code>PUT</code>, <code>PATCH</code>, or <code>DELETE</code> handlers plus <code>export const access</code> to serve JSON feeds, webhooks, robots.txt, or custom endpoints at any clean URL outside <code>/wp-json</code>.
           </li>
           <li>
             <strong>Private File Buckets (<code>files()</code>) &amp; Signed Webhooks:</strong> Store private uploads locally or on S3-compatible storage (<code>uploads: &#123; backend: &quot;s3&quot;, ... &#125;</code>) with automatic 5-minute signed download URLs, read them on the server with <code>bucket.get(id)</code>, <code>readText(id)</code> and <code>readBase64(id)</code>, accept uploads from islands with <code>uploadFile(bucket, file)</code>, and emit signed <code>SpacePress-Signature</code> HMAC webhooks on any <code>&lt;kind&gt;.created|updated|deleted</code> event.
@@ -255,7 +255,7 @@ export function Part2ServerAndUI() {
               </tr>
               <tr>
                 <td><code>export const search</code> &amp; <code>guard</code></td>
-                <td>Typed query-string parsing (e.g. <code>&#123; page: integer().default(1) &#125;</code>) and route-level access guards.</td>
+                <td>Typed query-string parsing (e.g. <code>&#123; page: f.integer().default(1) &#125;</code>) and route-level access guards.</td>
               </tr>
               <tr>
                 <td><code>output: &quot;static&quot;</code> + <code>staticParams()</code></td>

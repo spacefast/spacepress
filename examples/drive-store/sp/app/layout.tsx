@@ -1,4 +1,3 @@
-import { db } from "spacepress/server";
 import { Link, type LayoutProps } from "spacepress/app";
 import { home_url, is_user_logged_in, wp_login_url } from "spacepress/server/wp";
 import "./site.css";
@@ -14,8 +13,8 @@ export const metadata = {
   links: [{ rel: "alternate", type: "application/rss+xml", href: "/?feed=rss2&post_type=product" }],
 };
 
-export default async function RootLayout({ children }: LayoutProps) {
-  const shop = await db.globals.settings.get();
+export default async function RootLayout({ children, db }: LayoutProps) {
+  const shop = await db.settings.get();
   const signedIn = is_user_logged_in();
   return (
     <div className="shell">

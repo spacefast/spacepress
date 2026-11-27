@@ -1,13 +1,13 @@
 import type { PageProps } from "./$types";
 // The catalog: every published drive, searchable and filtered by media and condition.
-import { select, text } from "spacepress";
+import { f } from "spacepress";
 import { Link } from "spacepress/app";
 import { CONDITIONS, MEDIA } from "../schema";
 import { catalog } from "../lib/catalog";
 import { mediaName, money, size, stockLabel } from "./_lib/format";
 
 export const metadata = { title: "Catalog" };
-export const search = { q: text().max(200).optional(), media: select(MEDIA).optional(), condition: select(CONDITIONS).optional() };
+export const search = { q: f.text().max(200).optional(), media: f.select(MEDIA).optional(), condition: f.select(CONDITIONS).optional() };
 
 type Search = { q: string | null; media: (typeof MEDIA)[number] | null; condition: (typeof CONDITIONS)[number] | null };
 

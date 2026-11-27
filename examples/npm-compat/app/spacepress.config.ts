@@ -3,7 +3,7 @@ import urlJoin from "url-join";
 import template from "just-template";
 import escapeHtml from "escape-html";
 
-export const link = query({ access: "anyone" }, (input: { slug: string; title: string }) => {
+export const link = query({ access: "anyone" }, (_ctx, input: { slug: string; title: string }) => {
   const href = urlJoin("/notes/", encodeURIComponent(input.slug));
   return {
     href,

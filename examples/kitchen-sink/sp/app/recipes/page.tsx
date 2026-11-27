@@ -1,14 +1,13 @@
-import { text } from "spacepress";
+import { f } from "spacepress";
 import type { PageProps } from "./$types";
-import { recipes } from "spacepress/server/db";
 import { Link } from "spacepress/app";
 
-export const search = { after: text().optional() };
+export const search = { after: f.text().optional() };
 export const metadata = { title: "Recipes" };
 
-export default async function Recipes({ search }: PageProps<{ after?: string }>) {
+export default async function Recipes({ search, db }: PageProps<{ after?: string }>) {
   // The kind API reads as the visitor: published recipes only, ten at a time by cursor.
-  const page = await recipes.paginate({ orderBy: { title: "asc" }, limit: 10, cursor: search.after ?? null, with: { topicIds: true } });
+  const page = await db.recipes.paginate({ orderBy: { title: "asc" }, limit: 10, cursor: search.after ?? null, with: { topicIds: true } });
   return (
     <section>
       <h1>Recipes</h1>

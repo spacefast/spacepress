@@ -1,10 +1,14 @@
 import { Content, Link, notFound } from "spacepress/app";
 import type { PageProps } from "./$types";
 
-export const metadata = ({ item }: PageProps) => ({ title: item?.name ?? "Kitchen supplies" });
+export const metadata = async ({ params, db }: PageProps) => {
+  const item = await db.supplies.get({ slug: params.slug });
+  return { title: item?.name ?? "Kitchen supplies" };
+};
 
 // The product's own page: WooCommerce links here from the cart, the checkout and order mail.
-export default function Supply({ item }: PageProps) {
+export default async function Supply({ params, db }: PageProps) {
+  const item = await db.supplies.get({ slug: params.slug });
   if (!item) notFound();
   return (
     <article>

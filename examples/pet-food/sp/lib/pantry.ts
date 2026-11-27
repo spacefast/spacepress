@@ -1,12 +1,11 @@
-import { job, type HookCtx } from "spacepress";
+import { job, type User } from "spacepress";
 import { db, HttpError } from "spacepress/server";
-import { shoppingList } from "spacepress/server/db";
 
 export const DAY_MS = 86_400_000;
 export const WINDOW_DAYS = 14;
 export const RESTOCK_DAYS = 7;
 
-export function ownerId(ctx: HookCtx): number {
+export function ownerId(ctx: { user: User | null }): number {
   if (!ctx.user || ctx.user.role === "guest") {
     throw new HttpError(401, "unauthenticated", "Sign in with your WordPress account.");
   }
@@ -14,19 +13,19 @@ export function ownerId(ctx: HookCtx): number {
 }
 
 export async function ownFood(foodId: number, owner: number) {
-  const food = await db.query.foods.findFirst({ where: { id: foodId, ownerId: owner } });
+  const food = await db.system.foods.get({ id: foodId, ownerId: owner });
   if (!food) throw new HttpError(404, "not_found", "Food not found.");
   return food;
 }
 
 export async function ownPet(petId: number, owner: number) {
-  const pet = await db.query.pets.findFirst({ where: { id: petId, ownerId: owner } });
+  const pet = await db.system.pets.get({ id: petId, ownerId: owner });
   if (!pet) throw new HttpError(404, "not_found", "Pet not found.");
   return pet;
 }
 
 export async function usableStock(foodId: number, owner: number, today: string) {
-  return await db.query.stock.findMany({
+  return await db.system.stock.list({
     where: {
       foodId, ownerId: owner, gramsLeft: { gt: 0 },
       OR: [{ expiresOn: { isNull: true } }, { expiresOn: { gte: today } }],
@@ -39,7 +38,7 @@ export async function projection(foodId: number, owner: number) {
   const now = Date.now();
   const food = await ownFood(foodId, owner);
   const lots = await usableStock(foodId, owner, new Date(now).toISOString().slice(0, 10));
-  const meals = await db.query.feedings.findMany({
+  const meals = await db.system.feedings.list({
     where: { foodId, ownerId: owner, fedAt: {
       gte: new Date(now - WINDOW_DAYS * DAY_MS).toISOString(),
       lte: new Date(now).toISOString(),
@@ -56,13 +55,15 @@ export async function projection(foodId: number, owner: number) {
   };
 }
 
-export const checkLowStock = job({ agents: false, retries: 3 }, async (input: { foodId: number; ownerId: number }) => {
-  const food = await db.query.foods.findFirst({ where: { id: input.foodId, ownerId: input.ownerId } });
+export const checkLowStock = job({ agents: false, retries: 3 }, async ({ db }, input: { foodId: number; ownerId: number }) => {
+  const food = await db.foods.get({ id: input.foodId, ownerId: input.ownerId });
   if (!food) return;
   const forecast = await projection(food.id, food.ownerId);
   // Scheduler jobs have no user. Update the user's pre-created candidate.
-  await db.update(shoppingList).set({ needed: forecast.needsRestock, checkedAt: new Date().toISOString() })
-    .where({ foodId: food.id, ownerId: food.ownerId });
+  const item = await db.shoppingList.get({ foodId: food.id, ownerId: food.ownerId });
+  if (item) {
+    await db.shoppingList.update(item.id, { needed: forecast.needsRestock, checkedAt: new Date().toISOString() });
+  }
 });
 
 export async function queueStockCheck(foodId: number, owner: number) {

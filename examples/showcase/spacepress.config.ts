@@ -1,4 +1,4 @@
-import { boolean, defineConfig, global, table, text, ref, query } from "spacepress";
+import { defineConfig, global, table, query, f } from "spacepress";
 import { HttpError } from "spacepress/server";
 import {
   consume,
@@ -13,10 +13,10 @@ export { stories } from "./sp/stories";
 
 export const tasks = table(
   {
-    title: text().min(1).max(120),
-    done: boolean().default(false),
-    storyId: ref(() => stories).optional(),
-    editorNote: text().access({ read: "editor" }).optional(),
+    title: f.text().min(1).max(120),
+    done: f.boolean().default(false),
+    storyId: f.ref(() => stories).optional(),
+    editorNote: f.text().access({ read: "editor" }).optional(),
   },
   {
     access: {
@@ -27,7 +27,7 @@ export const tasks = table(
     },
   },
 ).on({
-  beforeCreate(data) {
+  beforeCreate({ data }) {
     data.title = data.title.trim();
   },
 });
@@ -49,13 +49,13 @@ class Headline {
 
 export const settings = global(
   {
-    title: text().default("The small things, shipped."),
-    description: text().default("A working publication, built with SpacePress.").optional(),
+    title: f.text().default("The small things, shipped."),
+    description: f.text().default("A working publication, built with SpacePress.").optional(),
   },
   { access: { read: "anyone", update: "editor" } },
 );
 
-export const previewHeadline = query({ access: "anyone" }, ({ title }: { title: string }) => { if (title.length < 1) throw new HttpError(422, "invalid_input", "title must be at least 1 character", "/title"); if (title.length > 120) throw new HttpError(422, "invalid_input", "title must be at most 120 characters", "/title"); return new Headline(title).preview(); });
+export const previewHeadline = query({ access: "anyone" }, (_ctx, { title }: { title: string }) => { if (title.length < 1) throw new HttpError(422, "invalid_input", "title must be at least 1 character", "/title"); if (title.length > 120) throw new HttpError(422, "invalid_input", "title must be at most 120 characters", "/title"); return new Headline(title).preview(); });
 
 export default defineConfig({
   name: "showcase",

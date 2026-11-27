@@ -28,7 +28,7 @@ compatibility: "Targets SpacePress 0.3 (WordPress 7.1+, PHP 8.2+). Requires the 
 
    ```ts
    // sp/shop-example.ts
-   import { store, product, productCategory, productTag, order } from "spacepress";
+   import { store, product, productCategory, productTag, order } from "spacepress/commerce";
 
    export const storefront = store({
      currency: "USD",
@@ -47,8 +47,8 @@ compatibility: "Targets SpacePress 0.3 (WordPress 7.1+, PHP 8.2+). Requires the 
      payments: ["cod"],
    });
 
-   export const catalogProducts = product({ sync: "content/products/*.md", url: "/products/:slug" });
-   export const catalogCategories = productCategory({ url: "/shop/:path" });
+   export const catalogProducts = product({ sync: "content/products/*.md" });
+   export const catalogCategories = productCategory();
    export const catalogTags = productTag();
    export const catalogOrders = order();
    ```

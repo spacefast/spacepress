@@ -1,17 +1,17 @@
-import { blocks, boolean, collection, date, email, file, files, global, integer, job, json, media, number, ref, repeater, richText, select, slug, table, taxonomy, terms, text, timestamp, url, userProjection, wp, group } from "spacepress";
-import { HttpError, once, db } from "spacepress/server";
+import { collection, extend, f, files, global, job, table, taxonomy } from "spacepress";
+import { HttpError } from "spacepress/server";
 import { delete_option, update_option } from "spacepress/server/wp";
 
 // Queued by the workshops' afterCreate hook, run by Action Scheduler after the request commits.
-export const recordEvent = job({ retries: 3 }, async ({ eventId }: { eventId: number }, ctx) => {
+export const recordEvent = job({ retries: 3 }, async ({ db, once, jobId }, { eventId }: { eventId: number }) => {
   if (!Number.isInteger(eventId)) throw new HttpError(422, "invalid_input", "eventId must be an integer", "/eventId");
   // A retried run writes the option once.
-  await once(ctx.jobId, () => update_option("kitchen_has_workshops", true));
-  await db.insert(activity).values({ eventId, summary: "Workshop created" });
+  await once(jobId, () => update_option("kitchen_has_workshops", true));
+  await db.activity.create({ eventId, summary: "Workshop created" });
 });
 
 export const topics = taxonomy(
-  { color: text().pattern(/^#[0-9a-f]{6}$/).optional() },
+  { color: f.text().pattern(/^#[0-9a-f]{6}$/).optional() },
   { label: "Topics", sync: "content/topics/*.md" },
 );
 export const handouts = files({
@@ -20,127 +20,132 @@ export const handouts = files({
 });
 
 export const events = collection({
-  title: text().min(1).max(120).ui({ label: "Workshop title" }),
-  slug: slug({ source: "title" }).optional(),
-  description: richText().optional(),
-  startsOn: date(),
-  venue: text().default("Teaching kitchen").searchable(false),
-  poster: media({ accept: "image" }).optional(),
-  gallery: media({ accept: "image" }).many().default([]),
-  handout: file(handouts).optional(),
-  format: select(["class", "demo"]).default("class"),
-  equipment: select(["apron", "knife", "scale"]).many().default([]),
-  registrationOpen: boolean().default(true),
-  demoUrl: url().optional().showIf({ format: "demo" })
+  title: f.text().min(1).max(120).ui({ label: "Workshop title" }),
+  slug: f.slug({ source: "title" }).optional(),
+  description: f.richText().optional(),
+  startsOn: f.date(),
+  venue: f.text().default("Teaching kitchen").searchable(false),
+  poster: f.media({ accept: "image" }).optional(),
+  gallery: f.media({ accept: "image" }).many().default([]),
+  handout: f.file(handouts).optional(),
+  format: f.select(["class", "demo"]).default("class"),
+  equipment: f.select(["apron", "knife", "scale"]).many().default([]),
+  registrationOpen: f.boolean().default(true),
+  demoUrl: f.url().optional().showIf({ format: "demo" })
     .validate((link) => link.startsWith("https://") ? true : "Link to the demo over https."),
-  ingredients: repeater({ name: text(), grams: number().min(0) }).optional(),
-  host: group({ name: text(), website: url().optional() }).optional(),
-  sections: blocks({
-    tip: { heading: text(), body: richText() },
-    quote: { text: text({ multiline: true }), author: text() },
+  ingredients: f.repeater({ name: f.text(), grams: f.number().min(0) }).optional(),
+  host: f.group({ name: f.text(), website: f.url().optional() }).optional(),
+  sections: f.blocks({
+    tip: { heading: f.text(), body: f.richText() },
+    quote: { text: f.text({ multiline: true }), author: f.text() },
   }).optional(),
 }, {
   label: "Workshops", title: "title", content: "description", comments: true,
-  sync: "content/events/*.md", url: "/events/:slug",
+  sync: "content/events/*.md",
   access: { read: "anyone", create: "editor", update: "editor", delete: "admin", restore: "admin", purge: "admin" },
 }).on({
-  beforeCreate(data) {
+  beforeCreate({ data }) {
     data.title = data.title.trim();
     if (data.title === "") throw new HttpError(422, "invalid_input", "Enter a workshop title.");
   },
-  async afterCreate(event): Promise<void> {
+  async afterCreate({ row: event }): Promise<void> {
     await recordEvent.enqueue({ eventId: event.id }, { key: `event-${event.id}` });
   },
-  beforeUpdate(patch, existing) {
+  beforeUpdate({ patch, existing }) {
     if (patch.registrationOpen === true && existing.startsOn < new Date().toISOString().slice(0, 10)) {
       throw new HttpError(409, "workshop_over", "Registration can't reopen after the workshop date.");
     }
   },
-  async afterUpdate(event, previous): Promise<void> {
+  async afterUpdate({ row: event, previous, db }): Promise<void> {
     if (previous.registrationOpen && !event.registrationOpen) {
-      await db.insert(activity).values({ eventId: event.id, summary: "Registration closed" });
+      await db.system.activity.create({ eventId: event.id, summary: "Registration closed" });
     }
   },
-  async afterPublish(event): Promise<void> {
-    await db.insert(activity).values({ eventId: event.id, summary: "Workshop published" });
+  async onPublish({ row: event, db }): Promise<void> {
+    await db.system.activity.create({ eventId: event.id, summary: "Workshop published" });
   },
-  async beforeDelete(event): Promise<void> {
-    const booked = await db.query.registrations.findFirst({ where: { eventId: event.id } });
+  async beforeDelete({ row: event, db }): Promise<void> {
+    const booked = await db.system.registrations.get({ eventId: event.id });
     if (booked) throw new HttpError(409, "has_registrations", "Cancel this workshop's reservations before deleting it.");
   },
-  async afterDelete(event): Promise<void> {
-    await db.insert(activity).values({ summary: `Workshop deleted: ${event.title}` });
-    const remaining = await db.query.events.findFirst({ columns: { id: true } });
-    if (!remaining) delete_option("kitchen_has_workshops");
+  async afterDelete({ row: event, db }): Promise<void> {
+    await db.system.activity.create({ summary: `Workshop deleted: ${event.title}` });
+    const remaining = await db.system.events.list({ columns: { id: true }, limit: 1 });
+    if (remaining.length === 0) delete_option("kitchen_has_workshops");
   },
-  beforeRestore(event): void {
+  beforeRestore({ row: event }): void {
     if (event.title.trim() === "") throw new HttpError(409, "invalid_workshop", "Cannot restore an untitled workshop.");
   },
-  async afterRestore(event): Promise<void> {
-    await db.insert(activity).values({ eventId: event.id, summary: `Workshop restored: ${event.title}` });
+  async afterRestore({ row: event, db }): Promise<void> {
+    await db.system.activity.create({ eventId: event.id, summary: `Workshop restored: ${event.title}` });
   },
-  async beforePurge(event): Promise<void> {
-    const booked = await db.query.registrations.findFirst({ where: { eventId: event.id } });
+  async beforePurge({ row: event, db }): Promise<void> {
+    const booked = await db.system.registrations.get({ eventId: event.id });
     if (booked) throw new HttpError(409, "has_registrations", "Cannot purge a workshop that still has reservations.");
   },
-  async afterPurge(event): Promise<void> {
-    await db.insert(activity).values({ summary: `Workshop purged: ${event.title}` });
+  async afterPurge({ row: event, db }): Promise<void> {
+    await db.system.activity.create({ summary: `Workshop purged: ${event.title}` });
   },
 });
 
-export const posts = wp.posts.extend({
-  minutes: integer().min(1).optional().ui({ label: "Reading time" }),
-}, { url: "/journal/:slug", sync: "content/posts/*.md" });
+export const posts = extend("posts", {
+  fields: {
+    minutes: f.integer().min(1).optional().ui({ label: "Reading time" }),
+  },
+  sync: "content/posts/*.md",
+});
 
-export const recipes = wp.posts.clone({
-  servings: integer().min(1).default(4),
-  topicIds: terms(topics).reverse("recipes"),
-}, { label: "Recipes", url: "/recipes/:slug", sync: "content/recipes/*.md" });
+export const recipes = collection({
+  title: f.text().min(1),
+  slug: f.slug({ source: "title" }).optional(),
+  content: f.richText().optional(),
+  excerpt: f.text({ multiline: true }).optional(),
+  servings: f.integer().min(1).default(4),
+  topicIds: f.terms(topics).reverse("recipes"),
+}, {
+  label: "Recipes", title: "title", content: "content", comments: true, sync: "content/recipes/*.md",
+  access: { read: "anyone", create: "editor", update: "editor", delete: "editor" },
+});
 
 export const handbook = collection({
-  title: text(),
-  slug: slug({ source: "title" }),
-  content: richText().optional(),
-}, { hierarchical: true, url: "/handbook/:path", sync: "content/handbook/**/*.md" });
+  title: f.text(),
+  slug: f.slug({ source: "title" }),
+  content: f.richText().optional(),
+}, { hierarchical: true, sync: "content/handbook/**/*.md" });
 
-export const members = userProjection({
-  email: email().unique().max(191),
-  name: text().max(80),
-  website: url().optional(),
-  plan: select(["free", "supporter"]).default("free"),
-}, { access: { read: "self", create: "admin", update: "self", delete: "admin" } });
+export const members = extend("users", {
+  fields: {
+    website: f.url().optional(),
+    plan: f.select(["free", "supporter"]).default("free"),
+  },
+  access: { read: "self", create: "admin", update: "self", delete: "admin" },
+});
 
 export const registrations = table({
-  eventId: ref(events).onDelete("restrict").reverse("registrations"),
-  memberId: ref(members).onDelete("restrict"),
-  seats: integer().min(1).max(4).default(1),
-  code: text().max(36).unique().$default(() => crypto.randomUUID()),
-  preferences: json<{ allergens: string[] }>().optional().access({ read: "admin" }),
-  bookedOn: date().defaultNow(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()),
+  eventId: f.ref(events).onDelete("restrict").reverse("registrations"),
+  memberId: f.ref(members).onDelete("restrict"),
+  seats: f.integer().min(1).max(4).default(1),
+  code: f.text().max(36).unique().default(() => crypto.randomUUID()),
+  preferences: f.json<{ allergens: string[] }>().optional().access({ read: "admin" }),
+  bookedOn: f.date().defaultNow(),
+  updatedAt: f.timestamp().defaultNow().onUpdate(() => new Date()),
 }, {
   access: {
-    // Staff read every reservation; a member reads their own, which is how the workshop page
-    // (rendered as the visitor) shows "you hold 2 seats". Writes go through the actions.
     read: (ctx) => ctx.user?.role === "editor" || ctx.user?.role === "admin" ? true : { memberId: ctx.user?.id ?? 0 },
     create: "admin", update: "editor", delete: "admin",
   },
 }).index(["eventId", "memberId"], { unique: true });
 
 export const activity = table({
-  // Optional, so the log keeps its rows after a workshop is deleted (the reference is set to null).
-  eventId: ref(events).optional(),
-  // `.column()` decouples the TypeScript field name from the physical SQL column with zero DDL,
-  // and `.alias()` keeps accepting the old API/filter name during transitions.
-  summary: text().column("message").alias("message"),
-  createdAt: timestamp().defaultNow(),
+  eventId: f.ref(events).optional(),
+  summary: f.text().column("message").alias("message"),
+  createdAt: f.timestamp().defaultNow(),
 }, { agents: false, access: { read: "editor", create: "admin", update: "admin", delete: "admin" } });
 
 export const settings = global({
-  siteTitle: text().default("Community Kitchen"),
-  announcement: text({ multiline: true }).optional(),
-  // Reservation mail is sent from this address. Empty uses noreply@ the site's host.
-  mailFrom: email().optional(),
-  replyTo: email().optional(),
-  links: repeater({ label: text(), href: url() }).optional(),
+  siteTitle: f.text().default("Community Kitchen"),
+  announcement: f.text({ multiline: true }).optional(),
+  mailFrom: f.email().optional(),
+  replyTo: f.email().optional(),
+  links: f.repeater({ label: f.text(), href: f.url() }).optional(),
 }, { label: "Kitchen settings", access: { read: "anyone", update: "admin" } });

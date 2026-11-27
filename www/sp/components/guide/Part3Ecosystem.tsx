@@ -1,8 +1,7 @@
 import { Cmd, Code, Sandbox } from "../Code";
 
-const WOO_GUIDE_SANDBOX = `import {
-  store, product, productCategory, productTag, order, defineConfig,
-} from "spacepress";
+const WOO_GUIDE_SANDBOX = `import { defineConfig } from "spacepress";
+import { store, product, productCategory, productTag, order } from "spacepress/commerce";
 
 export const shop = store({
   currency: "EUR",
@@ -78,13 +77,14 @@ export const inviteMember = mutation({ access: "admin" }, async ({ to, name }: {
   });
 });`;
 
-const ADMIN_SCREEN_SANDBOX = `import { table, text, integer, query, mutation, adminScreen, item, defineConfig } from "spacepress";
+const ADMIN_SCREEN_SANDBOX = `import { table, query, mutation, defineConfig, f } from "spacepress";
+import { adminScreen, item } from "spacepress/admin";
 import { db, HttpError } from "spacepress/server";
 
 export const tickets = table({
-  subject: text().max(160),
-  priority: integer().default(2),
-  state: text().default("open"),
+  subject: f.text().max(160),
+  priority: f.integer().default(2),
+  state: f.text().default("open"),
 });
 
 export const listOpenTickets = query({ access: "editor" }, async () =>

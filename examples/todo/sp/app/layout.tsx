@@ -1,4 +1,3 @@
-import { db } from "spacepress/server";
 import { get_current_user_id, get_userdata, home_url, is_user_logged_in, wp_login_url } from "spacepress/server/wp";
 import { Link, type LayoutProps } from "spacepress/app";
 import "./todo.css";
@@ -10,8 +9,8 @@ export const metadata = {
   description: "Tasks, checklists, and taxonomy-driven Kanban boards powered by @spacepress/todo and SpacePress.",
 };
 
-export default async function RootLayout({ children }: LayoutProps) {
-  const settings = await db.globals.settings.get();
+export default async function RootLayout({ children, db }: LayoutProps) {
+  const settings = await db.settings.get();
   const signedIn = is_user_logged_in();
   const account = signedIn ? get_userdata(get_current_user_id()) : false;
 

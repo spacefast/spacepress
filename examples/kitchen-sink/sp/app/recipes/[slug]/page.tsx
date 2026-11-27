@@ -1,9 +1,13 @@
 import { Comments, Content, notFound } from "spacepress/app";
 import type { PageProps } from "./$types";
 
-export const metadata = ({ item }: PageProps) => ({ title: item?.title ?? "Recipe", description: item?.excerpt ?? "" });
+export const metadata = async ({ params, db }: PageProps) => {
+  const item = await db.recipes.get({ slug: params.slug });
+  return { title: item?.title ?? "Recipe", description: item?.excerpt ?? "" };
+};
 
-export default function Recipe({ item }: PageProps) {
+export default async function Recipe({ params, db }: PageProps) {
+  const item = await db.recipes.get({ slug: params.slug });
   if (!item) notFound();
   return (
     <article>

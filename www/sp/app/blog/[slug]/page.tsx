@@ -1,14 +1,19 @@
-import { Comments, Content, Link } from "spacepress/app";
+import { Comments, Content, Link, notFound } from "spacepress/app";
 import type { PageProps } from "./$types";
 import { PageActions } from "../../../components/PageActions";
 
-export const metadata = ({ item }: PageProps) => ({
-  title: item.title,
-  description: item.excerpt ?? undefined,
-  canonical: `/blog/${item.slug}`,
-});
+export const metadata = async ({ params, db }: PageProps) => {
+  const item = await db.posts.get({ slug: params.slug });
+  return {
+    title: item ? item.title : "Post not found",
+    description: item?.excerpt ?? undefined,
+    canonical: item ? `/blog/${item.slug}` : undefined,
+  };
+};
 
-export default function BlogPostPage({ item }: PageProps) {
+export default async function BlogPostPage({ params, db }: PageProps) {
+  const item = await db.posts.get({ slug: params.slug });
+  if (!item) notFound();
   return (
     <div className="sp-container-narrow" style={{ paddingTop: "44px", paddingBottom: "88px" }}>
       <p style={{ marginBottom: "18px" }}>

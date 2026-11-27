@@ -1,5 +1,4 @@
-import { examples } from "spacepress/server/db";
-import { Link } from "spacepress/app";
+import { Link, type PageProps } from "spacepress/app";
 import { refreshStars } from "../../server";
 
 export const metadata = {
@@ -9,8 +8,8 @@ export const metadata = {
 
 const ONE_DAY_MS = 86_400_000;
 
-export default async function ExamplesPage() {
-  const rows = await examples.list({ orderBy: { position: "asc", id: "asc" }, limit: 100 });
+export default async function ExamplesPage({ db }: PageProps) {
+  const rows = await db.examples.list({ orderBy: { position: "asc", id: "asc" }, limit: 100 });
 
   const cutoff = new Date(Date.now() - ONE_DAY_MS).toISOString();
   const stale = rows.some((row) => !row.starsAt || row.starsAt < cutoff);

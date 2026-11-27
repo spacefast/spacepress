@@ -1,16 +1,20 @@
-import { docs } from "spacepress/server/db";
 import type { PageProps } from "./$types";
-import { headings, nav, pager } from "spacepress/content";
+import { headings, notFound } from "spacepress/app";
 import { DocPage } from "@spacepress/docs";
 
-export const metadata = ({ item }: PageProps) => ({
-  title: item.title,
-  description: item.description ?? undefined,
-});
+export const metadata = async ({ params, db }: PageProps) => {
+  const item = await db.docs.get({ path: params.path });
+  return {
+    title: item ? item.title : "Doc not found",
+    description: item?.description ?? undefined,
+  };
+};
 
-export default async function Doc({ item, params }: PageProps) {
-  const tree = await nav(docs, item);
-  const { prev, next } = await pager(docs, item);
+export default async function Doc({ params, db }: PageProps) {
+  const item = await db.docs.get({ path: params.path });
+  if (!item) notFound();
+  const tree = await db.docs.nav(item);
+  const { prev, next } = await db.docs.pager(item);
   const path = params.path.join("/");
   return (
     <DocPage

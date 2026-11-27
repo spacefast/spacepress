@@ -14,7 +14,7 @@ export function TaskCheckButton({
   label: string;
 }) {
   const [done, setDone] = useState(completed);
-  const toggle = useMutation(api.actions.toggleTask);
+  const toggle = useMutation(api.toggleTask);
 
   const onToggle = async () => {
     if (toggle.pending) return;

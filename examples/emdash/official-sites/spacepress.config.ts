@@ -1,9 +1,9 @@
-import { defineConfig, text, query } from "spacepress";
+import { defineConfig, query, f } from "spacepress";
 
 import { getReadingTime } from "./sp/backend/reading-time";
 
 // The kinds are in sp/kinds.ts: posts, pages, the category, tag and credits taxonomies, and the widgets global.
-export const readingTime = query({ access: "anyone" }, ({ content }: { content: string }) => ({ minutes: getReadingTime([{ _type: "block", children: [{ _type: "span", text: content }] }]) }));
+export const readingTime = query({ access: "anyone" }, (_ctx, { content }: { content: string }) => ({ minutes: getReadingTime([{ _type: "block", children: [{ _type: "span", text: content }] }]) }));
 
 export default defineConfig({
   name: "emdash-starter",

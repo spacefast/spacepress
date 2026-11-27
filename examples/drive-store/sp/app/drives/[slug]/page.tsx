@@ -1,19 +1,22 @@
-import { categories, tags } from "spacepress/server/db";
 import type { PageProps } from "./$types";
 import { Comments, Content, Link, Live, notFound } from "spacepress/app";
 import { mediaName, money, size, stockLabel } from "../../_lib/format";
 
-export const metadata = ({ item }: PageProps) => ({
-  title: item?.name ?? "Drive",
-  description: item?.shortDescription ?? "Tested and graded drives",
-});
+export const metadata = async ({ params, db }: PageProps) => {
+  const item = await db.drives.get({ slug: params.slug });
+  return {
+    title: item?.name ?? "Drive",
+    description: item?.shortDescription ?? "Tested and graded drives",
+  };
+};
 
-export default async function Drive({ item }: PageProps) {
+export default async function Drive({ params, db }: PageProps) {
+  const item = await db.drives.get({ slug: params.slug });
   if (!item) notFound();
   // Woo's own product categories and tags, read by the ids the product carries.
   const labels = [
-    ...(item.categories.length ? await categories.list({ where: { id: { in: item.categories } } }) : []),
-    ...(item.tags.length ? await tags.list({ where: { id: { in: item.tags } } }) : []),
+    ...(item.categories.length ? await db.categories.list({ where: { id: { in: item.categories } } }) : []),
+    ...(item.tags.length ? await db.tags.list({ where: { id: { in: item.tags } } }) : []),
   ];
   return (
     <>

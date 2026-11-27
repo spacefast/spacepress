@@ -5,14 +5,13 @@ import { PageActions } from "../../components/PageActions";
 export const metadata = {
   title: "Quick Start", description: "Go from zero to a running SpacePress application on local WordPress in minutes.", };
 
-const STARTER_SCHEMA = `import {
-  collection, table, text, integer, richText, slug, ref, mutation, defineConfig } from "spacepress";
+const STARTER_SCHEMA = `import { collection, table, mutation, defineConfig, f } from "spacepress";
 import { db, HttpError } from "spacepress/server";
 
 export const notes = collection({
-  title: text().min(1).max(120),
-  slug: slug({ source: "title" }).optional(),
-  content: richText().optional(),
+  title: f.text().min(1).max(120),
+  slug: f.slug({ source: "title" }).optional(),
+  content: f.richText().optional(),
 }, {
   label: "Notes",
   url: "/notes/:slug",
@@ -21,13 +20,13 @@ export const notes = collection({
 });
 
 export const applause = table({
-  noteId: ref(notes).unique().onDelete("cascade"),
-  count: integer().default(0),
+  noteId: f.ref(notes).unique().onDelete("cascade"),
+  count: f.integer().default(0),
 }, {
   access: { read: "anyone", create: "admin", update: "admin", delete: "admin" },
 });
 
-// POST /wp-json/spacepress/v1/actions/clap; islands call it as api.actions.clap
+// POST /wp-json/spacepress/v1/actions/clap; islands call it as api.clap
 export const clap = mutation({ access: "anyone" }, async ({ noteId }: { noteId: number }) => {
   const existing = await db.query.applause.findFirst({ where: { noteId } });
   if (existing) {
@@ -83,7 +82,7 @@ import { api } from "../_generated/api";
 
 export function ClapButton({ noteId, initial }: { noteId: number; initial: number }) {
   const [count, setCount] = useState(initial);
-  const clap = useMutation(api.actions.clap);
+  const clap = useMutation(api.clap);
 
   return (
     <button
@@ -155,7 +154,7 @@ export default function QuickStartPage() {
               <h2>Define your schema &amp; a mutation</h2>
             </div>
             <p style={{ color: "var(--ink-secondary)" }}>
-              SpacePress reads <code>spacepress.config.ts</code> and every <code>.ts</code> file under <code>sp/</code>. Edit the starter schema below — try adding a <code>summary: text().optional()</code> field or modifying the <code>clap</code> mutation — and inspect the live PHP, SQL migration, and TypeScript definitions generated in your browser.
+              SpacePress reads <code>spacepress.config.ts</code> and every <code>.ts</code> file under <code>sp/</code>. Edit the starter schema below — try adding a <code>summary: f.text().optional()</code> field or modifying the <code>clap</code> mutation — and inspect the live PHP, SQL migration, and TypeScript definitions generated in your browser.
             </p>
             <Sandbox
               eager

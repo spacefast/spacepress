@@ -20,12 +20,12 @@ const PROJECT_TREE = `my-app/
   emails/                React Email templates rendered by mail.render()
   public/                Static assets served at site root`;
 
-const COMPILER_SANDBOX = `import { collection, table, text, integer, slug, ref, mutation, defineConfig } from "spacepress";
+const COMPILER_SANDBOX = `import { collection, table, mutation, defineConfig, f } from "spacepress";
 import { db } from "spacepress/server";
 
 export const guides = collection({
-  title: text().min(1).max(120),
-  slug: slug({ source: "title" }).optional(),
+  title: f.text().min(1).max(120),
+  slug: f.slug({ source: "title" }).optional(),
 }, {
   label: "Guides",
   url: "/guides/:slug",
@@ -33,8 +33,8 @@ export const guides = collection({
 });
 
 export const votes = table({
-  guideId: ref(guides).onDelete("cascade"),
-  score: integer().min(1).max(5),
+  guideId: f.ref(guides).onDelete("cascade"),
+  score: f.integer().min(1).max(5),
 }, {
   access: { read: "anyone", create: "anyone", update: "admin", delete: "admin" },
 });
@@ -46,49 +46,47 @@ export const rateGuide = mutation({ access: "anyone" }, async ({ guideId, score 
 
 export default defineConfig({ name: "guide-demo" });`;
 
-const MIGRATION_BASE_GUIDE = `import { table, text, boolean, defineConfig } from "spacepress";
+const MIGRATION_BASE_GUIDE = `import { table, defineConfig, f } from "spacepress";
 
 export const bookmarks = table({
-  title: text().max(140),
-  url: text().max(191),
-  archived: boolean().default(false),
+  title: f.text().max(140),
+  url: f.text().max(191),
+  archived: f.boolean().default(false),
 });
 
 export default defineConfig({ name: "bookmarks" });`;
 
-const MIGRATION_EVOLVED_GUIDE = `import { table, text, boolean, select, integer, timestamp, defineConfig } from "spacepress";
+const MIGRATION_EVOLVED_GUIDE = `import { table, defineConfig, f } from "spacepress";
 
 // Try adding a column, or rename \`title\` to \`label: text().max(140).column("title")\` (no SQL needed)
 export const bookmarks = table({
-  title: text().max(140),
-  url: text().max(191).unique(),
-  category: select(["docs", "article", "tool"]).default("article"),
-  rating: integer().min(1).max(5).optional(),
-  archived: boolean().default(false),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()),
+  title: f.text().max(140),
+  url: f.text().max(191).unique(),
+  category: f.select(["docs", "article", "tool"]).default("article"),
+  rating: f.integer().min(1).max(5).optional(),
+  archived: f.boolean().default(false),
+  updatedAt: f.timestamp().defaultNow().onUpdate(() => new Date()),
 }).index(["category", "archived"]);
 
 export default defineConfig({ name: "bookmarks" });`;
 
-const ACCESS_SANDBOX = `import {
-  collection, table, userProjection, text, email, integer, select, ref, defineConfig,
-} from "spacepress";
+const ACCESS_SANDBOX = `import { collection, table, userProjection, defineConfig, f } from "spacepress";
 
 const STAFF = ["author", "editor", "admin"];
 
 export const profiles = userProjection({
-  email: email().unique().max(191),
-  displayName: text().max(80),
-  plan: select(["free", "pro"]).default("free"),
+  email: f.email().unique().max(191),
+  displayName: f.text().max(80),
+  plan: f.select(["free", "pro"]).default("free"),
 }, {
   access: { read: "self", create: "anyone", update: "self", delete: "admin" },
 });
 
 export const projects = collection({
-  title: text().min(1).max(120),
-  ownerId: integer(),
+  title: f.text().min(1).max(120),
+  ownerId: f.integer(),
   // Field-level access: never exposed to non-staff readers
-  budgetNotes: text({ multiline: true })
+  budgetNotes: f.text({ multiline: true })
     .access({ read: "editor", create: "editor", update: "editor" })
     .optional(),
 }, {
@@ -102,8 +100,8 @@ export const projects = collection({
 });
 
 export const comments = table({
-  projectId: ref(projects).onDelete("cascade"),
-  body: text({ multiline: true })
+  projectId: f.ref(projects).onDelete("cascade"),
+  body: f.text({ multiline: true })
     .min(2)
     .max(2000)
     .validate((v) => v.includes("http://") ? "Use https:// links only" : true),
@@ -247,7 +245,7 @@ export function Part1Foundation() {
 
         <h3>Field Builders &amp; Modifiers</h3>
         <p>
-          Every field is <strong>required (NOT NULL) by default</strong> unless marked <code>.optional()</code>. Defaults (<code>.default()</code>, <code>.defaultNow()</code>, <code>.$default()</code>, <code>.$onUpdate()</code>) make fields omittable on insert.
+          Every field is <strong>required (NOT NULL) by default</strong> unless marked <code>.optional()</code>. Defaults (<code>.default()</code>, <code>.defaultNow()</code>, <code>.default()</code>, <code>.onUpdate()</code>) make fields omittable on insert.
         </p>
         <div className="sp-table-wrap">
           <table className="sp-table">
@@ -261,17 +259,17 @@ export function Part1Foundation() {
             <tbody>
               <tr>
                 <td>Scalars</td>
-                <td><code>text(&#123; multiline? &#125;)</code>, <code>integer()</code>, <code>number()</code>, <code>boolean()</code>, <code>date()</code>, <code>timestamp()</code>, <code>json&lt;T&gt;()</code></td>
-                <td><code>.optional()</code>, <code>.default(v)</code>, <code>.defaultNow()</code>, <code>.$default(fn)</code>, <code>.$onUpdate(fn)</code>, <code>.unique()</code>, <code>.min(n)</code>, <code>.max(n)</code>, <code>.pattern(/re/)</code></td>
+                <td><code>f.text(&#123; multiline? &#125;)</code>, <code>f.integer()</code>, <code>number()</code>, <code>f.boolean()</code>, <code>date()</code>, <code>f.timestamp()</code>, <code>json&lt;T&gt;()</code></td>
+                <td><code>.optional()</code>, <code>.default(v)</code>, <code>.defaultNow()</code>, <code>.default(fn)</code>, <code>.onUpdate(fn)</code>, <code>.unique()</code>, <code>.min(n)</code>, <code>.max(n)</code>, <code>.pattern(/re/)</code></td>
               </tr>
               <tr>
                 <td>Semantic &amp; Editorial</td>
-                <td><code>email()</code>, <code>url()</code>, <code>slug(&#123; source &#125;)</code>, <code>richText()</code>, <code>select([...])</code></td>
-                <td><code>select([...]).many()</code> (JSON list filtered with <code>&#123; has: x &#125;</code>), <code>.validate((v, ctx) =&gt; ...)</code></td>
+                <td><code>f.email()</code>, <code>url()</code>, <code>f.slug(&#123; source &#125;)</code>, <code>richText()</code>, <code>f.select([...])</code></td>
+                <td><code>f.select([...]).many()</code> (JSON list filtered with <code>&#123; has: x &#125;</code>), <code>.validate((v, ctx) =&gt; ...)</code></td>
               </tr>
               <tr>
                 <td>Media, Files &amp; Relations</td>
-                <td><code>media(&#123; accept &#125;)</code>, <code>file(bucket)</code>, <code>ref(kind)</code>, <code>terms(tax)</code></td>
+                <td><code>media(&#123; accept &#125;)</code>, <code>file(bucket)</code>, <code>f.ref(kind)</code>, <code>terms(tax)</code></td>
                 <td><code>.many()</code>, <code>.onDelete(&quot;cascade&quot; | &quot;restrict&quot; | &quot;setNull&quot;)</code>, <code>.reverse(&quot;name&quot;)</code></td>
               </tr>
               <tr>

@@ -1,6 +1,4 @@
-import { docs } from "spacepress/server/db";
 import type { LayoutProps } from "spacepress/app";
-import { nav } from "spacepress/content";
 import { DocsShell, searchEntries } from "@spacepress/docs";
 
 export const template = "blank";
@@ -11,7 +9,7 @@ export const metadata = {
   scripts: ["/theme.js"],
 };
 
-export default async function Root({ children }: LayoutProps) {
+export default async function Root({ children, db }: LayoutProps) {
   return (
     <DocsShell
       title="Acme Docs"
@@ -21,7 +19,7 @@ export default async function Root({ children }: LayoutProps) {
         { label: "Docs", href: "/docs/introduction" },
         { label: "Components", href: "/docs/components" },
       ]}
-      search={searchEntries(await nav(docs))}
+      search={searchEntries(await db.docs.nav())}
       footer={<span>Built with SpacePress and @spacepress/docs.</span>}
     >
       {children}

@@ -1,19 +1,21 @@
-import { db } from "spacepress/server";
-import { Content, Link } from "spacepress/app";
+import { Content, Link, notFound } from "spacepress/app";
 import type { PageProps } from "./$types";
 import { CheerButton } from "../../../components/CheerButton";
 import styles from "./note.module.css";
 
-// notes' `url` is /notes/:slug, so this page receives the note as `item`, read as the visitor;
-// a draft, or a slug no visitor may read, is a 404.
-export const metadata = ({ item }: PageProps) => ({
-  title: item.title,
-  description: item.dek ?? "",
-  canonical: `/notes/${item.slug}`,
-});
+export const metadata = async ({ params, db }: PageProps) => {
+  const item = await db.notes.get({ slug: params.slug });
+  return {
+    title: item ? item.title : "Note not found",
+    description: item?.dek ?? "",
+    canonical: item ? `/notes/${item.slug}` : undefined,
+  };
+};
 
-export default async function NotePage({ item }: PageProps) {
-  const cheers = await db.query.cheers.findFirst({ where: { noteId: item.id } });
+export default async function NotePage({ params, db }: PageProps) {
+  const item = await db.notes.get({ slug: params.slug });
+  if (!item) notFound();
+  const cheers = await db.cheers.get({ noteId: item.id });
   return (
     <article className={styles.note}>
       <p className={styles.back}><Link href="/notes">← All notes</Link></p>

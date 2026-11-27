@@ -7,7 +7,7 @@ export default function kitchenPolicy(options: { notice: string }) {
     name: "policy",
     hooks: {
       recipes: {
-        beforeCreate(data) {
+        beforeCreate({ data }) {
           if (typeof data.title === "string") data.title = data.title.trim();
           // Every recipe carries the kitchen's allergen notice unless it has its own summary.
           if (typeof data.excerpt !== "string" || data.excerpt === "") data.excerpt = options.notice;

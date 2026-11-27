@@ -1,10 +1,9 @@
-import { db } from "spacepress/server";
-import { Link } from "spacepress/app";
+import { Link, type PageProps } from "spacepress/app";
 
 export const metadata = { title: "Plants" };
 
-export default async function Home() {
-  const plants = await db.query.plants.findMany({ columns: { title: true, slug: true, family: true, summary: true }, orderBy: { title: "asc" } });
+export default async function Home({ db }: PageProps) {
+  const plants = await db.plants.list({ columns: { title: true, slug: true, family: true, summary: true }, orderBy: { title: "asc" } });
   return (
     <>
       <h1>Plants</h1>

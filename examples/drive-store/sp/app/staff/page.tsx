@@ -1,20 +1,19 @@
-import { db } from "spacepress/server";
-import { useFormState } from "spacepress/app";
+import { useFormState, type PageProps } from "spacepress/app";
 import { markShipped, processingOrders, restock } from "../../server";
 
 export const metadata = { title: "Staff", robots: { index: false, follow: false } };
 
-export default async function Staff() {
-  const settings = await db.globals.settings.get();
+export default async function Staff({ db }: PageProps) {
+  const settings = await db.settings.get();
   const shipped = useFormState(markShipped);
   const restocked = useFormState(restock);
   const orders = await processingOrders();
-  const low = await db.query.drives.findMany({
+  const low = await db.drives.list({
     where: { stockQuantity: { lte: settings.lowStockAt } },
     orderBy: { stockQuantity: "asc" }, limit: 100,
     columns: { id: true, name: true, stockQuantity: true },
   });
-  const moves = await db.query.stockMovements.findMany({ orderBy: { id: "desc" }, limit: 10 });
+  const moves = await db.stockMovements.list({ orderBy: { id: "desc" }, limit: 10 });
 
   return (
     <>

@@ -1,4 +1,4 @@
-export const guard = "anyone";
+export const access = "anyone";
 
 // The literal directory route also keeps its public ZIPs on the runtime's file handler,
 // which sends CORS headers even on dev servers that ignore .htaccess.

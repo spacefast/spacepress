@@ -1,6 +1,5 @@
-import { text } from "spacepress";
+import { f } from "spacepress";
 import type { PageProps } from "./$types";
-import { shares } from "spacepress/server/db";
 
 export const metadata = {
   title: "Playground",
@@ -8,13 +7,13 @@ export const metadata = {
 };
 
 export const search = {
-  s: text().max(12).optional(),
-  example: text().max(40).optional(),
-  file: text().max(200).optional(),
+  s: f.text().max(12).optional(),
+  example: f.text().max(40).optional(),
+  file: f.text().max(200).optional(),
 };
 
-export default async function PlayPage({ search }: PageProps<{ s?: string | null; example?: string | null; file?: string | null }>) {
-  const saved = search.s ? await shares.system.get({ key: search.s }) : null;
+export default async function PlayPage({ search, db }: PageProps<{ s?: string | null; example?: string | null; file?: string | null }>) {
+  const saved = search.s ? await db.system.shares.get({ key: search.s }) : null;
   const example = saved?.example ?? search.example ?? "tasks";
   const sharedJson = saved ? JSON.stringify(saved.files) : undefined;
 

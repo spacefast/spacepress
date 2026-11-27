@@ -1,10 +1,14 @@
-import { Content, Link } from "spacepress/app";
+import { Content, Link, notFound } from "spacepress/app";
 import type { PageProps } from "./$types";
 
-// plants' `url` is /plants/:slug, so this page receives the plant as `item`, read as the visitor.
-export const metadata = ({ item }: PageProps) => ({ title: item.title, description: item.summary ?? undefined });
+export const metadata = async ({ params, db }: PageProps) => {
+  const item = await db.plants.get({ slug: params.slug });
+  return { title: item ? item.title : "Plant not found", description: item?.summary ?? undefined };
+};
 
-export default function Plant({ item }: PageProps) {
+export default async function Plant({ params, db }: PageProps) {
+  const item = await db.plants.get({ slug: params.slug });
+  if (!item) notFound();
   return (
     <article className="plant">
       <p className="back"><Link href="/">← All plants</Link></p>

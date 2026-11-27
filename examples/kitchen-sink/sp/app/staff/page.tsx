@@ -1,20 +1,17 @@
-import { db } from "spacepress/server";
-import { events } from "spacepress/server/db";
 import { current_user_can } from "spacepress/server/wp";
-import { Html, useFormState } from "spacepress/app";
-import { apiReference } from "spacepress/content";
+import { apiReference, Html, useFormState, type PageProps } from "spacepress/app";
 import { checkSchedule, postAnnouncement } from "../../server";
 
 export const metadata = { title: "Staff" };
 
-export default async function Staff() {
+export default async function Staff({ db }: PageProps) {
   const api = apiReference();
   const check = useFormState(checkSchedule);
   const announced = useFormState(postAnnouncement);
-  const kitchen = await db.globals.settings.get();
-  // `system` reads past the visitor's rules: drafts count too.
-  const drafts = await events.system.count({ where: { status: "draft" } });
-  const log = await db.query.activity.findMany({ orderBy: { createdAt: "desc" }, limit: 10, with: { eventId: true } });
+  const kitchen = await db.settings.get();
+  // `db.system` reads past the visitor's rules: drafts count too.
+  const drafts = await db.system.events.count({ where: { status: "draft" } });
+  const log = await db.activity.list({ orderBy: { createdAt: "desc" }, limit: 10, with: { eventId: true } });
   return (
     <>
       <h1>Kitchen staff</h1>

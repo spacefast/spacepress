@@ -1,43 +1,43 @@
-import { blocks, boolean, collection, defineConfig, env, group, integer, job, json, media, repeater, richText, slug, table, text, ref, mutation } from "spacepress";
-import { db, HttpError } from "spacepress/server";
+import { collection, defineConfig, env, job, table, mutation, f } from "spacepress";
+import { HttpError } from "spacepress/server";
 
 const access = { read: "anyone", create: "editor", update: "editor", delete: "editor" };
-export const writers = collection({ name: text() }, { title: "name", uid: true, access });
+export const writers = collection({ name: f.text() }, { title: "name", uid: true, access });
 export const stories = collection({
-  title: text(),
-  body: richText().optional(),
-  slug: slug({ source: "title" }).optional(),
-  writerId: ref(writers).optional(),
-  cover: media({ accept: "image" }).optional(),
-  price: integer().optional(),
-  editorNote: text().access({ read: "editor", create: "editor", update: "editor" }).optional(),
-  details: group({ subtitle: text().optional(), featured: boolean().default(false).optional() }).optional(),
-  links: repeater({ label: text(), href: text() }).optional(),
-  sections: blocks({
-    quote: { text: text(), cite: text().optional() },
-    callout: { heading: text(), body: text().optional() },
+  title: f.text(),
+  body: f.richText().optional(),
+  slug: f.slug({ source: "title" }).optional(),
+  writerId: f.ref(writers).optional(),
+  cover: f.media({ accept: "image" }).optional(),
+  price: f.integer().optional(),
+  editorNote: f.text().access({ read: "editor", create: "editor", update: "editor" }).optional(),
+  details: f.group({ subtitle: f.text().optional(), featured: f.boolean().default(false).optional() }).optional(),
+  links: f.repeater({ label: f.text(), href: f.text() }).optional(),
+  sections: f.blocks({
+    quote: { text: f.text(), cite: f.text().optional() },
+    callout: { heading: f.text(), body: f.text().optional() },
   }).optional(),
-  metadata: json().optional(),
+  metadata: f.json().optional(),
 }, { title: "title", content: "body", drafts: true, revisions: true, access });
 export const tasks = table({
-  label: text(),
-  storyId: ref(stories).optional().onDelete("cascade"),
-  processed: boolean().default(false),
+  label: f.text(),
+  storyId: f.ref(stories).optional().onDelete("cascade"),
+  processed: f.boolean().default(false),
 }, { access }).on({
-  beforeCreate(data) { data.label = data.label.trim(); },
-  async afterCreate(row) { await processTask.enqueue({ taskId: row.id }); },
+  beforeCreate({ data }) { data.label = data.label.trim(); },
+  async afterCreate({ row }) { await processTask.enqueue({ taskId: row.id }); },
 });
-export const guides = collection({ title: text(), body: richText().optional(), slug: slug({ source: "title" }).optional() }, {
+export const guides = collection({ title: f.text(), body: f.richText().optional(), slug: f.slug({ source: "title" }).optional() }, {
   title: "title", content: "body", sync: "content/guides/*.md", drafts: true, revisions: true, access,
 });
-export const deliveries = table({ message: text() }, { access: { read: "editor" } });
+export const deliveries = table({ message: f.text() }, { access: { read: "editor" } });
 
-export const processTask = job({}, async ({ taskId }: { taskId: number }) => {
+export const processTask = job({}, async ({ db }, { taskId }: { taskId: number }) => {
   if (!Number.isInteger(taskId)) throw new HttpError(422, "invalid_input", "taskId must be an integer", "/taskId");
-  await db.update(tasks).set({ processed: true }).where({ id: taskId });
+  await db.tasks.update(taskId, { processed: true });
 });
 
-export const receive = mutation({ signature: { secret: env("PLATFORM_HOOK_SECRET"), header: "spacepress-signature", scheme: "hmac-sha256" } }, async ({ message }: { message: string }) => { await db.insert(deliveries).values({ message }); return { received: message }; });
+export const receive = mutation({ signature: { secret: env("PLATFORM_HOOK_SECRET"), header: "spacepress-signature", scheme: "hmac-sha256" } }, async ({ db }, { message }: { message: string }) => { await db.deliveries.create({ message }); return { received: message }; });
 
 export default defineConfig({
   name: "platform",

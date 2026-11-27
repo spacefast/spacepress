@@ -1,15 +1,14 @@
 import { job, mutation } from "spacepress";
 import { HttpError } from "spacepress/server";
-import { examples, shares } from "spacepress/server/db";
 
 // Saves a playground edit and answers with its key; /play?s=<key> opens it. Only the files the
 // visitor changed are stored, and at most 200 KB of them.
-export const share = mutation({ access: "anyone" }, async ({ example, files }: { example: string; files: unknown }) => {
+export const share = mutation({ access: "anyone" }, async ({ db }, { example, files }: { example: string; files: unknown }) => {
   if (example.length > 40) throw new HttpError(422, "invalid_input", "example must be at most 40 characters", "/example");
   const size = (JSON.stringify(files) ?? "").length;
   if (size > 200_000) throw new HttpError(413, "too_large", "That edit is too large to share: the limit is 200 KB.");
   const key = crypto.randomUUID().replaceAll("-", "").slice(0, 10);
-  await shares.system.create({ key, example, files });
+  await db.system.shares.create({ key, example, files });
   return { key };
 });
 
@@ -17,8 +16,8 @@ export const share = mutation({ access: "anyone" }, async ({ example, files }: {
 // in the background on WordPress's job queue (Action Scheduler), never during a page view, so a
 // slow or failing GitHub cannot slow the site. A repository GitHub will not show (private, or
 // gone) keeps the count it had. GitHub is asked without a token, which allows 60 requests an hour.
-export const refreshStars = job({ retries: 2 }, async () => {
-  const rows = await examples.system.list({ limit: 100 });
+export const refreshStars = job({ retries: 2 }, async ({ db }) => {
+  const rows = await db.examples.list({ limit: 100 });
   const counts = new Map<string, number | null>();
   for (const row of rows) {
     if (!counts.has(row.repo)) {
@@ -30,7 +29,7 @@ export const refreshStars = job({ retries: 2 }, async () => {
     // will not show is asked once a day and not on every page view.
     const stars = counts.get(row.repo);
     const checked = new Date().toISOString();
-    await examples.system.update(row.id, stars == null ? { starsAt: checked } : { stars, starsAt: checked });
+    await db.examples.update(row.id, stars == null ? { starsAt: checked } : { stars, starsAt: checked });
   }
 });
 

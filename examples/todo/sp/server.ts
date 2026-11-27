@@ -1,6 +1,6 @@
-import { adminDashboard, adminScreen, adminWidget, cron, item, job, mutation, query } from "spacepress";
-import { HttpError } from "spacepress/server";
-import { buckets, tasks } from "spacepress/server/db";
+import { cron, job, mutation, query } from "spacepress";
+import { adminDashboard, adminScreen, adminWidget, item } from "spacepress/admin";
+import { db, HttpError } from "spacepress/server";
 import {
   appendBucketUnique,
   asBoardGroup,
@@ -32,7 +32,7 @@ import {
 } from "./lib/todo";
 
 async function loadBuckets(): Promise<TodoBucket[]> {
-  const rows = await buckets.system.list({ orderBy: { sortOrder: "asc" }, limit: 200 });
+  const rows = await db.system.buckets.list({ orderBy: { sortOrder: "asc" }, limit: 200 });
   return rows.map((row) => ({
     id: row.id,
     name: decodeWpText(row.name),
@@ -66,9 +66,9 @@ function parseBucketCsv(raw: string | null | undefined): number[] {
 }
 
 // Runs via Action Scheduler when a task's scheduledAt arrives (delayed enqueue).
-export const promoteScheduledTask = job({ retries: 3 }, async ({ taskId }: { taskId: number }) => {
+export const promoteScheduledTask = job({ retries: 3 }, async (_ctx, { taskId }: { taskId: number }) => {
   if (!Number.isInteger(taskId) || taskId <= 0) return;
-  const task = await tasks.system.get(taskId);
+  const task = await db.system.tasks.get(taskId);
   if (!task || task.completedAt !== null || task.scheduledAt === null) return;
   if (new Date(task.scheduledAt).getTime() > Date.now() + 60_000) return;
 
@@ -79,7 +79,7 @@ export const promoteScheduledTask = job({ retries: 3 }, async ({ taskId }: { tas
     ? replaceStatusBucket(task.bucketIds, statusBucketIds(allBuckets), targetBucket.id)
     : task.bucketIds;
 
-  await tasks.system.update(task.id, {
+  await db.system.tasks.update(task.id, {
     bucketIds: nextBucketIds,
     scheduledAt: null,
   });
@@ -88,7 +88,7 @@ export const promoteScheduledTask = job({ retries: 3 }, async ({ taskId }: { tas
 // Safety-net sweep every 15 minutes for any scheduled task whose due time passed.
 export const sweepScheduledTasks = cron("*/15 * * * *", async () => {
   const nowIso = new Date().toISOString();
-  const open = await tasks.system.list({
+  const open = await db.system.tasks.list({
     where: { completedAt: { isNull: true }, scheduledAt: { isNotNull: true } },
     limit: 200,
   });
@@ -112,14 +112,14 @@ async function runCompletionSideEffects(
   completedId: number,
   allowRecurrence: boolean,
 ): Promise<{ nextTaskId: number | null; unblockedIds: number[] }> {
-  const task = await tasks.get(completedId);
+  const task = await db.tasks.get(completedId);
   if (!task) throw new HttpError(404, "not_found", "Task not found.");
 
   const nowIso = new Date().toISOString();
   const allBuckets = await loadBuckets();
   const statusIds = statusBucketIds(allBuckets);
 
-  await tasks.update(task.id, {
+  await db.tasks.update(task.id, {
     completedAt: nowIso,
     scheduledAt: null,
     recurringDays: allowRecurrence ? task.recurringDays : 0,
@@ -140,7 +140,7 @@ async function runCompletionSideEffects(
       done: false,
     }));
     const nextScheduledAt = computeNextOccurrenceIso(nowIso, task.recurringDays);
-    const created = await tasks.create({
+    const created = await db.tasks.create({
       title: task.title,
       notes: task.notes,
       details: task.details,
@@ -160,7 +160,7 @@ async function runCompletionSideEffects(
   }
 
   // 2. Release any open tasks blocked by this task and promote them to their pending destination.
-  const waiting = await tasks.list({
+  const waiting = await db.tasks.list({
     where: { blockedBy: task.id, completedAt: { isNull: true } },
     limit: 100,
   });
@@ -171,7 +171,7 @@ async function runCompletionSideEffects(
     const nextBucketIds = destBucket
       ? replaceStatusBucket(dep.bucketIds, statusIds, destBucket.id)
       : dep.bucketIds;
-    await tasks.update(dep.id, {
+    await db.tasks.update(dep.id, {
       blockedBy: null,
       bucketIds: nextBucketIds,
     });
@@ -184,6 +184,7 @@ async function runCompletionSideEffects(
 export const createTask = mutation(
   { access: "authenticated" },
   async (
+    ctx,
     input: {
       title: string;
       notes?: string;
@@ -196,7 +197,6 @@ export const createTask = mutation(
       scheduledDate?: string;
       recurringDays?: string | number;
     },
-    ctx,
   ) => {
     const title = normalizeTaskTitle(input.title ?? "");
     if (title === "") {
@@ -230,7 +230,7 @@ export const createTask = mutation(
       bucketIds = appendBucketUnique(bucketIds, paraId);
     }
 
-    const created = await tasks.create({
+    const created = await db.tasks.create({
       title,
       notes: normalizeOptionalText(input.notes),
       url: cleanUrl,
@@ -251,10 +251,10 @@ export const createTask = mutation(
 
 export const toggleTask = mutation(
   { access: "authenticated" },
-  async ({ id }: { id: number | string }) => {
+  async (_ctx, { id }: { id: number | string }) => {
     const taskId = parseOptionalInt(id);
     if (taskId === null) throw new HttpError(422, "invalid_input", "Valid task id required.", "/id");
-    const task = await tasks.get(taskId);
+    const task = await db.tasks.get(taskId);
     if (!task) throw new HttpError(404, "not_found", "Task not found.");
 
     if (task.completedAt === null) {
@@ -267,14 +267,14 @@ export const toggleTask = mutation(
       };
     }
 
-    await tasks.update(task.id, { completedAt: null });
+    await db.tasks.update(task.id, { completedAt: null });
     return { id: task.id, completed: false, nextTaskId: null, unblockedCount: 0 };
   },
 );
 
 export const completeAndStopRecurring = mutation(
   { access: "authenticated" },
-  async ({ id }: { id: number | string }) => {
+  async (_ctx, { id }: { id: number | string }) => {
     const taskId = parseOptionalInt(id);
     if (taskId === null) throw new HttpError(422, "invalid_input", "Valid task id required.", "/id");
     const effects = await runCompletionSideEffects(taskId, false);
@@ -284,14 +284,14 @@ export const completeAndStopRecurring = mutation(
 
 export const moveTaskBucket = mutation(
   { access: "authenticated" },
-  async ({ id, statusBucket }: { id: number | string; statusBucket: string }) => {
+  async (_ctx, { id, statusBucket }: { id: number | string; statusBucket: string }) => {
     const taskId = parseOptionalInt(id);
     if (taskId === null) throw new HttpError(422, "invalid_input", "Valid task id required.", "/id");
     const validStatus = asOptionalStatusSlug(statusBucket);
     if (validStatus === null) {
       throw new HttpError(422, "invalid_input", "Unknown status bucket.", "/statusBucket");
     }
-    const task = await tasks.get(taskId);
+    const task = await db.tasks.get(taskId);
     if (!task) throw new HttpError(404, "not_found", "Task not found.");
 
     const allBuckets = await loadBuckets();
@@ -299,7 +299,7 @@ export const moveTaskBucket = mutation(
     if (!target) throw new HttpError(404, "not_found", "Status bucket is missing.");
 
     const nextBucketIds = replaceStatusBucket(task.bucketIds, statusBucketIds(allBuckets), target.id);
-    await tasks.update(task.id, { bucketIds: nextBucketIds, completedAt: null });
+    await db.tasks.update(task.id, { bucketIds: nextBucketIds, completedAt: null });
     return { id: task.id, statusBucket: validStatus };
   },
 );
@@ -308,7 +308,7 @@ export const moveTaskBucket = mutation(
 // priority, or the optional Completed column.
 export const moveTaskColumn = mutation(
   { access: "authenticated" },
-  async (input: {
+  async (_ctx, input: {
     id: number | string;
     groupBy: string;
     targetBucketId?: number | string | null;
@@ -317,7 +317,7 @@ export const moveTaskColumn = mutation(
   }) => {
     const taskId = parseOptionalInt(input.id);
     if (taskId === null) throw new HttpError(422, "invalid_input", "Valid task id required.", "/id");
-    const task = await tasks.get(taskId);
+    const task = await db.tasks.get(taskId);
     if (!task) throw new HttpError(404, "not_found", "Task not found.");
 
     if (input.complete === true) {
@@ -333,7 +333,7 @@ export const moveTaskColumn = mutation(
       if (nextPriority === null) {
         throw new HttpError(422, "invalid_input", "Invalid target priority.", "/targetPriority");
       }
-      await tasks.update(task.id, { priority: nextPriority, completedAt: null });
+      await db.tasks.update(task.id, { priority: nextPriority, completedAt: null });
       return { id: task.id, completed: false };
     }
 
@@ -348,7 +348,7 @@ export const moveTaskColumn = mutation(
       throw new HttpError(422, "invalid_input", "Target bucket does not match this board group.", "/targetBucketId");
     }
     const nextBucketIds = replaceKindBucket(task.bucketIds, kindIds, nextBucketId);
-    await tasks.update(task.id, { bucketIds: nextBucketIds, completedAt: null });
+    await db.tasks.update(task.id, { bucketIds: nextBucketIds, completedAt: null });
     return { id: task.id, completed: false };
   },
 );
@@ -359,7 +359,7 @@ function checklistVersion(list: { label: string; done: boolean }[]): string {
 
 export const toggleChecklistItem = mutation(
   { access: "authenticated" },
-  async ({
+  async (_ctx, {
     id,
     index,
     expectedLabel,
@@ -373,7 +373,7 @@ export const toggleChecklistItem = mutation(
     const taskId = parseOptionalInt(id);
     const itemIndex = typeof index === "number" ? index : Number.parseInt(index, 10);
     if (taskId === null) throw new HttpError(422, "invalid_input", "Valid task id required.", "/id");
-    const task = await tasks.get(taskId);
+    const task = await db.tasks.get(taskId);
     if (!task) throw new HttpError(404, "not_found", "Task not found.");
     const list = task.checklist ?? [];
     if (!Number.isInteger(itemIndex) || itemIndex < 0 || itemIndex >= list.length) {
@@ -388,34 +388,34 @@ export const toggleChecklistItem = mutation(
     const next: TodoChecklistItem[] = list.map((entry, idx) =>
       idx === itemIndex ? { label: entry.label, done: !entry.done } : { label: entry.label, done: entry.done },
     );
-    await tasks.update(task.id, { checklist: next });
+    await db.tasks.update(task.id, { checklist: next });
     return { id: task.id, checklist: next, stale: false };
   },
 );
 
 export const addChecklistItem = mutation(
   { access: "authenticated" },
-  async ({ id, label }: { id: number | string; label: string }) => {
+  async (_ctx, { id, label }: { id: number | string; label: string }) => {
     const taskId = parseOptionalInt(id);
     if (taskId === null) throw new HttpError(422, "invalid_input", "Valid task id required.", "/id");
     const clean = normalizeTaskTitle(label ?? "");
     if (clean === "") throw new HttpError(422, "invalid_input", "Enter a subtask label.", "/label");
     if (clean.length > 200) throw new HttpError(422, "invalid_input", "Subtask is too long.", "/label");
-    const task = await tasks.get(taskId);
+    const task = await db.tasks.get(taskId);
     if (!task) throw new HttpError(404, "not_found", "Task not found.");
     const list = task.checklist ?? [];
     const next: TodoChecklistItem[] = [
       ...list.map((entry) => ({ label: entry.label, done: entry.done })),
       { label: clean, done: false },
     ];
-    await tasks.update(task.id, { checklist: next });
+    await db.tasks.update(task.id, { checklist: next });
     return { id: task.id, checklist: next };
   },
 );
 
 export const removeChecklistItem = mutation(
   { access: "authenticated" },
-  async ({
+  async (_ctx, {
     id,
     index,
     expectedLabel,
@@ -429,7 +429,7 @@ export const removeChecklistItem = mutation(
     const taskId = parseOptionalInt(id);
     const itemIndex = typeof index === "number" ? index : Number.parseInt(index, 10);
     if (taskId === null) throw new HttpError(422, "invalid_input", "Valid task id required.", "/id");
-    const task = await tasks.get(taskId);
+    const task = await db.tasks.get(taskId);
     if (!task) throw new HttpError(404, "not_found", "Task not found.");
     const list = task.checklist ?? [];
     if (!Number.isInteger(itemIndex) || itemIndex < 0 || itemIndex >= list.length) {
@@ -448,18 +448,18 @@ export const removeChecklistItem = mutation(
         next.push({ label: entry.label, done: entry.done });
       }
     }
-    await tasks.update(task.id, { checklist: next });
+    await db.tasks.update(task.id, { checklist: next });
     return { id: task.id, checklist: next, stale: false };
   },
 );
 
 export const snoozeTask = mutation(
   { access: "authenticated" },
-  async ({ id, days }: { id: number | string; days: number | string }) => {
+  async (_ctx, { id, days }: { id: number | string; days: number | string }) => {
     const taskId = parseOptionalInt(id);
     const delta = parseOptionalInt(days) ?? 1;
     if (taskId === null) throw new HttpError(422, "invalid_input", "Valid task id required.", "/id");
-    const task = await tasks.get(taskId);
+    const task = await db.tasks.get(taskId);
     if (!task) throw new HttpError(404, "not_found", "Task not found.");
 
     const allBuckets = await loadBuckets();
@@ -469,7 +469,7 @@ export const snoozeTask = mutation(
       : task.bucketIds;
     const scheduledAt = computeSnoozeIso(delta, Date.now());
 
-    await tasks.update(task.id, {
+    await db.tasks.update(task.id, {
       bucketIds: nextBucketIds,
       scheduledAt,
       pendingBucket: "now",
@@ -481,7 +481,7 @@ export const snoozeTask = mutation(
 
 export const updateTask = mutation(
   { access: "authenticated" },
-  async (input: {
+  async (_ctx, input: {
     id: number | string;
     title: string;
     notes?: string;
@@ -499,7 +499,7 @@ export const updateTask = mutation(
   }) => {
     const taskId = parseOptionalInt(input.id);
     if (taskId === null) throw new HttpError(422, "invalid_input", "Valid task id required.", "/id");
-    const existing = await tasks.get(taskId);
+    const existing = await db.tasks.get(taskId);
     if (!existing) throw new HttpError(404, "not_found", "Task not found.");
 
     const title = normalizeTaskTitle(input.title ?? "");
@@ -545,7 +545,7 @@ export const updateTask = mutation(
       throw new HttpError(422, "invalid_input", "A task cannot block itself.", "/blockedBy");
     }
 
-    await tasks.update(existing.id, {
+    await db.tasks.update(existing.id, {
       title,
       notes: input.notes !== undefined ? normalizeOptionalText(input.notes) : existing.notes,
       details: input.details !== undefined ? normalizeOptionalText(input.details) : existing.details,
@@ -567,17 +567,17 @@ export const updateTask = mutation(
 
 export const deleteTask = mutation(
   { access: "authenticated", destructive: true },
-  async ({ id }: { id: number | string }) => {
+  async (_ctx, { id }: { id: number | string }) => {
     const taskId = parseOptionalInt(id);
     if (taskId === null) throw new HttpError(422, "invalid_input", "Valid task id required.", "/id");
-    const gone = await tasks.delete(taskId);
+    const gone = await db.tasks.delete(taskId);
     return { id: gone.id };
   },
 );
 
 export const createBucket = mutation(
   { access: "authenticated" },
-  async ({ name, kind, color }: { name: string; kind: string; color?: string }) => {
+  async (_ctx, { name, kind, color }: { name: string; kind: string; color?: string }) => {
     const cleanName = normalizeTaskTitle(name ?? "");
     if (cleanName === "") {
       throw new HttpError(422, "invalid_input", "Enter a bucket name.", "/name");
@@ -599,7 +599,7 @@ export const createBucket = mutation(
               ? "#10b981"
               : "#8b5cf6";
 
-    const created = await buckets.create({
+    const created = await db.buckets.create({
       name: cleanName,
       kind: validKind,
       color: cleanColor,
@@ -612,7 +612,7 @@ export const createBucket = mutation(
 
 // Admin queries, DataViews screen, metrics widget, and custom overview dashboard (/wp-admin/new/).
 export const openTasksForAdmin = query({ access: "authenticated" }, async () => {
-  const rows = await tasks.list({
+  const rows = await db.tasks.list({
     where: { completedAt: { isNull: true } },
     orderBy: { updatedAt: "desc" },
     limit: 100,
@@ -621,7 +621,7 @@ export const openTasksForAdmin = query({ access: "authenticated" }, async () => 
 });
 
 export const todoMetrics = query({ access: "authenticated" }, async () => {
-  const rows = await tasks.list({ limit: 250 });
+  const rows = await db.tasks.list({ limit: 250 });
   const allTasks: TodoTask[] = rows.map((row) => ({
     id: row.id,
     title: row.title,

@@ -1,30 +1,30 @@
-import { adminScreen, item, mutation, query } from "spacepress";
+import { mutation, query } from "spacepress";
+import { adminScreen, item } from "spacepress/admin";
 import { db, HttpError } from "spacepress/server";
-import { abilities } from "spacepress/server/wp";
-import { stockMovements } from "./schema";
+import { abilities, wp } from "spacepress/server/wp";
 
 export const restock = mutation({
   access: "admin",
   idempotent: true,
-}, async ({ drive, quantity }: { drive: number; quantity: number }) => {
+}, async ({ db }, { drive, quantity }: { drive: number; quantity: number }) => {
   if (!Number.isInteger(drive) || drive < 1) throw new HttpError(422, "invalid_input", "drive must be a positive integer", "/drive");
   if (!Number.isInteger(quantity) || quantity < 1 || quantity > 500) throw new HttpError(422, "invalid_input", "quantity must be an integer between 1 and 500", "/quantity");
   const stock = await abilities.call("drive-store/increase-product-stock", { id: drive, quantity });
-  await db.insert(stockMovements).values({ drive, change: quantity, reason: "restock" });
+  await db.system.stockMovements.create({ drive, change: quantity, reason: "restock" });
   return { stock };
 });
 
 export const markShipped = mutation({
   access: "admin",
   idempotent: true,
-}, async ({ order }: { order: number }) => {
+}, async (_ctx, { order }: { order: number }) => {
   if (!Number.isInteger(order) || order < 1) throw new HttpError(422, "invalid_input", "order must be a positive integer", "/order");
   const id = await abilities.call("drive-store/complete-order", { id: order });
   return { id };
 });
 
 export async function processingOrders() {
-  return await db.query.orders.findMany({
+  return await db.system.orders.list({
     where: { status: "processing" },
     orderBy: { id: "asc" },
     columns: { id: true, currency: true, total: true, lines: true },
@@ -37,6 +37,10 @@ export const pendingOrders = query({
 }, async () => {
   const orders = await processingOrders();
   return { rows: orders.map((order) => ({ id: order.id, total: `${order.total} ${order.currency}`, drives: order.lines.map((line) => `${line.quantity} × ${line.name}`).join(", ") })) };
+});
+
+export const logStock = wp.action("spacepress_woo_order_stock", async ({ db }, drive, order, change, reason) => {
+  await db.stockMovements.create({ drive, order, change, reason });
 });
 
 export const shipping = adminScreen({

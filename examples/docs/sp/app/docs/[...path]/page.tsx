@@ -1,15 +1,18 @@
-import { docs } from "spacepress/server/db";
 import type { PageProps } from "./$types";
-import { Content, Link } from "spacepress/app";
-import { nav, pager, headings } from "spacepress/content";
+import { Content, headings, Link, notFound } from "spacepress/app";
 
-export const metadata = ({ item }: PageProps) => ({ title: item.title, description: item.description ?? undefined });
+export const metadata = async ({ params, db }: PageProps) => {
+  const item = await db.docs.get({ path: params.path });
+  return { title: item ? item.title : "Doc not found", description: item?.description ?? undefined };
+};
 
 // One page renders every doc: the tree on the left, the doc, its table of contents, and the
 // previous and next docs. All of it is read as the visitor, from the published docs.
-export default async function Doc({ item }: PageProps) {
-  const tree = await nav(docs, item);
-  const { prev, next } = await pager(docs, item);
+export default async function Doc({ params, db }: PageProps) {
+  const item = await db.docs.get({ path: params.path });
+  if (!item) notFound();
+  const tree = await db.docs.nav(item);
+  const { prev, next } = await db.docs.pager(item);
   const toc = headings(item);
   return (
     <div className="docs">

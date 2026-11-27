@@ -1,9 +1,9 @@
-import { examples } from "spacepress/server/db";
+import type { RouteCtx, RouteRequest } from "spacepress";
 
-export const guard = "anyone";
+export const access = "anyone";
 
-export async function GET() {
-  const rows = await examples.list({ orderBy: { position: "asc", id: "asc" }, limit: 100 });
+export async function GET(_req: RouteRequest, { db }: RouteCtx) {
+  const rows = await db.examples.list({ orderBy: { position: "asc", id: "asc" }, limit: 100 });
   const data = rows.map((row) => ({
     name: row.name,
     title: row.title,
@@ -16,8 +16,5 @@ export async function GET() {
     githubUrl: `https://github.com/${row.repo}/tree/main/${row.path}`,
   }));
 
-  return {
-    headers: { "content-type": "application/json; charset=utf-8" },
-    body: JSON.stringify({ examples: data }, null, 2),
-  };
+  return Response.json({ examples: data });
 }

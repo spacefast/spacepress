@@ -30,12 +30,12 @@ compatibility: "Targets SpacePress 0.3 (WordPress 7.1+, PHP 8.2+). Requires the 
    ```tsx
    // sp/app/recipes/[slug]/page.tsx
    import { Content, notFound, type PageProps } from "spacepress/app";
-   import { recipes } from "spacepress/server/db";
+   import { db } from "spacepress/server";
 
    export const metadata = ({ params }: PageProps<"recipes/[slug]">) => ({ title: params.slug });
 
    export default async function Recipe({ params }: PageProps<"recipes/[slug]">) {
-     const recipe = await recipes.get({ slug: params.slug });
+     const recipe = await db.recipes.get({ slug: params.slug });
      if (!recipe) notFound();
      return (
        <article>
@@ -47,23 +47,23 @@ compatibility: "Targets SpacePress 0.3 (WordPress 7.1+, PHP 8.2+). Requires the 
    ```
 
 3. Reads on a page run as the visitor: drafts, rows they may not read and hidden fields never
-   reach the HTML. Do not use `<kind>.system` on a page to get around that.
+   reach the HTML. Do not use `db.system.<kind>` on a page to get around that.
 
 4. Shared chrome goes in `layout.tsx`; it wraps every page below its folder. To require sign-in
-   for a section, export `guard` from its layout: `export const guard = "subscriber";`.
+   for a section, export `access` from its layout: `export const access = "subscriber";`.
 
 5. For raw HTTP, add `route.ts` at the URL's folder and export a function per method, with who
    may call it:
 
    ```ts
    // sp/app/api/recipes/route.ts
-   import { recipes } from "spacepress/server/db";
+   import { db } from "spacepress/server";
 
-   export const guard = "anyone";
+   export const access = "anyone";
 
    export async function GET() {
-     const rows = await recipes.list({ limit: 20 });
-     return { status: 200, headers: { "content-type": "application/json" }, body: JSON.stringify(rows.map((r) => r.title)) };
+     const rows = await db.recipes.list({ limit: 20 });
+     return Response.json(rows.map((r) => r.title));
    }
    ```
 

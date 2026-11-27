@@ -1,25 +1,28 @@
 import { get_post, get_userdata, home_url, is_user_logged_in, wp_login_url } from "spacepress/server/wp";
 import type { PageProps } from "./$types";
-import { buckets, tasks } from "spacepress/server/db";
 import { Comments, Content, Link, notFound } from "spacepress/app";
 import { ChecklistEditor } from "../../../components/ChecklistEditor";
 import { TaskCheckButton } from "../../../components/TaskCheckButton";
 import { checklistProgress, decodeWpText, userInitials } from "../../../lib/todo";
 import { completeAndStopRecurring, snoozeTask } from "../../../server";
 
-export const metadata = ({ item }: PageProps) => ({
-  title: item ? item.title : "Task",
-});
+export const metadata = async ({ params, db }: PageProps) => {
+  const item = await db.tasks.get({ slug: params.slug });
+  return {
+    title: item ? item.title : "Task",
+  };
+};
 
-export default async function TaskDetailPage({ item }: PageProps) {
+export default async function TaskDetailPage({ params, db }: PageProps) {
+  const item = await db.tasks.get({ slug: params.slug });
   if (!item) notFound();
 
   const signedIn = is_user_logged_in();
   const loginHref = wp_login_url(home_url(`/tasks/${item.slug}`));
-  const allBuckets = await buckets.system.list({ orderBy: { sortOrder: "asc" }, limit: 200 });
+  const allBuckets = await db.system.buckets.list({ orderBy: { sortOrder: "asc" }, limit: 200 });
   const assignedBuckets = allBuckets.filter((b) => item.bucketIds.includes(b.id));
-  const blocker = item.blockedBy ? await tasks.get(item.blockedBy) : null;
-  const blocking = await tasks.list({
+  const blocker = item.blockedBy ? await db.tasks.get(item.blockedBy) : null;
+  const blocking = await db.tasks.list({
     where: { blockedBy: item.id, completedAt: { isNull: true } },
     limit: 50,
   });

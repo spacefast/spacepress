@@ -1,31 +1,34 @@
-import { db } from "spacepress/server";
 import type { PageProps } from "./$types";
 import { get_current_user_id, home_url, is_user_logged_in, wp_login_url } from "spacepress/server/wp";
 import { Comments, Content, Live, notFound, useFormState } from "spacepress/app";
 import { bookSeats, cancelSeats } from "../../../server";
 import styles from "./workshop.module.css";
 
-export const metadata = ({ item }: PageProps) => ({ title: item?.title ?? "Workshop" });
+export const metadata = async ({ params, db }: PageProps) => {
+  const item = await db.events.get({ slug: params.slug });
+  return { title: item?.title ?? "Workshop" };
+};
 
-export default async function Workshop({ item }: PageProps) {
+export default async function Workshop({ params, db }: PageProps) {
+  const item = await db.events.get({ slug: params.slug });
   if (!item) notFound();
   const booking = useFormState(bookSeats);
   const cancellation = useFormState(cancelSeats);
   const signedIn = is_user_logged_in();
   // Media columns hold ids; `with` loads their rows.
-  const pictures = await db.query.events.findFirst({
-    where: { id: item.id }, columns: { id: true }, with: { poster: true, gallery: true },
+  const pictures = await db.events.get(item.id, {
+    columns: { id: true }, with: { poster: true, gallery: true },
   });
   const poster = pictures ? pictures.poster : null;
   const gallery = pictures ? pictures.gallery : [];
   // The handout is a private file: only a signed-in visitor gets its signed, five-minute link.
   const attached = signedIn
-    ? await db.query.events.findFirst({ where: { id: item.id }, columns: { id: true }, with: { handout: true } })
-    : undefined;
+    ? await db.events.get(item.id, { columns: { id: true }, with: { handout: true } })
+    : null;
   const handout = attached && attached.handout !== null && typeof attached.handout !== "number" ? attached.handout : null;
   const reservation = signedIn
-    ? await db.query.registrations.findFirst({ where: { eventId: item.id, memberId: get_current_user_id() } })
-    : undefined;
+    ? await db.registrations.get({ eventId: item.id, memberId: get_current_user_id() })
+    : null;
   return (
     <article className={styles.workshop}>
       <h1>{item.title}</h1>

@@ -1,17 +1,17 @@
-import { db } from "spacepress/server";
 import { Image, Link, TemplatePart, type LayoutProps } from "spacepress/app";
+import { db } from "spacepress/server";
 import logo from "./whisk.svg";
 import "./site.css";
 
 export const template = "blank";
 export const metadata = {
   title: { default: "Community Kitchen", template: "%s · Community Kitchen" },
-  // WordPress's own feed of the journal. sp/wp-hooks/excerpt_more.ts ends its trimmed excerpts.
+  // WordPress's own feed of the journal. `excerptMore` in sp/server.ts ends its trimmed excerpts.
   links: [{ rel: "alternate", type: "application/rss+xml", href: "/feed/" }],
 };
 
 export default async function Layout({ children }: LayoutProps) {
-  const kitchen = await db.globals.settings.get();
+  const kitchen = await db.settings.get();
   return (
     <>
       <TemplatePart slug="header" tagName="header" />

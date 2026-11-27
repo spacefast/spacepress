@@ -41,12 +41,12 @@ const GENERATED_TREE = `my-app/
       spacepress-identity/ Passkeys, TOTP, JWT & tokens
       spacepress-admin/    Modern Admin at /wp-admin/new/`;
 
-const HERO_SCHEMA_CODE = `import { wp, table, text, boolean, ref, mutation, defineConfig } from "spacepress";
+const HERO_SCHEMA_CODE = `import { wp, table, mutation, defineConfig, f } from "spacepress";
 import { db, HttpError } from "spacepress/server";
 
 // Native WordPress posts extended with typed fields, URL routing & Markdown sync
 export const posts = wp.posts.extend({
-  subtitle: text().max(200).optional(),
+  subtitle: f.text().max(200).optional(),
 }, {
   url: "/blog/:slug",
   sync: "content/posts/*.md",
@@ -55,9 +55,9 @@ export const posts = wp.posts.extend({
 
 // Relational SQL table: forward-only migrations written for you
 export const tasks = table({
-  title: text().min(1).max(120),
-  done: boolean().default(false),
-  postId: ref(posts).optional().onDelete("cascade"),
+  title: f.text().min(1).max(120),
+  done: f.boolean().default(false),
+  postId: f.ref(posts).optional().onDelete("cascade"),
 }, {
   access: { read: "anyone", create: "authenticated", update: "authenticated", delete: "editor" },
 });
@@ -71,13 +71,13 @@ export const completeTask = mutation({ access: "authenticated" }, async ({ id }:
 
 export default defineConfig({ name: "starter" });`;
 
-const HERO_JOBS_CODE = `import { table, text, timestamp, mutation, job, defineConfig } from "spacepress";
+const HERO_JOBS_CODE = `import { table, mutation, job, defineConfig, f } from "spacepress";
 import { db } from "spacepress/server";
 
 export const subscriptions = table({
-  email: text().max(191).unique(),
-  plan: text().default("free"),
-  welcomedAt: timestamp().optional(),
+  email: f.text().max(191).unique(),
+  plan: f.text().default("free"),
+  welcomedAt: f.timestamp().optional(),
 }, {
   access: { read: "admin", create: "anyone", update: "admin", delete: "admin" },
 }).on({
@@ -100,24 +100,22 @@ export const upgradePlan = mutation({ access: "editor" }, async ({ id, plan }: {
 
 export default defineConfig({ name: "jobs-demo" });`;
 
-const HERO_ACCESS_CODE = `import {
-  collection, userProjection, text, email, select, integer, defineConfig,
-} from "spacepress";
+const HERO_ACCESS_CODE = `import { collection, userProjection, defineConfig, f } from "spacepress";
 
 // Projects onto wp_users & wp_usermeta with declarative rules
 export const members = userProjection({
-  email: email().unique().max(191),
-  name: text().max(80),
-  tier: select(["free", "pro", "team"]).default("free"),
+  email: f.email().unique().max(191),
+  name: f.text().max(80),
+  tier: f.select(["free", "pro", "team"]).default("free"),
 }, {
   access: { read: "self", create: "anyone", update: "self", delete: "admin" },
 });
 
 // Row-level filters & field-level access rules compile to PHP + SQL
 export const notes = collection({
-  title: text().min(1).max(120),
-  ownerId: integer(),
-  internalNotes: text({ multiline: true })
+  title: f.text().min(1).max(120),
+  ownerId: f.integer(),
+  internalNotes: f.text({ multiline: true })
     .access({ read: "editor", create: "editor", update: "editor" })
     .optional(),
 }, {
@@ -134,9 +132,8 @@ export const notes = collection({
 
 export default defineConfig({ name: "access-demo" });`;
 
-const HERO_WOO_CODE = `import {
-  store, product, productCategory, productTag, order, defineConfig,
-} from "spacepress";
+const HERO_WOO_CODE = `import { defineConfig } from "spacepress";
+import { store, product, productCategory, productTag, order } from "spacepress/commerce";
 
 // Native WooCommerce runtime: source declares currency, shipping & payments
 export const shop = store({
@@ -164,24 +161,24 @@ export const orders = order();
 
 export default defineConfig({ name: "storefront" });`;
 
-const MIGRATION_BASE = `import { table, text, boolean, defineConfig } from "spacepress";
+const MIGRATION_BASE = `import { table, defineConfig, f } from "spacepress";
 
 export const issues = table({
-  title: text().min(1).max(160),
-  closed: boolean().default(false),
+  title: f.text().min(1).max(160),
+  closed: f.boolean().default(false),
 });
 
 export default defineConfig({ name: "tracker" });`;
 
-const MIGRATION_NEXT = `import { table, text, integer, boolean, select, timestamp, defineConfig } from "spacepress";
+const MIGRATION_NEXT = `import { table, defineConfig, f } from "spacepress";
 
 // Edit this schema! Add a column or change a default; rename safely with .column("title")
 export const issues = table({
-  title: text().min(1).max(160),
-  priority: integer().default(2).min(1).max(5),
-  status: select(["triage", "active", "done"]).default("triage"),
-  closed: boolean().default(false),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()),
+  title: f.text().min(1).max(160),
+  priority: f.integer().default(2).min(1).max(5),
+  status: f.select(["triage", "active", "done"]).default("triage"),
+  closed: f.boolean().default(false),
+  updatedAt: f.timestamp().defaultNow().onUpdate(() => new Date()),
 }).index(["status", "priority"]);
 
 export default defineConfig({ name: "tracker" });`;

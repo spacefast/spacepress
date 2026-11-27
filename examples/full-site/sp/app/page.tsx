@@ -1,11 +1,10 @@
-import { db } from "spacepress/server";
-import { Link } from "spacepress/app";
+import { Link, type PageProps } from "spacepress/app";
 import { NoteCard } from "../components/NoteCard";
 
 export const metadata = { title: "Home" };
 
-export default async function Home() {
-  const latest = await db.query.notes.findMany({ columns: { id: true, title: true, slug: true, dek: true }, orderBy: { publishedAt: "desc", id: "desc" }, limit: 3 });
+export default async function Home({ db }: PageProps) {
+  const latest = await db.notes.list({ columns: { id: true, title: true, slug: true, dek: true }, orderBy: { publishedAt: "desc", id: "desc" }, limit: 3 });
   return (
     <>
       <section className="hero">

@@ -6,7 +6,7 @@ import { api } from "../_generated/api";
 export const dragState = sharedState({ taskId: 0 });
 
 export function KanbanDragController({ groupBy }: { groupBy: string }) {
-  const move = useMutation(api.actions.moveTaskColumn);
+  const move = useMutation(api.moveTaskColumn);
 
   useEvent(
     "dragstart",

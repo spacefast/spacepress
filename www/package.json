@@ -2,6 +2,9 @@
   "name": "spacepress-site",
   "private": true,
   "type": "module",
+  "imports": {
+    "#sp/*": "./sp/_generated/*"
+  },
   "scripts": {
     "wasm": "node scripts/build-wasm.mjs",
     "showcase": "node scripts/build-showcase.ts",

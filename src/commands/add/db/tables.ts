@@ -12,11 +12,11 @@
 // - A deploy checks every change against the live rows before it runs any of them. Removing a table
 //   or field that holds rows is refused until the deploy names the row count (`--drop=tasks=12`).
 //   Rename with `was: "old_name"` on the table or `.was("old")` on a field and the rows stay.
-import { boolean, date, ref, table, text } from "spacepress";
+import { f, table } from "spacepress";
 
 export const projects = table({
-  name: text().max(120),
-  archived: boolean().default(false),
+  name: f.text().max(120),
+  archived: f.boolean().default(false),
 }, {
   // Who may do what. A role admits itself and every role above it:
   // subscriber < author < editor < admin. "subscriber" is anyone with an account.
@@ -28,11 +28,11 @@ export const tasks = table({
   // project, and deleting a project deletes its tasks. The field name is also the relation:
   // `first.tasks.list({ with: { project: true } })` reads each task with its project, and
   // `first.projects.list({ with: { tasks: true } })` reads each project with its tasks.
-  // ref() can point at a collection() too: a table row can belong to a post.
-  project: ref(projects).onDelete("cascade"),
-  title: text().max(200),
-  done: boolean().default(false),
-  dueOn: date().optional(),
+  // f.ref() can point at a collection() too: a table row can belong to a post.
+  project: f.ref(projects).onDelete("cascade"),
+  title: f.text().max(200),
+  done: f.boolean().default(false),
+  dueOn: f.date().optional(),
 }, {
   access: {
     read: "subscriber",

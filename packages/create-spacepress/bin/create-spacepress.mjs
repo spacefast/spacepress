@@ -91,6 +91,7 @@ async function main() {
     }
     await writeFile(join(destination, 'package.json'), JSON.stringify({
       name, version: '0.0.0', private: true, type: 'module', engines: { node: '>=22' },
+      imports: { '#sp/*': `./${appDir}/_generated/*` },
       scripts: {
         dev: 'spacepress dev', build: 'spacepress build', check: 'spacepress check',
         typecheck: 'spacepress build --quiet && tsc --noEmit',

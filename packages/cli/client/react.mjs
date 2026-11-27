@@ -41,23 +41,29 @@ function resolveQuery(ref) {
     }
     return null;
   }
+  if (ref.__sp === "global") {
+    const client = boundClient;
+    const g = client?.globals?.[ref.name];
+    if (g && typeof g.get === "function") return g.get();
+    return null;
+  }
   return ref;
 }
 
 function resolveAction(ref) {
-  if (typeof ref === "function") return ref;
   if (ref && ref.__sp === "action") {
     return async (input) => {
       const client = boundClient;
       if (!client?.actions?.[ref.name]) {
         throw new Error(
-          `useMutation(api.actions.${ref.name}) requires a bound SpacePress client (call setClient(createClient()) in external React apps).`,
+          `useMutation(api.${ref.name}) requires a bound SpacePress client (call setClient(createClient()) in external React apps).`,
         );
       }
       return client.actions[ref.name](input);
     };
   }
-  throw new TypeError("useMutation() expects an action reference from _generated/api (api.actions.<name>) or a function.");
+  if (typeof ref === "function") return ref;
+  throw new TypeError("useMutation() expects an action reference from #sp/api (api.<name>) or a function.");
 }
 
 /**
@@ -206,11 +212,12 @@ export function useMutation(action) {
  * Upload a browser `File` or `Blob` to a registered `files()` private bucket via `spacepress/client`.
  */
 export async function uploadFile(bucket, file, options) {
+  const name = typeof bucket === "string" ? bucket : bucket?.bucket;
   const client = boundClient;
-  if (!client?.files?.[bucket]?.upload) {
+  if (!name || !client?.files?.[name]?.upload) {
     throw new Error(
-      `uploadFile("${bucket}") requires a bound SpacePress client (call setClient(createClient()) in external React apps).`,
+      `uploadFile("${name ?? ""}") requires a bound SpacePress client (call setClient(createClient()) in external React apps).`,
     );
   }
-  return client.files[bucket].upload(file, options);
+  return client.files[name].upload(file, options);
 }

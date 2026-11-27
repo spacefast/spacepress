@@ -9,7 +9,7 @@ the URLs as you like.
 | `sp/app/api/[tag]/[operation]/page.tsx` | `/api/<tag>/<operation>`: one operation |
 | `sp/components/ApiFields.tsx` | the list of an operation's parameters, body or response fields |
 
-Both pages read `apiReference()` from `"spacepress/content"`. It returns the OpenAPI document
+Both pages read `apiReference()` from `"spacepress/app"`. It returns the OpenAPI document
 `spacepress build` writes for this app (`sp/_generated/openapi.json`), as the site serves it at
 `/wp-json/spacepress/v1/openapi.json`, so the reference follows the schema on every build.
 

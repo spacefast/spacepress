@@ -1,4 +1,4 @@
-import type { NavItem } from "spacepress/content";
+import type { NavItem } from "spacepress/app";
 
 export interface SearchEntry {
   title: string;

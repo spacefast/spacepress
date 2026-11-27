@@ -35,20 +35,61 @@ export declare const abilities: {
 
 export type HookName = keyof Hooks;
 
+import type { Awaitable, Files, Mail, SystemDb, User } from "./index.d.ts";
+
+/** Context passed as the first argument to every `wp.action()` and `wp.filter()` handler. */
+export interface WpCtx {
+  db: SystemDb;
+  user: User | null;
+  mail: Mail;
+  files: Files;
+}
+
+declare const wpHookBrand: unique symbol;
+/** A registered WordPress action or filter hook (`export const ... = wp.action(...)` / `wp.filter(...)`). */
+export interface WpHook {
+  readonly [wpHookBrand]: true;
+}
+
+type ActionHookName = { [K in HookName]: Hooks[K]["kind"] extends "action" ? K : never }[HookName];
+type FilterHookName = { [K in HookName]: Hooks[K]["kind"] extends "filter" ? K : never }[HookName];
+
 /**
- * The handler a `sp/wp-hooks/` file default-exports for hook `H`: an action's returns nothing, a
- * filter's returns the filtered value (its first argument's type).
- *
+ * Register WordPress actions and filters as named exports anywhere in `sp/`:
  * ```ts
- * import type { Handler } from "spacepress/server/wp";
- * const frame: Handler<"the_content"> = (content) => `<div class="frame">${content}</div>`;
- * export default frame;
+ * import { wp } from "spacepress/server/wp";
+ * export const customExcerpt = wp.filter("excerpt_more", { priority: 20 }, () => "…");
+ * export const onPublish = wp.action("transition_post_status", async (ctx, next, prev, post) => { ... });
  * ```
  */
+export declare const wp: {
+  action<H extends ActionHookName>(
+    hook: H,
+    handler: (ctx: WpCtx, ...args: Hooks[H]["args"]) => Awaitable<void>,
+  ): WpHook;
+  action<H extends ActionHookName>(
+    hook: H,
+    options: { priority?: number },
+    handler: (ctx: WpCtx, ...args: Hooks[H]["args"]) => Awaitable<void>,
+  ): WpHook;
+  filter<H extends FilterHookName>(
+    hook: H,
+    handler: (ctx: WpCtx, ...args: Hooks[H]["args"]) => Awaitable<Hooks[H]["args"][0]>,
+  ): WpHook;
+  filter<H extends FilterHookName>(
+    hook: H,
+    options: { priority?: number },
+    handler: (ctx: WpCtx, ...args: Hooks[H]["args"]) => Awaitable<Hooks[H]["args"][0]>,
+  ): WpHook;
+};
+
+/**
+ * Handler signature for WordPress hook `H`.
+ */
 export type Handler<H extends HookName> = Hooks[H] extends { kind: "filter"; args: infer A extends unknown[] }
-  ? (...args: A) => A[0]
+  ? (ctx: WpCtx, ...args: A) => Awaitable<A[0]>
   : Hooks[H] extends { args: infer A extends unknown[] }
-    ? (...args: A) => void
+    ? (ctx: WpCtx, ...args: A) => Awaitable<void>
     : never;
 
 // BEGIN GENERATED: scripts/wordpress-catalog.py

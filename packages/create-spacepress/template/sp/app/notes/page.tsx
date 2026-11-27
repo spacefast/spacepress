@@ -1,12 +1,10 @@
-import { db } from "spacepress/server";
-import { Link } from "spacepress/app";
+import { Link, type PageProps } from "spacepress/app";
 
 export const metadata = { title: "Notes" };
 
-export default async function Notes() {
+export default async function Notes({ db }: PageProps) {
   // Page queries use the current visitor's access rules.
-  const notes = await db.query.notes.findMany({
-    columns: { title: true, slug: true, summary: true },
+  const notes = await db.notes.list({
     orderBy: { publishedAt: "desc" },
     limit: 20,
   });

@@ -1,9 +1,8 @@
 // The docs page around a doc's content: the sidebar tree, breadcrumbs, the article with its page
 // actions and pager, and the table of contents. All server components: the page works, links and
 // prints without JavaScript; the islands (search, tabs, the enhancer) add to it.
-import { Content, Link, type ReactNode } from "spacepress/app";
+import { Content, Link, type Heading, type NavItem, type PagerLink, type ReactNode } from "spacepress/app";
 import type { JSX } from "spacepress/jsx-runtime";
-import type { Heading, NavItem, PagerLink } from "spacepress/content";
 import { Icon } from "./Icon";
 
 /** What a doc page shows of its record. */

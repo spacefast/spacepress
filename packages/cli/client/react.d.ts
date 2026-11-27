@@ -2,7 +2,7 @@
 // SpacePress "use client" components.
 import type { Query, SpacePressError } from "./index.d.ts";
 
-/** Typed descriptor returned by `api.<kind>.list(...)` / `api.<kind>.get(...)` from `_generated/api`. */
+/** Typed descriptor returned by `api.<kind>.list(...)` / `api.<kind>.get(...)` from `#sp/api`. */
 export interface LiveQueryRef<T = unknown> {
   readonly __sp: "query";
   readonly kind: string;
@@ -12,7 +12,29 @@ export interface LiveQueryRef<T = unknown> {
   readonly __type?: T;
 }
 
-/** Typed descriptor exported under `api.actions.<name>` from `_generated/api`. */
+/** Typed descriptor returned by `api.<query>(input)` from `#sp/api`. */
+export interface LiveActionQueryRef<T = unknown> {
+  readonly __sp: "actionQuery";
+  readonly name: string;
+  readonly input: Record<string, unknown>;
+  readonly __type?: T;
+}
+
+/** Typed descriptor returned by `api.<global>.get()` from `#sp/api`. */
+export interface LiveGlobalRef<T = unknown> {
+  readonly __sp: "global";
+  readonly name: string;
+  readonly op: "get";
+  readonly __type?: T;
+}
+
+/** Typed descriptor exported at `api.<bucket>` from `#sp/api`. */
+export interface BucketRef<Name extends string = string> {
+  readonly __sp: "bucket";
+  readonly bucket: Name;
+}
+
+/** Typed descriptor exported at `api.<name>` from `#sp/api`. */
 export interface ActionRef<Input = void, Output = unknown, Kind extends "query" | "mutation" = "mutation"> {
   readonly __sp: "action";
   readonly name: string;
@@ -64,8 +86,8 @@ export interface Mutation<A extends unknown[], R> {
 }
 
 export interface Hooks {
-  useQuery<T>(query: Query<T> | LiveQueryRef<T> | null | undefined | false, options?: UseQueryOptions<T>): QueryState<T>;
-  useLive<T>(query: LiveQueryRef<T> | Query<T> | null | undefined | false, options?: UseQueryOptions<T>): LiveState<T>;
+  useQuery<T>(query: Query<T> | LiveQueryRef<T> | LiveActionQueryRef<T> | LiveGlobalRef<T> | null | undefined | false, options?: UseQueryOptions<T>): QueryState<T>;
+  useLive<T>(query: LiveQueryRef<T> | LiveActionQueryRef<T> | LiveGlobalRef<T> | Query<T> | null | undefined | false, options?: UseQueryOptions<T>): LiveState<T>;
   useMutation<Input, Output, Kind extends "query" | "mutation">(
     action: ActionRef<Input, Output, Kind>,
     options?: UseMutationOptions<MutationArgs<Input>>,
@@ -109,14 +131,13 @@ export interface LiveState<T> {
  * subscribes to the same read automatically.
  */
 export declare function useLive<T>(
-  query: LiveQueryRef<T> | Query<T>,
+  query: LiveQueryRef<T> | LiveActionQueryRef<T> | LiveGlobalRef<T> | Query<T>,
   options?: { enabled?: boolean },
 ): LiveState<T>;
 
 /**
- * Bind a typed action reference from `_generated/api` (`useMutation(api.actions.addNote)`):
- * returns `{ mutate, pending, error, reset }`. In `"use client"` components, `pending` and `error`
- * are reactive Interactivity API state and `mutate(...)` calls the action's WordPress Ability run route.
+ * Bind a typed action reference from `#sp/api` (`useMutation(api.addNote)`):
+ * returns `{ mutate, pending, error, reset }`.
  */
 export declare function useMutation<Input, Output, Kind extends "query" | "mutation">(
   action: ActionRef<Input, Output, Kind>,
@@ -136,11 +157,10 @@ export interface UploadedFile {
 
 /**
  * Upload a browser `File` or `Blob` to a registered `files()` private bucket via `spacepress/client`
- * (using the page's REST nonce). Must be called inside a `"use client"` event handler or effect with
- * a string literal naming an exported bucket: `const uploaded = await uploadFile("inbox", file)`.
+ * (`await uploadFile(api.inbox, file)` or `await uploadFile("inbox", file)`).
  */
 export declare function uploadFile(
-  bucket: string,
+  bucket: BucketRef | string,
   file: Blob,
   options?: { filename?: string },
 ): Promise<UploadedFile>;

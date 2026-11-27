@@ -1,7 +1,6 @@
 // Written by `spacepress add api-reference`; yours to change. One operation: who may call it, what it
 // takes and answers, and a request to copy.
-import { Html, Link, notFound } from "spacepress/app";
-import { apiReference } from "spacepress/content";
+import { apiReference, Html, Link, notFound } from "spacepress/app";
 import type { PageProps } from "./$types";
 import { ApiFields } from "../../../../components/ApiFields";
 

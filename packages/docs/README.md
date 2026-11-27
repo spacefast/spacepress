@@ -8,7 +8,7 @@ Pages work without JavaScript. Two islands add to them: `DocsSearch` (the search
 
 | Export | What it is |
 | --- | --- |
-| `@spacepress/docs/schema` | `createDocsCollection({ label?, url?, sync? })`: a hierarchical collection synced from `content/docs/**/*.md`. A file's name is its slug, its folder its parent, and a folder's `index.md` the page the folder stands for. |
+| `@spacepress/docs/schema` | `createDocsCollection({ label?, sync? })`: a hierarchical collection synced from `content/docs/**/*.md`. A file's name is its slug, its folder its parent, and a folder's `index.md` the page the folder stands for. |
 | `@spacepress/docs/blocks` | The Markdown components: `Callout` (`Note`, `Tip`, `Warning`, `Danger`), `Card`, `CardGroup`, `Columns`, `Column`, `Steps`, `Step`, `Tabs`, `Tab`, `Accordion`, `AccordionItem`, `Expandable`, `Badge`, `Panel`, `Frame`, `Tile`, `Tooltip`, `Kbd`, `YouTube`, `FileTree`, `Folder`, `File`, `Field`, `Icon`. |
 | `@spacepress/docs/docs.css` | The theme. Every color, radius and font is a `--sd-*` token on `:root`, for light and dark. |
 | `@spacepress/docs` | The page parts: `DocsShell` (header, search, GitHub link, theme switch, footer), `DocPage` (sidebar, breadcrumbs, article, page actions, pager, table of contents), `Sidebar`, `Breadcrumbs`, `TableOfContents`, `PageActions`, `Pager`; the islands `DocsSearch` and `DocsEnhancements`; and `searchEntries(tree)`, which turns a docs tree into search entries. |
@@ -21,7 +21,7 @@ Icons are a bundled Lucide subset drawn as CSS masks, so they take the text colo
 // sp/schema.ts
 import { createDocsCollection } from "@spacepress/docs/schema";
 
-export const docs = createDocsCollection({ url: "/docs/:path", sync: "content/docs/**/*.md" });
+export const docs = createDocsCollection({ sync: "content/docs/**/*.md" });
 ```
 
 ```tsx
@@ -32,16 +32,14 @@ export * from "@spacepress/docs/blocks";
 
 ```tsx
 // sp/app/layout.tsx
-import { docs } from "spacepress/server/db";
 import type { LayoutProps } from "spacepress/app";
-import { nav } from "spacepress/content";
 import { DocsShell, searchEntries } from "@spacepress/docs";
 
 export const metadata = { title: { default: "Acme Docs", template: "%s · Acme Docs" }, scripts: ["/theme.js"] };
 
-export default async function Root({ children }: LayoutProps) {
+export default async function Root({ children, db }: LayoutProps) {
   return (
-    <DocsShell title="Acme Docs" github="acme/docs" search={searchEntries(await nav(docs))}>
+    <DocsShell title="Acme Docs" github="acme/docs" search={searchEntries(await db.docs.nav())}>
       {children}
     </DocsShell>
   );
@@ -50,18 +48,19 @@ export default async function Root({ children }: LayoutProps) {
 
 ```tsx
 // sp/app/docs/[...path]/page.tsx
-import { docs } from "spacepress/server/db";
+import { headings, notFound } from "spacepress/app";
 import type { PageProps } from "./$types";
-import { headings, nav, pager } from "spacepress/content";
 import { DocPage } from "@spacepress/docs";
 
-export default async function Doc({ item, params }: PageProps) {
-  const { prev, next } = await pager(docs, item);
+export default async function Doc({ params, db }: PageProps) {
+  const item = await db.docs.get({ path: params.path });
+  if (!item) notFound();
+  const { prev, next } = await db.docs.pager(item);
   const path = params.path.join("/");
   return (
     <DocPage
       item={item}
-      tree={await nav(docs, item)}
+      tree={await db.docs.nav(item)}
       prev={prev}
       next={next}
       headings={headings(item)}

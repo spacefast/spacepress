@@ -1,4 +1,4 @@
-import { store, product, productCategory, productTag, order } from "spacepress";
+import { store, product, productCategory, productTag, order } from "spacepress/commerce";
 
 export const shop = store({
   currency: "EUR",
@@ -14,7 +14,7 @@ export const shop = store({
   payments: ["cod"],
   email: { fromName: "SpacePress Shop", fromAddress: "shop@example.com" },
 });
-export const products = product({ sync: "content/products/*.md", url: "/products/:slug" });
-export const categories = productCategory({ sync: "content/product-categories/*.md", url: "/shop/:path" });
+export const products = product({ sync: "content/products/*.md" });
+export const categories = productCategory({ sync: "content/product-categories/*.md" });
 export const tags = productTag({ sync: "content/product-tags/*.md" });
 export const orders = order();

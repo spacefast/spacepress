@@ -186,25 +186,20 @@ export interface ColumnBuilder<
   column(physicalName: string): ColumnBuilder<TKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>;
   /** Accepts an old API/filter field name as an alias during field renames. */
   alias(oldName: string): ColumnBuilder<TKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>;
-  /** SQL `DEFAULT value` (a constant; arrays/objects for list and structured columns). */
+  /** Constant default or computed PHP callback on insert. */
   default(
     this: ColumnBuilder<DefaultKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>,
-    value: TData,
+    value: TData | (() => GeneratedValue<TKind, TData>),
   ): ColumnBuilder<TKind, TData, TNotNull, true, TLocalized, TPrimary>;
   /** Current time (timestamp) or today (date) as the SQL default. */
   defaultNow(
     this: ColumnBuilder<"timestamp" | "date", TData, TNotNull, THasDefault, TLocalized, TPrimary>,
   ): ColumnBuilder<TKind, TData, TNotNull, true, TLocalized, TPrimary>;
-  /** Computed in PHP on insert. */
-  $default(
-    this: ColumnBuilder<DefaultKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>,
-    fn: () => GeneratedValue<TKind, TData>,
-  ): ColumnBuilder<TKind, TData, TNotNull, true, TLocalized, TPrimary>;
   /**
    * Computed in PHP on update (`() => new Date()` on a timestamp means "now").
-   * Like Drizzle, it also counts as a default for inserts. Not allowed on sub-fields.
+   * Also counts as a default for inserts. Not allowed on sub-fields.
    */
-  $onUpdate(
+  onUpdate(
     this: ColumnBuilder<DefaultKind, TData, TNotNull, THasDefault, TLocalized, TPrimary>,
     fn: () => GeneratedValue<TKind, TData>,
   ): ColumnBuilder<TKind, TData, TNotNull, true, TLocalized, TPrimary>;
@@ -275,65 +270,58 @@ export interface Column<
 export type AnyColumn = Column<ColumnKind, unknown, boolean, boolean, string, string>;
 
 /**
- * A reference to a row of `kind` (its `id`): the field holds the id, `with: { field: true }` loads the
- * row in its place, and `kind` gets a list of the referencing rows named after this kind. Pass
- * `() => kind` for a kind declared later or for the kind itself.
- */
-export declare function ref(kind: AnyCollection | (() => AnyCollection)): ColumnBuilder<"integer", number, true, false>;
-/** Every field is required unless `.optional()`; `.default()` or `.defaultNow()` make it omittable on create. */
-export declare function integer(): ColumnBuilder<"integer", number, true, false>;
-/** Any finite number (a double). */
-export declare function number(): ColumnBuilder<"number", number, true, false>;
-/** Single line by default; `multiline: true` is a textarea in editors. */
-export declare function text(config?: { multiline?: boolean }): ColumnBuilder<"text", string, true, false>;
-/** Stored as INTEGER 0/1. */
-export declare function boolean(): ColumnBuilder<"boolean", boolean, true, false>;
-/** TEXT `YYYY-MM-DD`. */
-export declare function date(): ColumnBuilder<"date", string, true, false>;
-/** TEXT, UTC ISO-8601 with milliseconds. */
-export declare function timestamp(): ColumnBuilder<"timestamp", string, true, false>;
-/** TEXT holding JSON of type `T`: `json<string[]>()`. */
-export declare function json<T = unknown>(): ColumnBuilder<"json", T, true, false>;
-
-/** An email address (validated). TEXT. */
-export declare function email(): ColumnBuilder<"email", string, true, false>;
-/** An absolute `http(s)://` URL (validated). TEXT. */
-export declare function url(): ColumnBuilder<"url", string, true, false>;
-/**
- * URL-safe identifier: `^[a-z0-9]+(?:-[a-z0-9]+)*$`, at most 200 characters, unique. With `source`
- * (a text column of the same collection), an omitted slug is derived from it ("-2", "-3" ... until
- * unique). At most one per collection; not allowed in sub-fields or globals.
- */
-export declare function slug(config?: { source?: undefined }): ColumnBuilder<"slug", string, true, false>;
-/** With `source`, an omitted slug is derived, so it may be left out on create. */
-export declare function slug(config: { source: string }): ColumnBuilder<"slug", string, true, true>;
-/** A private-file id in the named bucket. */
-export declare function file(bucket: FileBucket): ColumnBuilder<"file", number, true, false>;
-
-/** HTML. On WordPress the `content`-designated richText is the block editor's post_content. */
-export declare function richText(): ColumnBuilder<"richText", string, true, false>;
-/** A media id (the built-in `media` collection); `.many()` for a list. `with: { <col>: true }` populates it in place. */
-export declare function media(config?: { accept?: "image" | "any" }): ColumnBuilder<"media", number, true, false>;
-/** One of `options`; `.many()` for any number of them, stored as a JSON array and filtered with `{ has: option }`. */
-export declare function select<const TOptions extends readonly [string, ...string[]]>(
-  options: TOptions,
-): ColumnBuilder<"text", TOptions[number], true, false>;
-
-/**
- * Sub-fields of `group`/`repeater`/`blocks` layouts and globals. Builders are the column builders;
- * the compiler rejects slug(), blocks(), .unique(), .references() and .$onUpdate() inside them,
- * and nesting deeper than 3.
+ * Sub-fields of `group`/`repeater`/`blocks` layouts and globals.
  */
 export type FieldsConfig = Record<string, AnyColumnBuilder>;
 
-/** One object with fixed sub-fields (absent optional sub-fields read as null). */
-export declare function group<F extends FieldsConfig>(fields: F): ColumnBuilder<"group", SelectShape<F>, true, false, HasLocalized<F>>;
-/** A list of objects with the same sub-fields. `.min/.max` count items. */
-export declare function repeater<F extends FieldsConfig>(fields: F): ColumnBuilder<"repeater", SelectShape<F>[], true, false, HasLocalized<F>>;
-/** Flexible content: a list of items, each `{ layout, ...that layout's fields }`, one entry per layout. */
-export declare function blocks<L extends Record<string, FieldsConfig>>(
-  layouts: L,
-): ColumnBuilder<"blocks", BlockValue<L>[], true, false, HasLocalized<L[keyof L]>>;
+/** Field builders namespace: `f.text()`, `f.integer()`, `f.ref(...)`, `f.group(...)`, etc. */
+export declare const f: {
+  /** A reference to a row of `kind` (its `id`). Pass `() => kind` for forward/self references. */
+  ref(kind: AnyCollection | (() => AnyCollection)): ColumnBuilder<"integer", number, true, false>;
+  /** Every field is required unless `.optional()`; `.default()` or `.defaultNow()` make it omittable on create. */
+  integer(): ColumnBuilder<"integer", number, true, false>;
+  /** Any finite number (a double). */
+  number(): ColumnBuilder<"number", number, true, false>;
+  /** Single line by default; `multiline: true` is a textarea in editors. */
+  text(config?: { multiline?: boolean }): ColumnBuilder<"text", string, true, false>;
+  /** Stored as INTEGER 0/1. */
+  boolean(): ColumnBuilder<"boolean", boolean, true, false>;
+  /** TEXT `YYYY-MM-DD`. */
+  date(): ColumnBuilder<"date", string, true, false>;
+  /** TEXT, UTC ISO-8601 with milliseconds. */
+  timestamp(): ColumnBuilder<"timestamp", string, true, false>;
+  /** TEXT holding JSON of type `T`: `f.json<string[]>()`. */
+  json<T = unknown>(): ColumnBuilder<"json", T, true, false>;
+  /** An email address (validated). TEXT. */
+  email(): ColumnBuilder<"email", string, true, false>;
+  /** An absolute `http(s)://` URL (validated). TEXT. */
+  url(): ColumnBuilder<"url", string, true, false>;
+  /** URL-safe identifier; with `{ source }`, omitted slugs are derived automatically. */
+  slug(config?: { source?: undefined }): ColumnBuilder<"slug", string, true, false>;
+  slug(config: { source: string }): ColumnBuilder<"slug", string, true, true>;
+  /** A private-file id in the named bucket. */
+  file(bucket: FileBucket): ColumnBuilder<"file", number, true, false>;
+  /** HTML. On WordPress the `content`-designated richText is the block editor's post_content. */
+  richText(): ColumnBuilder<"richText", string, true, false>;
+  /** A media id (the built-in `media` collection); `.many()` for a list. */
+  media(config?: { accept?: "image" | "any" }): ColumnBuilder<"media", number, true, false>;
+  /** One of `options`; `.many()` for any number of them. */
+  select<const TOptions extends readonly [string, ...string[]]>(
+    options: TOptions,
+  ): ColumnBuilder<"text", TOptions[number], true, false>;
+  /** An item's terms of `taxonomy`. */
+  terms(
+    taxonomy: CollectionMeta<string, ColumnsConfig, false, "taxonomy", boolean> | (() => CollectionMeta<string, ColumnsConfig, false, "taxonomy", boolean>),
+  ): ColumnBuilder<"refList", number[], true, true, false, false>;
+  /** One object with fixed sub-fields (absent optional sub-fields read as null). */
+  group<F extends FieldsConfig>(fields: F): ColumnBuilder<"group", SelectShape<F>, true, false, HasLocalized<F>>;
+  /** A list of objects with the same sub-fields. `.min/.max` count items. */
+  repeater<F extends FieldsConfig>(fields: F): ColumnBuilder<"repeater", SelectShape<F>[], true, false, HasLocalized<F>>;
+  /** Flexible content: a list of items, each `{ layout, ...that layout's fields }`. */
+  blocks<L extends Record<string, FieldsConfig>>(
+    layouts: L,
+  ): ColumnBuilder<"blocks", BlockValue<L>[], true, false, HasLocalized<L[keyof L]>>;
+};
 
 /** One `blocks()` item: discriminated by `layout`. */
 export type BlockValue<L extends Record<string, FieldsConfig>> = {
@@ -471,14 +459,6 @@ export interface CollectionOptions<T extends AnyCollection = AnyCollection> {
   label?: string;
   /** Admin presentation options (icon, singularLabel, description, group, defaultColumns, hidden). */
   ui?: KindUi<keyof ColumnsOf<T> & string>;
-  /**
-   * The item URL, one pattern for incoming URLs and outgoing links: `"/blog/:slug"`. It starts with a
-   * literal segment. Placeholders are `:slug`, `:id`, `:year`/`:month`/`:day`/`:publishedAt`, a required
-   * field everyone can read (`:topic`), or the slug of a referenced collection anyone reads
-   * (`:byline.slug`), each used once; it must include `:slug` or `:id`, and can't overlap another
-   * kind's pattern. collection() only.
-   */
-  url?: `/${string}`;
   /** Native on collections; opt-in publication state on tables. */
   drafts?: boolean;
   /** Keep a revision per write. Default true for collections and tables. */
@@ -516,11 +496,17 @@ export interface CollectionOptions<T extends AnyCollection = AnyCollection> {
 /** Metadata every collection carries alongside its column references. */
 export type StorageKind = "collection" | "table" | "userProjection" | "taxonomy" | "product" | "order";
 
-export interface CollectionMeta<TName extends string, TCols extends ColumnsConfig, TAuth extends boolean = false, TStorage extends StorageKind = StorageKind> {
-  readonly [collectionBrand]: { columns: TCols; auth: TAuth; storage: TStorage };
+export interface CollectionMeta<
+  TName extends string,
+  TCols extends ColumnsConfig,
+  TAuth extends boolean = false,
+  TStorage extends StorageKind = StorageKind,
+  THierarchical extends boolean = false,
+> {
+  readonly [collectionBrand]: { columns: TCols; auth: TAuth; storage: TStorage; hierarchical: THierarchical };
   /** Row type returned by queries. */
   readonly $inferSelect: SelectShape<TCols>;
-  /** Shape accepted by `db.insert(...).values(...)`. */
+  /** Shape accepted by `db.<kind>.create(...)`. */
   readonly $inferInsert: TStorage extends "order" ? never : ("locale" extends keyof TCols ? TranslationInsert<TCols> : InsertShape<TCols>) & (TAuth extends true ? { password?: string } : {});
   /**
    * Hooks on this kind (spec §2.8), in the file that declares it. Returns the kind, so calls chain;
@@ -552,9 +538,10 @@ export type Collection<
   TCols extends ColumnsConfig = ColumnsConfig,
   TAuth extends boolean = false,
   TStorage extends StorageKind = "collection",
-> = ColumnRefs<TName, TCols> & CollectionMeta<TName, TCols, TAuth, TStorage>;
+  THierarchical extends boolean = false,
+> = ColumnRefs<TName, TCols> & CollectionMeta<TName, TCols, TAuth, TStorage, THierarchical>;
 
-export type AnyCollection = CollectionMeta<string, ColumnsConfig, boolean>;
+export type AnyCollection = CollectionMeta<string, ColumnsConfig, boolean, StorageKind, boolean>;
 
 type HasLocalized<TCols> = true extends (TCols extends unknown ? {
   [K in keyof TCols]: TCols[K] extends { readonly [columnBrand]: { localized: infer L } } ? L : false;
@@ -624,12 +611,25 @@ type StoredColumns<
 > = WithId<TCols> & IdentityColumns<TUid, TSync> & TranslatedColumns<TCols>
   & (TExisting extends string ? {} : Omit<SystemColumns, keyof TCols> & Omit<SoftDeleteColumns, keyof TCols>);
 
+type HierarchicalColumns = {
+  parent: ColumnBuilder<"integer", number, false, true>;
+  order: ColumnBuilder<"integer", number, true, true>;
+};
+
 /** WordPress posts, native editor, drafts and revisions. Registry key supplies identity. */
 export declare function collection<
-  TCols extends ColumnsConfig, TUid extends boolean = false, TSync extends string | undefined = undefined,
->(fields: TCols,
-  options?: NoInfer<CollectionOptions<Collection<string, StoredColumns<TCols, TUid, TSync> & DraftColumns>>> & { drafts?: true; revisions?: true } & IdentityOptions<TUid, TSync>,
-): Collection<string, StoredColumns<TCols, TUid, TSync> & DraftColumns>;
+  TCols extends ColumnsConfig,
+  TUid extends boolean = false,
+  TSync extends string | undefined = undefined,
+  THierarchical extends boolean = false,
+>(
+  fields: TCols,
+  options?: NoInfer<CollectionOptions<Collection<string, StoredColumns<TCols, TUid, TSync> & DraftColumns & (THierarchical extends true ? HierarchicalColumns : {}), false, "collection", THierarchical>>> & {
+    drafts?: true;
+    revisions?: true;
+    hierarchical?: THierarchical;
+  } & IdentityOptions<TUid, TSync>,
+): Collection<string, StoredColumns<TCols, TUid, TSync> & DraftColumns & (THierarchical extends true ? HierarchicalColumns : {}), false, "collection", THierarchical>;
 
 /** Relational application data in its own SQL table, regardless of field names. */
 export declare function table<
@@ -645,50 +645,40 @@ export declare function table<
   options?: NoInfer<CollectionOptions<Collection<string, StoredColumns<TCols, TUid, TSync, TExisting>, false, "table">>> & { drafts?: false; existingTable?: TExisting } & IdentityOptions<TUid, TSync>,
 ): Collection<string, StoredColumns<TCols, TUid, TSync, TExisting>, false, "table">;
 
-/** One projection over existing wp_users/wp_usermeta, never a post or a second user table. */
-export declare function userProjection<TCols extends ColumnsConfig, TUid extends boolean = false>(fields: TCols,
-  options?: NoInfer<CollectionOptions<Collection<string, WithId<TCols> & AuthColumns & IdentityColumns<TUid, undefined>, true, "userProjection">>> & { drafts?: false; revisions?: false; uid?: TUid },
-): Collection<string, WithId<TCols> & AuthColumns & IdentityColumns<TUid, undefined>, true, "userProjection">;
-
-/** The fields every `wp.posts` kind has, stored in the post itself. `slug` follows `title` until set. */
+/** The fields built into WordPress native `posts` and `pages`. */
 type PostColumns = {
   title: ColumnBuilder<"text", string, true, false>;
   slug: ColumnBuilder<"slug", string, true, true>;
-  content: ColumnBuilder<"richText", string, false, false>;
+  content: ColumnBuilder<"richText", string, true, true>;
   excerpt: ColumnBuilder<"text", string, false, false>;
 };
-/** An authored field may not take a name posts already have. */
+type UserBaseColumns = {
+  email: ColumnBuilder<"email", string, true, false>;
+};
 type PostFields = ColumnsConfig & { [K in keyof PostColumns | keyof DraftColumns | "id"]?: never };
-type PostKind<TCols extends ColumnsConfig, TUid extends boolean, TSync extends string | undefined> =
-  Collection<string, StoredColumns<PostColumns & TCols, TUid, TSync> & DraftColumns>;
-/** Options a `wp.posts` kind takes: comments are on unless `comments: false`. */
-type PostOptions<T extends AnyCollection> = Pick<CollectionOptions<T>, "url" | "comments" | "access" | "label" | "ui" | "sync" | "uid" | "agents" | "api" | "staged" | "softDelete" | "retention">;
+type PostKind<TCols extends ColumnsConfig, TUid extends boolean, TSync extends string | undefined, THierarchical extends boolean = false> =
+  Collection<string, StoredColumns<PostColumns & TCols, TUid, TSync> & DraftColumns & (THierarchical extends true ? HierarchicalColumns : {}), false, "collection", THierarchical>;
+type UserKind<TCols extends ColumnsConfig, TUid extends boolean> =
+  Collection<string, WithId<Omit<UserBaseColumns, keyof TCols> & TCols> & AuthColumns & IdentityColumns<TUid, undefined>, true, "userProjection">;
+/** Options for `extend("posts" | "pages", options?)`. */
+type PostOptions<T extends AnyCollection> = Pick<CollectionOptions<T>, "comments" | "access" | "label" | "ui" | "sync" | "uid" | "agents" | "api" | "staged" | "softDelete" | "retention">;
 
 /**
- * WordPress's own kinds. `wp.posts` is WordPress's posts: the block editor, comments, drafts, revisions,
- * categories and tags are WordPress's, and its capabilities decide who writes; `access` only narrows them.
+ * Extend a built-in WordPress kind (`"posts"`, `"pages"`, or `"users"`) with custom fields,
+ * sync patterns, hooks, or access rules. All three are already available on `db` without calling `extend()`.
  */
-export declare const wp: {
-  readonly posts: {
-    /**
-     * WordPress's posts with the app's fields (post meta `sp_<field>`), exported as `posts`:
-     * `export const posts = wp.posts.extend({ cover: media().optional() }, { url: "/blog/:slug" })`.
-     * `url` is required: it is each post's address, through WordPress's `post_link`.
-     */
-    extend<TCols extends PostFields = {}, TSync extends string | undefined = undefined>(
-      fields: TCols,
-      options: NoInfer<PostOptions<PostKind<TCols, TSync extends string ? true : false, TSync>>> & { url: `/${string}`; sync?: TSync },
-    ): PostKind<TCols, TSync extends string ? true : false, TSync>;
-    /**
-     * Another kind shaped like posts, with its own rows (post type `sp_<name>`): title, slug, content,
-     * excerpt, comments, drafts and revisions, plus the given fields.
-     */
-    clone<TCols extends PostFields = {}, TSync extends string | undefined = undefined>(
-      fields: TCols,
-      options?: NoInfer<PostOptions<PostKind<TCols, TSync extends string ? true : false, TSync>>> & { sync?: TSync; storageName?: string },
-    ): PostKind<TCols, TSync extends string ? true : false, TSync>;
-  };
-};
+export declare function extend<TCols extends PostFields = {}, TSync extends string | undefined = undefined>(
+  target: "posts",
+  options?: NoInfer<PostOptions<PostKind<TCols, TSync extends string ? true : false, TSync, false>>> & { fields?: TCols; sync?: TSync },
+): PostKind<TCols, TSync extends string ? true : false, TSync, false>;
+export declare function extend<TCols extends PostFields = {}, TSync extends string | undefined = undefined>(
+  target: "pages",
+  options?: NoInfer<PostOptions<PostKind<TCols, TSync extends string ? true : false, TSync, true>>> & { fields?: TCols; sync?: TSync },
+): PostKind<TCols, TSync extends string ? true : false, TSync, true>;
+export declare function extend<TCols extends ColumnsConfig = {}, TUid extends boolean = false>(
+  target: "users",
+  options?: NoInfer<CollectionOptions<UserKind<TCols, TUid>>> & { fields?: TCols; drafts?: false; revisions?: false; uid?: TUid },
+): UserKind<TCols, TUid>;
 
 /** A term's own fields (docs/decisions/2026-11-11-authoring-surface.md, ruling 27). */
 type TermColumns<THierarchical extends boolean> = {
@@ -712,10 +702,8 @@ export interface TaxonomyOptions<T extends AnyCollection = AnyCollection, THiera
   storageName?: string;
   /** Shown in wp-admin. */
   label?: string;
-  /** Terms nest: adds `parent`, and `:path` in `url` is the chain of ancestor slugs. */
+  /** Terms nest: adds `parent`. */
   hierarchical?: THierarchical;
-  /** The term URL: `:slug`, `:id` and, hierarchical, `:path`. With one, core's sitemap lists the terms and a term has an archive. */
-  url?: `/${string}`;
   /** The app's collections whose items carry these terms, in a field named after this export. */
   on?: readonly AnyCollection[];
   /** With `locales` set, `false` is required: one vocabulary shared by every locale. */
@@ -727,16 +715,8 @@ export interface TaxonomyOptions<T extends AnyCollection = AnyCollection, THiera
 /** A taxonomy: terms in WordPress's term tables, with term meta fields, attached to collections. */
 export declare function taxonomy<TFields extends TermFields = {}, THierarchical extends boolean = false, TSync extends string | undefined = undefined>(
   fields?: TFields,
-  options?: NoInfer<TaxonomyOptions<Collection<string, WithId<TFields> & TermColumns<THierarchical> & IdentityColumns<false, TSync>, false, "taxonomy">>> & { hierarchical?: THierarchical; sync?: TSync },
-): Collection<string, WithId<TFields> & TermColumns<THierarchical> & IdentityColumns<false, TSync>, false, "taxonomy">;
-
-/**
- * An item's terms of `taxonomy`: the term ids in write order (`[]` when none), kept as WordPress's
- * term relationships. `with: { field: true }` loads the term rows, and the taxonomy gets a list of the
- * items named after this kind. The same field `on` adds, under another name or with `.access()`,
- * `.ui()` or `.reverse()`; the build refuses any other modifier.
- */
-export declare function terms(taxonomy: CollectionMeta<string, ColumnsConfig, false, "taxonomy"> | (() => CollectionMeta<string, ColumnsConfig, false, "taxonomy">)): ColumnBuilder<"refList", number[], true, true, false, false>;
+  options?: NoInfer<TaxonomyOptions<Collection<string, WithId<TFields> & TermColumns<THierarchical> & IdentityColumns<false, TSync>, false, "taxonomy", THierarchical>>> & { hierarchical?: THierarchical; sync?: TSync },
+): Collection<string, WithId<TFields> & TermColumns<THierarchical> & IdentityColumns<false, TSync>, false, "taxonomy", THierarchical>;
 
 type ColumnsOf<T> = T extends { readonly [collectionBrand]: { columns: infer C } } ? C : never;
 
@@ -1047,9 +1027,21 @@ export interface CollectionQuery<TSchema extends Schema, TRels, K extends keyof 
  */
 export interface Register {}
 
-type RegisteredSchema = Register extends { relations: Relations<infer S, any> } ? S : never;
+type BuiltinKinds = {
+  posts: PostKind<{}, false, undefined, false>;
+  pages: PostKind<{}, false, undefined, true>;
+  users: UserKind<{}, false>;
+};
+
+type RegisteredSchema = Register extends { relations: Relations<infer S, any> }
+  ? Omit<BuiltinKinds, keyof S> & S
+  : BuiltinKinds;
 
 type RegisteredRelations = Register extends { relations: Relations<any, infer C> } ? C : {};
+type RegisteredGlobals = Register extends { globals: infer G } ? G : {};
+type RegisteredFiles = Register extends { files: infer F } ? F : Record<string, FileBucket>;
+
+type IsHierarchical<T> = T extends { readonly [collectionBrand]: { hierarchical: true } } ? true : false;
 
 type KindListOptions<TSchema extends Schema, TRels, K extends keyof TSchema, TCols, TWith> = {
   locale?: Locale | "*";
@@ -1082,12 +1074,37 @@ export interface RevisionDiff<TRow = Record<string, unknown>> {
   changes: { field: keyof TRow & string; from: unknown; to: unknown }[];
 }
 
-/**
- * The query API of one kind (spec §3), on what `import { posts } from "spacepress/server/db"` gives you. Every
- * call runs as the visitor the request runs as: access rules, draft visibility and field masks
- * apply. Jobs and signed webhooks run as the system. `posts.system` makes the same calls trusted.
- */
-export interface KindApi<TSchema extends Schema, TRels, K extends keyof TSchema> {
+interface KindNavItem {
+  id: number;
+  title: string;
+  href: string;
+  current: boolean;
+  open: boolean;
+  children: KindNavItem[];
+}
+interface KindPagerLink {
+  id: number;
+  title: string;
+  href: string;
+}
+
+type KindGetTarget<TSchema extends Schema, TRels, K extends keyof TSchema> =
+  | (TSchema[K]["$inferSelect"] extends { id: infer Id } ? Id : never)
+  | RelationsFilter<TSchema, TRels, K>
+  | (IsHierarchical<TSchema[K]> extends true ? { path: string | string[] } : never);
+
+type HierarchicalMethods<TSchema extends Schema, K extends keyof TSchema> =
+  IsHierarchical<TSchema[K]> extends true
+    ? {
+        /** The kind's published items as a tree, siblings by `order` then title. */
+        nav(current?: { id: number } | number | null): Promise<KindNavItem[]>;
+        /** Previous and next items around `current` in the tree. */
+        pager(current: { id: number } | number): Promise<{ prev: KindPagerLink | null; next: KindPagerLink | null }>;
+      }
+    : {};
+
+/** Read-only query API of one kind (`query()`, `page.tsx`, `layout.tsx`, `access` rules, `staticParams`). */
+export type ReadOnlyKindApi<TSchema extends Schema, TRels, K extends keyof TSchema> = {
   list<TCols extends ColumnsSelection<TSchema[K]> = {}, TWith extends WithConfig<TSchema, TRels, K> = {}>(
     q?: KindListOptions<TSchema, TRels, K, TCols, TWith> & { offset?: number },
   ): Promise<QueryRow<TSchema, TRels, K, TCols, TWith>[]>;
@@ -1095,63 +1112,57 @@ export interface KindApi<TSchema extends Schema, TRels, K extends keyof TSchema>
   paginate<TCols extends ColumnsSelection<TSchema[K]> = {}, TWith extends WithConfig<TSchema, TRels, K> = {}>(
     q?: KindListOptions<TSchema, TRels, K, TCols, TWith> & { cursor?: string | null },
   ): Promise<{ rows: QueryRow<TSchema, TRels, K, TCols, TWith>[]; cursor: string | null }>;
-  /** One row by id or by a filter (`{ slug: "hello" }`); null when no row the visitor may read matches. A kind they may not read at all throws the API's 401/403. */
+  /** One row by id, filter (`{ slug }`), or hierarchical `{ path }`; null when missing. */
   get<TCols extends ColumnsSelection<TSchema[K]> = {}, TWith extends WithConfig<TSchema, TRels, K> = {}>(
-    target: TSchema[K]["$inferSelect"] extends { id: infer Id } ? Id | RelationsFilter<TSchema, TRels, K> : RelationsFilter<TSchema, TRels, K>,
+    target: KindGetTarget<TSchema, TRels, K>,
     q?: { locale?: Locale | "*"; deleted?: DeletedMode; columns?: TCols; with?: TWith },
   ): Promise<QueryRow<TSchema, TRels, K, TCols, TWith> | null>;
   count(q?: { locale?: Locale | "*"; deleted?: DeletedMode; where?: RelationsFilter<TSchema, TRels, K>; search?: string }): Promise<number>;
+} & HierarchicalMethods<TSchema, K>;
+
+/** Full read/write API of one kind (`mutation()`, `route.ts`, `job()`, `cron()`, `.on()` hooks, `wp.*`). */
+export type KindApi<TSchema extends Schema, TRels, K extends keyof TSchema> = ReadOnlyKindApi<TSchema, TRels, K> & {
   create(data: TSchema[K]["$inferInsert"]): Promise<TSchema[K]["$inferSelect"]>;
   /** The updated row; a 404 when no row has that id or the visitor's update rule doesn't cover it. */
   update(id: TSchema[K]["$inferSelect"] extends { id: infer Id } ? Id : never, patch: Partial<TSchema[K]["$inferInsert"]>): Promise<TSchema[K]["$inferSelect"]>;
-  /** Soft-deletes the row (when `softDelete` is on, the default) or hard-deletes it; a 404 when no row has that id or the visitor's delete rule doesn't cover it. */
+  /** Soft-deletes the row (when `softDelete` is on, the default) or hard-deletes it. */
   delete(id: TSchema[K]["$inferSelect"] extends { id: infer Id } ? Id : never): Promise<TSchema[K]["$inferSelect"]>;
-  /** Restores a soft-deleted row and any cascade-deleted children sharing its `deletedGroup`. Throws 409 on unique collision. */
+  /** Restores a soft-deleted row and any cascade-deleted children sharing its `deletedGroup`. */
   restore(id: TSchema[K]["$inferSelect"] extends { id: infer Id } ? Id : never): Promise<TSchema[K]["$inferSelect"]>;
   /** Permanently deletes a row (active or soft-deleted). Default access is `"system"`. */
   purge(id: TSchema[K]["$inferSelect"] extends { id: infer Id } ? Id : never): Promise<TSchema[K]["$inferSelect"]>;
-  /** Native revision history (default ON for both `collection()` and `table()`). */
+  /** Native revision history. */
   readonly revisions: {
     list(id: TSchema[K]["$inferSelect"] extends { id: infer Id } ? Id : never): Promise<RevisionSummary[]>;
     get(id: TSchema[K]["$inferSelect"] extends { id: infer Id } ? Id : never, version: number): Promise<TSchema[K]["$inferSelect"]>;
     diff(id: TSchema[K]["$inferSelect"] extends { id: infer Id } ? Id : never, fromVersion: number, toVersion: number): Promise<RevisionDiff<TSchema[K]["$inferSelect"]>>;
     restore(id: TSchema[K]["$inferSelect"] extends { id: infer Id } ? Id : never, version: number): Promise<TSchema[K]["$inferSelect"]>;
   };
-}
-
-/** The app's kinds by registered name: what `import { posts } from "spacepress/server/db"` gives you. */
-export type RegisteredKinds = [RegisteredSchema] extends [never]
-  ? {}
-  : { readonly [K in keyof RegisteredSchema]: RegisteredSchema[K] & KindApi<RegisteredSchema, RegisteredRelations, K> & { readonly system: KindApi<RegisteredSchema, RegisteredRelations, K> } };
-
-type UnregisteredQuery = {
-  readonly [key: string]: "Schema not registered: add sp/_generated/db.d.ts (run `spacepress build`) so `db.query` knows your collections";
 };
 
-export type QueryApi = [RegisteredSchema] extends [never]
-  ? UnregisteredQuery
-  : {
-      readonly [K in keyof RegisteredSchema]: CollectionQuery<
-        RegisteredSchema,
-        RegisteredRelations,
-        K
-      >;
-    };
-
-type RegisteredGlobals = Register extends { globals: infer G } ? G : never;
-
-/** `db.globals.<key>`: trusted reads and writes of one global. Never-written globals read as their defaults. */
-export interface GlobalApi<G extends AnyGlobal> {
+export interface ReadOnlyGlobalApi<G extends AnyGlobal> {
   get(): Promise<G["$inferSelect"]>;
+}
+
+export interface GlobalApi<G extends AnyGlobal> extends ReadOnlyGlobalApi<G> {
   update(patch: G["$inferUpdate"]): Promise<G["$inferSelect"]>;
 }
 
-export type GlobalsApi = [RegisteredGlobals] extends [never]
-  ? { readonly [key: string]: GlobalApi<AnyGlobal> }
-  : { readonly [K in keyof RegisteredGlobals]: GlobalApi<RegisteredGlobals[K] & AnyGlobal> };
+type ReadOnlyKindsMap = {
+  readonly [K in keyof RegisteredSchema]: ReadOnlyKindApi<RegisteredSchema, RegisteredRelations, K>;
+};
+type FullKindsMap = {
+  readonly [K in keyof RegisteredSchema]: KindApi<RegisteredSchema, RegisteredRelations, K>;
+};
+type ReadOnlyGlobalsMap = {
+  readonly [K in keyof RegisteredGlobals]: ReadOnlyGlobalApi<RegisteredGlobals[K] & AnyGlobal>;
+};
+type FullGlobalsMap = {
+  readonly [K in keyof RegisteredGlobals]: GlobalApi<RegisteredGlobals[K] & AnyGlobal>;
+};
 
 // ---------------------------------------------------------------------------
-// 8. Database API (hooks and actions only)
+// 8. Unified Database & Context Capabilities
 // ---------------------------------------------------------------------------
 
 type Row<T extends AnyCollection> = T["$inferSelect"];
@@ -1159,38 +1170,46 @@ type Insert<T extends AnyCollection> = T["$inferInsert"];
 /** Update patches: any subset of insertable fields. */
 type Patch<T extends AnyCollection> = Partial<Omit<Insert<T>, "locale" | "translationOf">>;
 
-/** Awaiting runs the write; `.returning()` yields the affected rows instead. */
-export interface WriteQuery<T extends AnyCollection> extends PromiseLike<void> {
-  returning(): Promise<Row<T>[]>;
+/** System-scoped read-only database (`access` rules, `staticParams`, `readOnlyDb.system`). */
+export type SystemReadOnlyDb = ReadOnlyKindsMap & ReadOnlyGlobalsMap;
+
+/** Viewer-scoped read-only database (`query()`, `page.tsx`, `layout.tsx`, `metadata`). */
+export type ReadOnlyDb = ReadOnlyKindsMap & ReadOnlyGlobalsMap & {
+  /** Trusted system-scoped reads (bypasses viewer access rules). */
+  readonly system: SystemReadOnlyDb;
+};
+
+/** System-scoped read/write database (`job()`, `cron()`, `wp.action()`, `wp.filter()`, `db.system`). */
+export type SystemDb = FullKindsMap & FullGlobalsMap;
+
+/** Viewer-scoped read/write database (`mutation()`, `route.ts`, `.on()` hooks, `import { db } from "spacepress/server"`). */
+export type Db = FullKindsMap & FullGlobalsMap & {
+  /** Trusted system-scoped reads and writes (bypasses viewer access rules). */
+  readonly system: SystemDb;
+};
+
+/** Mail sender & React Email template renderer (passed on `ctx.mail`). */
+export interface Mail {
+  send(message: MailMessage): Promise<{ id: string }>;
+  render<P>(template: (props: P) => unknown, props: P): { html: string; text: string };
 }
 
-export interface InsertBuilder<T extends AnyCollection> {
-  values(values: Insert<T> | Insert<T>[]): WriteQuery<T>;
+/** Host-managed connectors (passed on `ctx.connectors`). */
+export interface Connectors {
+  call(role: string, tool: string, args?: Record<string, unknown>): Promise<unknown>;
+  enqueue(
+    role: string,
+    tool: string,
+    args?: Record<string, unknown>,
+    options?: { key?: string; delay?: number },
+  ): Promise<{ id: string }>;
 }
 
-export interface UpdateBuilder<T extends AnyCollection> {
-  set(patch: Patch<T>): UpdateSetQuery<T>;
-}
+/** Idempotent side-effect guard inside jobs and crons (passed on `ctx.once`). */
+export type Once = <T>(key: string, fn: () => Awaitable<T>) => Promise<T>;
 
-export interface UpdateSetQuery<T extends AnyCollection> extends WriteQuery<T> {
-  where(filter: TableFilter<T>): WriteQuery<T>;
-}
-
-export interface DeleteQuery<T extends AnyCollection> extends WriteQuery<T> {
-  where(filter: TableFilter<T>): WriteQuery<T>;
-}
-
-export interface Database {
-  /** Relational queries, keyed by registered logical key. Trusted: every status visible, no access rules. */
-  readonly query: QueryApi;
-  /** Globals, keyed by the `globals` key in `defineConfig`. */
-  readonly globals: GlobalsApi;
-  insert<T extends AnyCollection>(collection: T): InsertBuilder<T>;
-  update<T extends AnyCollection>(collection: T): UpdateBuilder<T>;
-  delete<T extends AnyCollection>(collection: T): DeleteQuery<T>;
-}
-
-// Note: `db` is exported from `"spacepress/server"`.
+/** Private file buckets keyed by export name (passed on `ctx.files`). */
+export type Files = RegisteredFiles;
 
 // ---------------------------------------------------------------------------
 // 9. Identity and access
@@ -1206,7 +1225,6 @@ export interface User {
   role: Role;
 }
 
-/** The trailing argument of every hook and action handler. */
 export type FieldRule = AccessShorthand | ((ctx: FieldAccessCtx) => boolean);
 export interface FieldAccessCtx {
   user: User | null;
@@ -1216,14 +1234,27 @@ export interface FieldAccessCtx {
 /** Scalar sibling conditions (eq/ne/in/isNull/isNotNull), ANDed; top-level OR supported. */
 export type SiblingFilter = Record<string, unknown>;
 
-export interface HookCtx<TData = Record<string, unknown>> {
-  /** Before-hooks share their data or patch with this value. */
-  data?: TData;
+/** Context passed as the first argument to `query()` handlers. */
+export interface QueryCtx {
+  db: ReadOnlyDb;
   user: User | null;
+  files: Files;
 }
 
-export interface BeforeHookCtx<TData> extends HookCtx<TData> {
-  data: TData;
+/** Context passed as the first argument to `mutation()` and `route.ts` handlers. */
+export interface MutationCtx {
+  db: Db;
+  user: User | null;
+  mail: Mail;
+  connectors: Connectors;
+  files: Files;
+}
+
+/** Context passed as the second argument to `route.ts` / page HTTP handlers. */
+export type RouteCtx = MutationCtx;
+
+export interface HookCtx<TData = Record<string, unknown>> extends MutationCtx {
+  data?: TData;
 }
 
 export interface AccessCtx<TData = Record<string, unknown>> {
@@ -1231,6 +1262,8 @@ export interface AccessCtx<TData = Record<string, unknown>> {
   op: "read" | "create" | "update" | "delete" | "restore" | "purge";
   /** create: the incoming row (after defaults, before beforeCreate). update: the patch. Absent otherwise. */
   data?: TData;
+  /** System-scoped read-only database for relationship/membership lookups. */
+  db: SystemReadOnlyDb;
 }
 
 /**
@@ -1291,45 +1324,37 @@ export type GateRule<TData = Record<string, unknown>> = AccessShorthand | ((ctx:
  */
 export interface CollectionHooks<T extends AnyCollection> {
   /** Mutate `data` or return a replacement. */
-  beforeCreate?: (data: Insert<T>, ctx: BeforeHookCtx<Insert<T>>) => Awaitable<Insert<T> | void>;
-  afterCreate?: (row: Row<T>, ctx: HookCtx) => Awaitable<void>;
+  beforeCreate?: (ctx: { data: Insert<T>; user: User | null; db: Db }) => Awaitable<Insert<T> | void>;
+  afterCreate?: (ctx: { row: Row<T>; user: User | null; db: Db; mail: Mail; connectors: Connectors; files: Files }) => Awaitable<void>;
   /** Mutate `patch` or return a replacement. */
-  beforeUpdate?: (patch: Patch<T>, existing: Row<T>, ctx: BeforeHookCtx<Patch<T>>) => Awaitable<Patch<T> | void>;
-  afterUpdate?: (row: Row<T>, previous: Row<T>, ctx: HookCtx) => Awaitable<void>;
-  /**
-   * Before a permanent delete; a throw refuses it. Moving an item to WordPress's trash is not a
-   * delete (it is an unpublish and runs the update hooks); emptying the trash is. `ctx.user` can be
-   * null: WordPress empties its trash on a schedule, with nobody signed in.
-   */
-  beforeDelete?: (row: Row<T>, ctx: HookCtx) => Awaitable<void>;
-  /** After a delete (soft delete when `softDelete` is on, permanent otherwise), in its transaction. */
-  afterDelete?: (row: Row<T>, ctx: HookCtx) => Awaitable<void>;
-  /** Before a soft-deleted row is restored; a throw refuses it. */
-  beforeRestore?: (row: Row<T>, ctx: HookCtx) => Awaitable<void>;
+  beforeUpdate?: (ctx: { patch: Patch<T>; existing: Row<T>; user: User | null; db: Db }) => Awaitable<Patch<T> | void>;
+  afterUpdate?: (ctx: { row: Row<T>; previous: Row<T>; user: User | null; db: Db; mail: Mail; connectors: Connectors; files: Files }) => Awaitable<void>;
+  /** Before a delete; throwing aborts the transaction. */
+  beforeDelete?: (ctx: { row: Row<T>; user: User | null; db: Db }) => Awaitable<void>;
+  /** After a delete, in its transaction. */
+  afterDelete?: (ctx: { row: Row<T>; user: User | null; db: Db; mail: Mail; connectors: Connectors; files: Files }) => Awaitable<void>;
+  /** Before a soft-deleted row is restored; throwing aborts. */
+  beforeRestore?: (ctx: { row: Row<T>; user: User | null; db: Db }) => Awaitable<void>;
   /** After a soft-deleted row is restored, in its transaction. */
-  afterRestore?: (row: Row<T>, ctx: HookCtx) => Awaitable<void>;
-  /** Before a row is permanently purged; a throw refuses it. */
-  beforePurge?: (row: Row<T>, ctx: HookCtx) => Awaitable<void>;
+  afterRestore?: (ctx: { row: Row<T>; user: User | null; db: Db; mail: Mail; connectors: Connectors; files: Files }) => Awaitable<void>;
+  /** Before a row is permanently purged; throwing aborts. */
+  beforePurge?: (ctx: { row: Row<T>; user: User | null; db: Db }) => Awaitable<void>;
   /** After a row is permanently purged, in its transaction. */
-  afterPurge?: (row: Row<T>, ctx: HookCtx) => Awaitable<void>;
+  afterPurge?: (ctx: { row: Row<T>; user: User | null; db: Db; mail: Mail; connectors: Connectors; files: Files }) => Awaitable<void>;
   /** A collection's item became published: created published, updated into it, or its scheduled time came. */
-  afterPublish?: (row: Row<T>, ctx: HookCtx) => Awaitable<void>;
+  onPublish?: (ctx: { row: Row<T>; previous: Row<T> | null; user: User | null; db: Db; mail: Mail; connectors: Connectors; files: Files }) => Awaitable<void>;
 }
 
 export type Hooks<TSchema extends Schema> = {
   [K in keyof TSchema]?: CollectionHooks<TSchema[K]>;
 };
 
-/** A query's or mutation's input: its handler's first parameter type, `{}` when it takes none. */
-type HandlerInput<F> = F extends (input: infer I, ...rest: any[]) => any ? (unknown extends I ? {} : I) : {};
+/** A query's, mutation's, or job's input: its handler's second parameter type (after `ctx`), `{}` when omitted. */
+type HandlerInput<F> = F extends (ctx: any, input: infer I, ...rest: any[]) => any ? (unknown extends I ? {} : I) : {};
 
 /** A `query()` or `mutation()`: called from the browser by its export name, and from server code. */
 export interface Action<TInput = any, TResult = unknown> {
   readonly [actionBrand]: { input: TInput; result: TResult };
-  /**
-   * From a `"use client"` component: a `fetch` to the function's endpoint, with the REST nonce. From
-   * server code: a call as the current caller, with its access check.
-   */
   (input: TInput): Promise<Awaited<TResult>>;
 }
 
@@ -1342,27 +1367,24 @@ interface FunctionOptions<TInput> {
   /** Published as an Ability, so agents can call it. Default true. */
   agents?: boolean;
   /**
-   * At most this many calls per period, per user (per address when signed out): `"10/min"`, with
-   * sec, min, hour or day. A mutation open to `"anyone"` defaults to `"30/min"`; `false` turns it off.
+   * At most this many calls per period, per user (per address when signed out): `"10/min"`.
+   * A mutation open to `"anyone"` defaults to `"30/min"`; `false` turns it off.
    */
   rateLimit?: `${number}/${"s" | "sec" | "second" | "m" | "min" | "minute" | "h" | "hour" | "d" | "day"}` | false;
 }
 
 /**
- * A server function that reads. The input is the handler's parameter type; it may not write (the
- * build refuses a write, in it or in anything it calls), and its Ability is marked read-only.
- * `POST` or `GET <prefix>/actions/<name>`.
+ * A server function that reads. Receives `(ctx, input?)` where `ctx.db` is read-only.
  */
-export declare function query<F extends (input: any, ctx: HookCtx) => unknown>(
+export declare function query<F extends (ctx: QueryCtx, input: any) => unknown>(
   options: FunctionOptions<HandlerInput<F>>,
   handler: F,
 ): Action<HandlerInput<F>, Awaited<ReturnType<F>>>;
 
 /**
- * A server function that writes, in one transaction. The input is the handler's parameter type.
- * `POST <prefix>/actions/<name>`.
+ * A server function that writes, in one transaction. Receives `(ctx, input?)`.
  */
-export declare function mutation<F extends (input: any, ctx: HookCtx) => unknown>(
+export declare function mutation<F extends (ctx: MutationCtx, input: any) => unknown>(
   options: FunctionOptions<HandlerInput<F>> & {
     idempotent?: boolean;
     /** Deletes or overwrites data: the Ability is annotated `destructive`, so agents confirm first. */
@@ -1475,6 +1497,11 @@ export interface ConfigInput<TLocales extends LocalesConfig = LocalesConfig> {
    */
   retention?: RetentionConfig;
   /**
+   * Canonical permalink templates for headless sites without `sp/app/` routes, keyed by collection
+   * export name (e.g. `{ posts: "/blog/[slug]", docs: "/docs/[...path]" }`).
+   */
+  permalinks?: Record<string, `/${string}`>;
+  /**
    * Plugin packages, registered in order: `use: [seo({ ... })]`. Each one's capabilities are
    * inferred from its compiled code and granted by the committed `sp/_generated/plugins.lock.json`.
    */
@@ -1488,204 +1515,6 @@ export interface SpacePressConfig<TLocales extends LocalesConfig = LocalesConfig
 export declare function defineConfig<const TLocales extends LocalesConfig = LocalesConfig>(
   config: ConfigInput<TLocales>,
 ): SpacePressConfig<TLocales>;
-
-declare const screenBrand: unique symbol;
-declare const itemBrand: unique symbol;
-
-/** An `adminScreen()` value: registered by its export, like a kind or an action. */
-export interface AdminScreen { readonly [screenBrand]: true }
-
-/** `item("id")`: the field of the row a screen action runs on, compiled to the `{item.id}` placeholder. */
-export type ItemRef<P extends string = string> = `{item.${P}}` & { readonly [itemBrand]: P };
-export declare function item<const P extends string>(path: P): ItemRef<P>;
-
-/** A DataViews field (docs/admin-screens.md). Its id is its key in `fields`. */
-export interface ScreenField {
-  label?: string;
-  type?: "text" | "integer" | "number" | "boolean" | "datetime" | "array";
-  elements?: readonly { value: string | number; label: string }[];
-  description?: string;
-}
-
-type ScreenFields<F extends string> = { [K in F]: ScreenField };
-type ActionInputOf<A> = A extends Action<infer I, any> ? I : never;
-/** An action's input where any value may also be `item("field")`. */
-type WithItems<T> =
-  | ItemRef
-  | (T extends readonly (infer E)[] ? readonly WithItems<E>[] : T extends object ? { [K in keyof T]: WithItems<T[K]> } : T);
-type ScreenActionInput<A> = { [K in keyof ActionInputOf<A>]: WithItems<ActionInputOf<A>[K]> };
-
-/** One action a screen runs, as the Ability the runtime registers for it (`<app>/<kebab name>`). */
-export interface ScreenAction<A extends AnyAction = AnyAction> {
-  id: string;
-  label: string;
-  action: A;
-  /** The action's input; `item("field")` takes the row's value with its type. */
-  input?: ScreenActionInput<A>;
-  /** Defaults to the action's own `destructive`. */
-  destructive?: boolean;
-  /** A sentence asked before the action runs. */
-  confirm?: string;
-}
-
-/** A DataViews view: which fields show, and how. */
-export interface ScreenViewLayout<F extends string> {
-  type?: "table" | "grid" | "list";
-  fields?: readonly F[];
-  titleField?: F;
-  mediaField?: F;
-  descriptionField?: F;
-  sort?: { field: F; direction: "asc" | "desc" };
-  perPage?: number;
-  layout?: Record<string, unknown>;
-}
-
-/** A DataForm form: fields, or groups of them. */
-export interface ScreenFormLayout<F extends string> {
-  type?: "regular" | "panel" | "card";
-  fields?: readonly (F | { id: string; label?: string; children: readonly F[] })[];
-  labelPosition?: "top" | "side" | "none";
-}
-
-/** A list: a query whose output holds the rows. */
-export interface ScreenView<A extends AnyAction, F extends string> {
-  /** A `query()`; the build refuses a mutation here. */
-  action: A;
-  input?: ActionInputOf<A>;
-  /** Dot path to the rows in the action's output; leave it out when the output is the list. */
-  items?: string;
-  /** The row key. Default `"id"`. */
-  id?: string;
-  fields: ScreenFields<F>;
-  layout?: ScreenViewLayout<NoInfer<F>>;
-}
-
-/** A form: a query returns the values; `submit` runs with the edited ones as `item("field")`. */
-export interface ScreenForm<A extends AnyAction, F extends string, S extends AnyAction> {
-  action: A;
-  input?: ActionInputOf<A>;
-  /** Dot path to the values in the output. */
-  item?: string;
-  fields: ScreenFields<F>;
-  layout?: ScreenFormLayout<NoInfer<F>>;
-  submit?: ScreenAction<S>;
-}
-
-/** Who may open the screen: a SpacePress role, or a WordPress capability. Default administrators. */
-type ScreenAccess =
-  | { access?: "admin" | "editor" | "author" | "subscriber" | "authenticated"; capability?: never }
-  | { capability: string; access?: never };
-
-interface ScreenBase<TActions extends readonly AnyAction[]> {
-  title: string;
-  description?: string;
-  /** Where wp-admin lists it (`parent`: a menu slug such as `"tools.php"`); `false` keeps it out of wp-admin. */
-  classic?: false | { parent?: string; icon?: string; position?: number };
-  /** Where SpacePress Admin's sidebar lists it; `false` keeps it out (its route still works). */
-  menu?: false | { parent?: string; icon?: string; section?: string };
-  /** Item actions, each one a SpacePress action run as its Ability. */
-  actions?: { [K in keyof TActions]: ScreenAction<TActions[K]> };
-  /** Fixed lines shown above the body. */
-  data?: string | readonly string[];
-}
-
-export type AdminScreenDefinition<
-  F extends string = string,
-  TSource extends AnyAction = AnyAction,
-  TActions extends readonly AnyAction[] = readonly AnyAction[],
-  TSubmit extends AnyAction = AnyAction,
-> = ScreenBase<TActions> & ScreenAccess & (
-  | { view: ScreenView<TSource, F>; form?: never }
-  | { form: ScreenForm<TSource, F, TSubmit>; view?: never }
-);
-
-/**
- * A SpacePress Admin screen, named by its export: `export const pendingOrders = adminScreen({ ... })` is
- * `/wp-admin/new/screens/pending-orders` and a wp-admin page. One React component draws it in both
- * admins; its actions run as Abilities, which check each action's own `access` (docs/admin-screens.md).
- */
-export declare function adminScreen<
-  F extends string,
-  TSource extends AnyAction,
-  const TActions extends readonly AnyAction[] = [],
-  TSubmit extends AnyAction = AnyAction,
->(definition: AdminScreenDefinition<F, TSource, TActions, TSubmit>): AdminScreen;
-
-declare const widgetBrand: unique symbol;
-declare const dashboardBrand: unique symbol;
-
-/** An `adminWidget()` value: registered by its export and placeable on any admin dashboard. */
-export interface AdminWidget { readonly [widgetBrand]: true }
-
-/** An `adminDashboard()` value: registered by its export as a custom dashboard or Home layout. */
-export interface AdminDashboard { readonly [dashboardBrand]: true }
-
-/** Built-in SpacePress / SpacePress dashboard widget types. */
-export type BuiltinWidgetId =
-  | "sp/content-overview"
-  | "sp/recent-activity"
-  | "sp/drafts-queue"
-  | "sp/app-status"
-  | "sp/store-pulse";
-
-export interface WidgetMetric {
-  id?: string;
-  label: string;
-  /** Dot path into the readonly action's response (e.g. `"totals.orders"`). */
-  path: string;
-  format?: "number" | "currency" | "percent" | "text";
-}
-
-export interface WidgetField {
-  label?: string;
-  type?: "text" | "integer" | "number" | "boolean" | "datetime";
-  description?: string;
-}
-
-export type AdminWidgetDefinition<A extends AnyAction = AnyAction> = ScreenAccess & {
-  title: string;
-  description?: string;
-  info?: string;
-  /** A `readonly: true` action that supplies the widget's data. */
-  action: A;
-  input?: ActionInputOf<A>;
-  display?: "metrics" | "list" | "table" | "summary";
-  /** Dot path to the list rows in the action's response (for `list` / `table` widgets). */
-  items?: string;
-  fields?: Record<string, WidgetField>;
-  metrics?: readonly WidgetMetric[];
-  /** Default grid column span (1–4). */
-  width?: 1 | 2 | 3 | 4;
-  /** Default grid row span (1–4). */
-  height?: 1 | 2 | 3 | 4;
-  link?: { label: string; to: string };
-};
-
-/** Declare a reusable dashboard widget backed by a readonly action. */
-export declare function adminWidget<A extends AnyAction>(definition: AdminWidgetDefinition<A>): AdminWidget;
-
-export type DashboardWidgetPlacement =
-  | AdminWidget
-  | BuiltinWidgetId
-  | {
-      widget: AdminWidget | BuiltinWidgetId;
-      width?: 1 | 2 | 3 | 4;
-      height?: 1 | 2 | 3 | 4;
-      fullWidth?: boolean;
-    };
-
-export type AdminDashboardDefinition = ScreenAccess & {
-  title: string;
-  description?: string;
-  /** Set `home: true` to customize the default Home (`/`) dashboard instead of adding a new route. */
-  home?: boolean;
-  /** Where SpacePress Admin's sidebar lists it; `false` hides it from the sidebar. */
-  menu?: false | { icon?: string; section?: string };
-  widgets: readonly [DashboardWidgetPlacement, ...DashboardWidgetPlacement[]];
-};
-
-/** Declare a custom admin dashboard (or override the default Home dashboard with `home: true`). */
-export declare function adminDashboard(definition: AdminDashboardDefinition): AdminDashboard;
 
 declare const pluginBrand: unique symbol;
 /** A plugin package's definition: `export default (options) => definePlugin({ ... })`. */
@@ -1728,34 +1557,37 @@ export interface Job<TInput = any> {
   enqueue(input: TInput, opts?: EnqueueOptions): Promise<{ id: string }>;
 }
 export type AnyJob = Job<any>;
-export interface JobCtx extends HookCtx { attempt: number; jobId: string }
+export interface JobCtx {
+  db: SystemDb;
+  user: User | null;
+  mail: Mail;
+  connectors: Connectors;
+  files: Files;
+  once: Once;
+  attempt: number;
+  jobId: string;
+}
 /**
- * A background job. The input is the handler's parameter type. `every: "1h"` also runs it on that
- * repeat (s, m, h, d or w; at least a minute), with no input.
+ * A background job. Receives `(ctx, input?)` where `ctx.db` is system-scoped and `ctx.once` is available.
+ * Options are optional: `job(async (ctx, input: { id: number }) => ...)` or `job({ retries: 3 }, ...)`.
  */
-export declare function job<F extends (input: any, ctx: JobCtx) => Awaitable<void>>(
+export declare function job<F extends (ctx: JobCtx, input: any) => Awaitable<void>>(
+  handler: F,
+): Job<HandlerInput<F>>;
+export declare function job<F extends (ctx: JobCtx, input: any) => Awaitable<void>>(
   options: { retries?: number; agents?: boolean; every?: `${number}${"s" | "m" | "h" | "d" | "w"}` },
   handler: F,
 ): Job<HandlerInput<F>>;
-/** A job Action Scheduler runs on a five-field cron schedule in UTC: `cron("0 3 * * *", async () => { ... })`. */
-export declare function cron(schedule: string, handler: (input: {}, ctx: JobCtx) => Awaitable<void>): Job<{}>;
+/** A job Action Scheduler runs on a five-field cron schedule in UTC: `cron("0 3 * * *", async (ctx) => { ... })`. */
+export declare function cron(schedule: string, handler: (ctx: JobCtx) => Awaitable<void>): Job<{}>;
 export interface EnqueueOptions { delay?: number; key?: string }
 
 /** The request a `route.ts` (or page) HTTP handler under `<dir>/app/` receives. Header names are lowercase; the body is the raw text. */
 export interface RouteRequest {
   method: string;
-  /**
-   * The absolute URL: `https://`, the hostname (lowercase, no port), path and query, with share-link
-   * secrets (`__`, `token`, `purchaseToken`, a `/__/<token>` segment) read as `[redacted]`.
-   */
   url: string;
   path: string;
-  /** The `[name]` and `[...name]` folders of the route, decoded (catch-all segments joined with `/`). */
   params: Record<string, string>;
-  /**
-   * The query string as URLSearchParams reads it: names byte-exact (`a.b`, `x[]`), every value
-   * kept in order. `get` answers the first value or null.
-   */
   query: RouteQuery;
   headers: Record<string, string>;
   body: string;
@@ -1766,8 +1598,8 @@ export interface RouteQuery {
   has(name: string): boolean;
   entries(): [string, string][];
 }
-/** What a route handler returns. Status defaults to 200, body to "", Content-Type to text/plain; charset=utf-8. */
-export interface RouteResponse { status?: number; headers?: Record<string, string>; body?: string }
+/** What a route handler returns: a Web `Response` (`Response.json(...)` / `new Response(...)`) or `{ status?, headers?, body? }`. */
+export type RouteResponse = Response | { status?: number; headers?: Record<string, string>; body?: string };
 
 export type MailAddress = string | { email: string; name?: string | null };
 /**
@@ -1806,8 +1638,8 @@ export interface PrivateFileInfo {
   createdAt: string;
   url: string;
 }
-export interface FileBucket {
-  readonly [fileBucketBrand]: true;
+export interface FileBucket<TName extends string = string> {
+  readonly [fileBucketBrand]: TName;
   /** Trusted server read of file metadata (+ 5-minute signed URL), or null when missing or in another bucket. */
   get(id: number): Promise<PrivateFileInfo | null>;
   /** Trusted server read of file bytes as UTF-8 text (up to 16 MiB). Works on local disk and S3. */
@@ -1815,7 +1647,7 @@ export interface FileBucket {
   /** Trusted server read of file bytes as standard base64 (up to 16 MiB). Works on local disk and S3. */
   readBase64(id: number): Promise<string>;
 }
-export type AnyFileBucket = FileBucket;
+export type AnyFileBucket = FileBucket<string>;
 /** A private file bucket, named by its export: `export const decks = files({ accept, maxBytes })`. */
 export declare function files(options: {
   accept: string[];
@@ -1860,88 +1692,3 @@ export type WordPressPlugin = string | ({
       sha256: string;
     }
 ));
-
-/** Native WooCommerce runtime. Source owns only the declared store keys. */
-export interface StoreOptions {
-  currency: string;
-  country: string;
-  address?: { line1: string; line2?: string; city: string; postcode: string };
-  sellTo?: "all" | readonly string[];
-  units?: { weight: "kg" | "g" | "lbs" | "oz"; dimension: "m" | "cm" | "mm" | "in" | "yd" };
-  shipping?: readonly { name: string; countries: readonly string[] | "rest"; methods: readonly (
-    { type: "flatRate"; title: string; cost: string } |
-    { type: "freeShipping"; title: string; minimum?: string } |
-    { type: "localPickup"; title: string; cost?: string }
-  )[] }[];
-  payments?: readonly string[];
-  email?: { fromName: string; fromAddress: string };
-  checkout?: `/${string}`;
-}
-declare const storeBrand: unique symbol;
-export interface CommerceStore { readonly [storeBrand]: true }
-export declare function store(options: StoreOptions): CommerceStore;
-export interface CommerceOptions { sync?: string; url?: `/${string}`; agents?: boolean; label?: string; api?: false | { list?: boolean; get?: boolean; create?: boolean; update?: boolean; delete?: boolean } }
-type ProductColumns = {
-  uid: ColumnBuilder<"text", string, true, true>;
-  name: ColumnBuilder<"text", string, true, false>;
-  slug: ColumnBuilder<"slug", string, true, true>;
-  description: ColumnBuilder<"richText", string, true, true>;
-  shortDescription: ColumnBuilder<"text", string, false, false>;
-  sku: ColumnBuilder<"text", string, false, false>;
-  status: ColumnBuilder<"text", "draft" | "pending" | "scheduled" | "published" | "private", true, true>;
-  price: ColumnBuilder<"text", string, false, false>;
-  images: ColumnBuilder<"mediaList", number[], true, true>;
-  categories: ColumnBuilder<"refList", number[], true, true>;
-  tags: ColumnBuilder<"refList", number[], true, true>;
-  virtual: ColumnBuilder<"boolean", boolean, true, true>;
-  downloadable: ColumnBuilder<"boolean", boolean, true, true>;
-  downloads: ColumnBuilder<"json", { id: string; name: string; file: string }[], true, true>;
-  type: ColumnBuilder<"text", string, true, true>;
-  purchasable: ColumnBuilder<"boolean", boolean, true, true>;
-  availability: ColumnBuilder<"text", string, true, true>;
-  url: ColumnBuilder<"text", string, false, true>;
-};
-type ProductFields = Record<string, ColumnBuilder<"text" | "integer" | "number" | "boolean" | "date" | "email" | "url", unknown, false, false>> & {
-  [K in keyof ProductColumns | "id" | "stockQuantity"]?: never;
-};
-export declare function product<F extends ProductFields = {}, I extends boolean = false>(
-  options?: CommerceOptions & { fields?: F; inventory?: I; reviews?: boolean },
-): Collection<string, WithId<ProductColumns & F & (I extends true ? {
-  stockQuantity: ColumnBuilder<"integer", number, false, true>;
-} : {})>, false, "product">;
-export declare function productCategory(options?: CommerceOptions): Collection<string, WithId<TermColumns<true> & { uid: ColumnBuilder<"text", string, true, true> }>, false, "taxonomy">;
-export declare function productTag(options?: CommerceOptions): Collection<string, WithId<TermColumns<false> & { uid: ColumnBuilder<"text", string, true, true> }>, false, "taxonomy">;
-export interface OrderAddress {
-  first_name: string; last_name: string; company: string; address_1: string; address_2: string;
-  city: string; state: string; postcode: string; country: string; email?: string; phone?: string;
-}
-export interface OrderLine {
-  id: number; name: string; product: number; variation: number | null; quantity: number;
-  subtotal: string; subtotalTax: string; total: string; totalTax: string;
-  taxes: { total: Record<string, string>; subtotal: Record<string, string> };
-}
-export declare function order(options?: Pick<CommerceOptions, "agents" | "label"> & { api?: false | { list?: boolean; get?: boolean } }): Collection<string, WithId<{
-  status: ColumnBuilder<"text", string, true, true>;
-  currency: ColumnBuilder<"text", string, true, true>;
-  total: ColumnBuilder<"text", string, true, true>;
-  subtotal: ColumnBuilder<"text", string, true, true>;
-  discountTotal: ColumnBuilder<"text", string, true, true>;
-  shippingTotal: ColumnBuilder<"text", string, true, true>;
-  taxTotal: ColumnBuilder<"text", string, true, true>;
-  precision: ColumnBuilder<"integer", number, true, true>;
-  createdAt: ColumnBuilder<"timestamp", string, true, true>;
-  updatedAt: ColumnBuilder<"timestamp", string, true, true>;
-  paidAt: ColumnBuilder<"timestamp", string, false, true>;
-  completedAt: ColumnBuilder<"timestamp", string, false, true>;
-  customer: ColumnBuilder<"integer", number, false, true>;
-  paymentMethod: ColumnBuilder<"text", string, true, true>;
-  paymentTitle: ColumnBuilder<"text", string, true, true>;
-  billing: ColumnBuilder<"json", OrderAddress, true, true>;
-  shipping: ColumnBuilder<"json", OrderAddress, true, true>;
-  lines: ColumnBuilder<"json", OrderLine[], true, true>;
-  shippingLines: ColumnBuilder<"json", { id: number; name: string; method_id: string; instance_id: string; total: string; total_tax: string; taxes: unknown }[], true, true>;
-  taxLines: ColumnBuilder<"json", { id: number; name: string; rate_id: number; label: string; compound: boolean; tax_total: string; shipping_tax_total: string }[], true, true>;
-  feeLines: ColumnBuilder<"json", { id: number; name: string; total: string; total_tax: string; taxes: unknown }[], true, true>;
-  couponLines: ColumnBuilder<"json", { id: number; name: string; code: string; discount: string; discount_tax: string }[], true, true>;
-  refunds: ColumnBuilder<"json", { id: number; amount: string; reason: string; createdAt: string }[], true, true>;
-}>, false, "order">;

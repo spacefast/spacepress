@@ -1,17 +1,16 @@
-import { db } from "spacepress/server";
 import { Link, type LayoutProps } from "spacepress/app";
 import "./site.css";
 
 // Use a blank WordPress block template so this layout owns the header and footer.
 export const template = "blank";
 // The browser title follows the site name an editor sets in Site settings, as the header does.
-export const metadata = async () => {
-  const site = await db.globals.site.get();
+export const metadata = async ({ db }: LayoutProps) => {
+  const site = await db.site.get();
   return { title: { default: site.name, template: `%s · ${site.name}` } };
 };
 
-export default async function Layout({ children }: LayoutProps) {
-  const site = await db.globals.site.get();
+export default async function Layout({ children, db }: LayoutProps) {
+  const site = await db.site.get();
   return (
     <div className="site">
       <header className="masthead">

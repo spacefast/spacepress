@@ -1,11 +1,10 @@
-import { db } from "spacepress/server";
-import { Link, useFormState } from "spacepress/app";
+import { Link, useFormState, type PageProps } from "spacepress/app";
 import { greet } from "../actions";
 
-export default async function Home() {
-  const latest = await db.query.notes.findFirst({
-    columns: { title: true, slug: true },
+export default async function Home({ db }: PageProps) {
+  const [latest] = await db.notes.list({
     orderBy: { publishedAt: "desc" },
+    limit: 1,
   });
   // The action returns to this page with a result or a validation error.
   const state = useFormState(greet);

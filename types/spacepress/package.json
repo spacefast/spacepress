@@ -12,20 +12,16 @@
       "browser": "./stubs/app.mjs",
       "default": "./stubs/app.mjs"
     },
-    "./content": {
-      "types": "./content.d.ts",
-      "browser": "./stubs/content.mjs",
-      "default": "./stubs/content.mjs"
+    "./commerce": {
+      "types": "./commerce.d.ts"
+    },
+    "./admin": {
+      "types": "./admin.d.ts"
     },
     "./server": {
       "types": "./server.d.ts",
       "browser": "./stubs/server.mjs",
       "default": "./stubs/server.mjs"
-    },
-    "./server/db": {
-      "types": "./server-db.d.cts",
-      "browser": "./stubs/server-db.mjs",
-      "default": "./stubs/server-db.mjs"
     },
     "./server/wp": {
       "types": "./server-wp.d.ts",

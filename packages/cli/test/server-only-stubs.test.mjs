@@ -8,10 +8,8 @@ const typesPkg = JSON.parse(await readFile(new URL('../../../types/spacepress/pa
 
 const SERVER_SUBPATHS = [
   ['./server', 'spacepress/server'],
-  ['./server/db', 'spacepress/server/db'],
   ['./server/wp', 'spacepress/server/wp'],
   ['./app', 'spacepress/app'],
-  ['./content', 'spacepress/content'],
 ];
 
 test('spacepress package exports declare types and browser server-only stubs for every server subpath', async () => {

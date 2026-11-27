@@ -1,7 +1,7 @@
 // "spacepress/app": pages, layouts and HTTP routes under <dir>/app/ (docs/spec/rendering.md §2–§4).
 // Types only: the compiler lowers these to PHP; nothing here runs in Node or the browser.
 /// <reference path="./assets.d.ts" />
-import type { AccessCtx, Action, RouteRequest, RouteResponse } from "./index.d.ts";
+import type { AccessCtx, Action, ReadOnlyDb, RouteRequest, RouteResponse, User } from "./index.d.ts";
 import type { JSX } from "./jsx-runtime.d.ts";
 
 export type { RouteRequest, RouteResponse };
@@ -24,18 +24,21 @@ type Params<R> = R extends keyof Routes ? (Routes[R] extends { params: infer P }
 
 /**
  * What a page receives: `params` from its folder names (`[slug]` a string, `[...rest]` and
- * `[[...rest]]` arrays) and `search`, parsed by the page's `export const search`.
+ * `[[...rest]]` arrays), `search` parsed by `export const search`, the signed-in `user` (or null),
+ * and a read-only `db` bound to the current visitor.
  */
 export interface PageProps<R extends keyof Routes | string = string, S = Record<string, any>> {
   params: Params<R>;
   search: S;
-  /** On a page whose folders serve a kind's `url` pattern: that item, read as the visitor. */
-  item: R extends keyof Routes ? (Routes[R] extends { item: infer I } ? I : never) : any;
+  user: User | null;
+  db: ReadOnlyDb;
 }
 
-/** What a layout receives: its params and the page (or nested layout) rendered inside it. */
+/** What a layout receives: its params, current user, read-only db, and the rendered children. */
 export interface LayoutProps<R extends keyof Routes | string = string> {
   params: Params<R>;
+  user: User | null;
+  db: ReadOnlyDb;
   children: JSX.Element;
 }
 
@@ -45,6 +48,8 @@ export interface LayoutProps<R extends keyof Routes | string = string> {
  */
 export interface LoginProps {
   params: Record<string, never>;
+  user: User | null;
+  db: ReadOnlyDb;
   /** Why the last attempt failed: a wrong password, too many attempts, … */
   errors: string[];
   /** Notices: "You are now logged out.", "Check your email…", … */
@@ -80,10 +85,12 @@ export interface Metadata {
   scripts?: string[];
 }
 
-type GuardRule = "anyone" | "authenticated" | "guest" | "subscriber" | "author" | "editor" | "admin" | boolean | ((ctx: AccessCtx) => boolean);
+type AccessRule = "anyone" | "authenticated" | "guest" | "subscriber" | "author" | "editor" | "admin" | boolean | ((ctx: AccessCtx) => boolean);
 
-/** A page, layout, or HTTP handler can export one rule. A page with handlers can give each its own rule. */
-export type Guard = GuardRule | { page?: GuardRule; handlers: GuardRule };
+/** `export const access` on a page, layout, or route.ts. A page with HTTP handlers can give each its own rule. */
+export type Access = AccessRule | { page?: AccessRule; handlers: AccessRule };
+/** @deprecated Renamed to `Access`. */
+export type Guard = Access;
 
 /**
  * `export const template` in a page or layout: the WordPress block template the page renders in.
@@ -212,5 +219,91 @@ export declare function Link(props: {
 /** A GET search form using the app's `q` query parameter. */
 export declare function Search(props: { action?: Href; label?: string; placeholder?: string; className?: string }): JSX.Element;
 
-/** Search results from one kind with a URL, or from every searchable kind with a URL. */
+/** Search results from one kind with a canonical route, or from every searchable kind with one. */
 export declare function SearchResults(props: { kind?: string; q: string | null | undefined; page?: number; perPage?: number; className?: string }): JSX.Element;
+
+/** One item of `db.<kind>.nav()`'s tree. The tree is four levels deep: the fourth level's `children` is empty. */
+export interface NavItem {
+  id: number;
+  title: string;
+  href: Href;
+  current: boolean;
+  open: boolean;
+  children: NavItem[];
+}
+
+/** One end of `db.<kind>.pager()`. */
+export interface PagerLink {
+  id: number;
+  title: string;
+  href: Href;
+}
+
+/** One `##` or `###` heading of an item, with its GitHub-style anchor id. */
+export interface Heading {
+  depth: 2 | 3;
+  text: string;
+  id: string;
+}
+
+/** The item's `##` and `###` headings, for a table of contents. */
+export declare function headings(item: unknown): Heading[];
+
+/** One parameter or property of an operation. `depth` is how far it is nested. */
+export interface ApiField {
+  name: string;
+  depth: number;
+  type: string;
+  required: boolean;
+  description: string;
+  constraints: string[];
+  in: string;
+}
+
+/** One response of an operation, with the fields of its body. */
+export interface ApiResponse {
+  status: string;
+  description: string;
+  type: string;
+  fields: ApiField[];
+}
+
+/** One operation, with request samples a reader copies. */
+export interface ApiOperation {
+  id: string;
+  slug: string;
+  method: string;
+  path: string;
+  summary: string;
+  description: string;
+  access: string;
+  params: ApiField[];
+  bodyType: string;
+  body: ApiField[];
+  responses: ApiResponse[];
+  curl: string;
+  fetch: string;
+}
+
+/** A tag of the document and its operations, in the document's order. */
+export interface ApiTag {
+  name: string;
+  slug: string;
+  description: string;
+  operations: ApiOperation[];
+}
+
+/** An OpenAPI document, flat enough for a page to render: see `apiReference()`. */
+export interface ApiReference {
+  title: string;
+  version: string;
+  description: string;
+  server: string;
+  tags: ApiTag[];
+}
+
+/**
+ * An OpenAPI 3.1 document as tags, operations and fields a page maps over: the app's own API (what
+ * `spacepress build` writes) or, given a path, a JSON file in `public/`.
+ */
+export declare function apiReference(source?: string): ApiReference;

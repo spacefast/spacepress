@@ -236,7 +236,7 @@ final class Blocks {
 					if ( null !== $nested && $nested[0] === $tag && ! $nested[2] ) {
 						++$depth;
 					}
-					if ( null === $fence && 1 === preg_match( "#^ {0,3}</$tag>\s*$#", $lines[ $i ] ) && 0 === --$depth ) {
+					if ( null === $fence && 1 === preg_match( "#^ {0,3}</$tag>\\s*\$#", $lines[ $i ] ) && 0 === --$depth ) {
 						break;
 					}
 					$inner[] = $lines[ $i ];

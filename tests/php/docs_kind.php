@@ -455,14 +455,18 @@ foreach ( array(
 	// A backtick in a ``` info string makes the line text, not a fence.
 	'not a fence' => "<Callout type=\"note\">\n``` a`b\n</Callout>\n",
 	// Indented four spaces, a tag is code in a list item, not a component.
-	'indented' => "<Callout type=\"note\">\n1. Run:\n\n	<Shell search={entries()}>\n</Callout>\n",
+	'indented' => "<Callout type=\"note\">\n1. Run:\n\n    <Shell search={entries()}>\n</Callout>\n",
 	'unclosed fence' => "<Callout type=\"note\">\n```\ncode\n</Callout>\n",
 ) as $case => $markdown ) {
 	try {
-		$stored = \SpacePress\Sync\Markdown::toBlocks($markdown);
-		$out['blocks fence cases'][$case] = [substr_count($stored, '<!-- wp:docskind/callout'), substr_count($stored, '<!-- /wp:docskind/callout -->'), str_contains($stored, '&lt;/Callout&gt;')];
-	} catch (\SpacePress\HttpError $e) {
-		$out['blocks fence cases'][$case] = $e->getMessage();
+		$stored = \SpacePress\Sync\Markdown::toBlocks( $markdown );
+		$out['blocks fence cases'][ $case ] = array(
+			substr_count( $stored, '<!-- wp:docskind/callout' ),
+			substr_count( $stored, '<!-- /wp:docskind/callout -->' ),
+			str_contains( $stored, '&lt;/Callout&gt;' ),
+		);
+	} catch ( \SpacePress\HttpError $e ) {
+		$out['blocks fence cases'][ $case ] = $e->getMessage();
 	}
 }
 $out['blocks fenced inside'] = \SpacePress\Sync\Markdown::toBlocks("<Callout type=\"note\">\n```tsx\n<Shell search={entries()}>\n</Callout>\n```\n</Callout>\n\nAfter.\n");

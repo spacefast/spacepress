@@ -3349,6 +3349,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     && let Ty::Predicate(index, target) = *result
                     && let Some(ArrEl::Item(argument)) = args.get(index)
                     && let Some((path, original)) = self.path_ty(argument)
+                    // The guard tests the value its argument had when it was read. An argument that
+                    // writes the path (`isStr(x, (x = null))`) runs after that read, so no fact holds.
+                    && args.iter().all(|(ArrEl::Item(e) | ArrEl::Spread(e))| self.refinement_survives(e, &path))
                 {
                     let refined = *target;
                     out.push(Refinement::branches(path, refined, original, negate));

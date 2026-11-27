@@ -17,7 +17,7 @@ Pages work without JavaScript. Two islands add to them: `DocsSearch` (the search
 | `@spacepress/docs/schema` | `createDocsCollection({ label?, url?, sync? })`: a hierarchical collection with `title`, `slug`, `content` and `description`, synced from `content/docs/**/*.md` by default. Anyone can read it; editors write it. |
 | `@spacepress/docs/blocks` | The Markdown components, plus the `blocks` list that makes them usable as tags. |
 | `@spacepress/docs/docs.css` | The theme. Every color, radius and font is a `--sd-*` CSS variable on `:root`, for light and dark. |
-| `@spacepress/docs` | The page parts: `DocsShell`, `DocPage`, `Sidebar`, `Breadcrumbs`, `TableOfContents`, `PageActions`, `Pager`; the islands `DocsSearch`, `DocsEnhancements` and `ThemeToggle`; `themeScript`; `searchEntries(tree)`; `hasIcon(name)`. |
+| `@spacepress/docs` | The page parts: `DocsShell`, `DocPage`, `Sidebar`, `Breadcrumbs`, `TableOfContents`, `PageActions`, `Pager`, `ThemeToggle`; the islands `DocsSearch` and `DocsEnhancements`; `themeScript`; `searchEntries(tree)`; `hasIcon(name)`. |
 
 ## Set up a docs site
 

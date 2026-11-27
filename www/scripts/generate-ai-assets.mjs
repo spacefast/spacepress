@@ -306,7 +306,7 @@ export function generateAiAssets() {
     "- Declare explicit `access` rules on every `collection()`, `table()`, `global()`, `query()`, and `mutation()`, and export `guard` on every custom `route.ts`.",
     "- For user-owned rows, return a row filter (`({ user }) => (user ? { ownerId: user.id } : false)`) rather than only checking truthiness; never trust a client-supplied `userId` in a mutation.",
     "- Attach field-level `.access({ read: \"admin\" })` to sensitive columns so REST, pages, and generated clients strip them automatically.",
-    "- Use `query()` for reads (its Ability is marked read-only, and the build refuses writes in it) and `mutation()` for writes; mark mutations that delete or overwrite with `destructive: true` so agents confirm first (`agents: false` keeps a function off the Abilities API). `action()` and `jobs.<name>` are gone: queue a job with `myJob.enqueue(...)`.",
+    "- Use `query()` for reads (its Ability is marked read-only, and the build refuses writes in it) and `mutation()` for writes; mark mutations that delete or overwrite with `destructive: true` so agents confirm first (`agents: false` hides a function from REST discovery and MCP). `action()` and `jobs.<name>` are gone: queue a job with `myJob.enqueue(...)`.",
     "",
     "## Verification workflow",
     "",

@@ -155,7 +155,7 @@ export default function QuickStartPage() {
               <h2>Define your schema &amp; a mutation</h2>
             </div>
             <p style={{ color: "var(--ink-secondary)" }}>
-              SpacePress reads <code>spacepress.config.ts</code> (and any files it re-exports from <code>sp/</code>). Edit the starter schema below — try adding a <code>summary: text().optional()</code> field or modifying the <code>clap</code> mutation — and inspect the live PHP, SQL migration, and TypeScript definitions generated in your browser.
+              SpacePress reads <code>spacepress.config.ts</code> and every <code>.ts</code> file under <code>sp/</code>. Edit the starter schema below — try adding a <code>summary: text().optional()</code> field or modifying the <code>clap</code> mutation — and inspect the live PHP, SQL migration, and TypeScript definitions generated in your browser.
             </p>
             <Sandbox
               eager

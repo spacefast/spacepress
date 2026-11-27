@@ -8,7 +8,7 @@ publishedAt: 2026-11-21T09:06:00.000Z
 ---
 ## Server functions
 
-Export `query(options, handler)` for a function that reads and `mutation(options, handler)` for one that writes. The input is the handler's parameter type: the server validates it before the handler runs. Any `.ts` file under `sp/` outside the reserved folders (`app/`, `components/`, `wp-hooks/`, `_generated/`) can export them; `sp/server.ts` is the usual place.
+Export `query(options, handler)` for a function that reads and `mutation(options, handler)` for one that writes. The input is the handler's parameter type: the server validates it before the handler runs. Any `.ts` file under `sp/` outside the reserved folders (`app/`, `components/`, `wp-hooks/`, `content/`, `public/`, `dist/`, `_generated/`, `node_modules/`) can export them; `sp/server.ts` is the usual place.
 
 ```ts
 // sp/server.ts

@@ -19,16 +19,33 @@ const extension = {
   text: "txt",
 };
 
+// The Interactivity router rebuilds pages from a copy of their DOM: a page it shows again, or the
+// first page as it was when the router read it, comes back with the `sp-drawn` class and an empty
+// shadow root. So what was drawn is known by element, not by class, and each host keeps its source
+// in `data-sp-source`, which a copy carries, so a copied host is drawn again from it.
+const drawn = new WeakSet();
+const isDrawn = (node) => drawn.has(node);
+function markDrawn(node) {
+  drawn.add(node);
+  node.classList.add("sp-drawn");
+}
+function sourceOf(node) {
+  if (node.dataset.spSource !== undefined) return node.dataset.spSource;
+  const text = node.textContent.replace(/^\n+/, "").replace(/\n+$/, "");
+  node.dataset.spSource = text;
+  return text;
+}
+
 function fileOf(node) {
   const lang = node.getAttribute("lang");
   const name = node.getAttribute("file") ?? `snippet.${extension[lang] ?? lang ?? "ts"}`;
-  const file = { name, contents: node.textContent.replace(/^\n+/, "").replace(/\n+$/, "") };
+  const file = { name, contents: sourceOf(node) };
   if (!known.has(name.split(".").pop())) file.lang = "text";
   return file;
 }
 
 function drawCode(node) {
-  if (node.classList.contains("sp-drawn")) return;
+  if (isDrawn(node)) return;
   const file = fileOf(node);
   const titled = node.hasAttribute("file");
   const note = node.getAttribute("note");
@@ -57,15 +74,22 @@ function drawCode(node) {
     }, () => {});
   };
   node.append(copy);
-  node.classList.add("sp-drawn");
+  markDrawn(node);
 }
 
 function drawDiff(node) {
-  const [before, after] = [...node.querySelectorAll(":scope > sp-code")].map(fileOf);
+  let files;
+  try {
+    files = node.dataset.spSource !== undefined ? JSON.parse(node.dataset.spSource) : [...node.querySelectorAll(":scope > sp-code")].map(fileOf);
+  } catch {
+    return;
+  }
+  const [before, after] = files;
   if (!before || !after) return;
+  node.dataset.spSource = JSON.stringify([before, after]);
   node.replaceChildren();
   new FileDiff({ ...options, diffStyle: "unified", hunkSeparators: "simple" }).render({ oldFile: before, newFile: after, containerWrapper: node });
-  node.classList.add("sp-drawn");
+  markDrawn(node);
 }
 
 function tree(host, paths, notes, selected, onSelect, fixedHeight = false) {
@@ -90,15 +114,22 @@ function tree(host, paths, notes, selected, onSelect, fixedHeight = false) {
   model.render({ containerWrapper: host });
   if (!fixedHeight) {
     requestAnimationFrame(() => {
-      const drawn = host.querySelector("file-tree-container")?.shadowRoot?.querySelectorAll('[role="treeitem"]').length;
-      if (drawn) host.style.height = `${drawn * 24 + 8}px`;
+      const rows = host.querySelector("file-tree-container")?.shadowRoot?.querySelectorAll('[role="treeitem"]').length;
+      if (rows) host.style.height = `${rows * 24 + 8}px`;
     });
   }
 }
 
 function drawTree(node) {
+  if (node.hasAttribute("data-sp-ascii")) {
+    const { paths, notes } = parseAsciiTree(sourceOf(node));
+    node.replaceChildren();
+    tree(node, paths, notes);
+    markDrawn(node);
+    return;
+  }
   const paths = [], notes = {}, stack = [];
-  for (const line of node.textContent.split("\n")) {
+  for (const line of sourceOf(node).split("\n")) {
     const m = line.match(/^(\s*)(\S+)(?:\s{2,}(.*))?$/);
     if (!m) continue;
     stack.length = m[1].length / 2;
@@ -109,7 +140,7 @@ function drawTree(node) {
   }
   node.replaceChildren();
   tree(node, paths, notes);
-  node.classList.add("sp-drawn");
+  markDrawn(node);
 }
 
 function drawExample(node) {
@@ -123,9 +154,10 @@ function drawExample(node) {
     drawCode(file);
   };
   const first = byPath.has(node.getAttribute("open")) ? node.getAttribute("open") : files[0]?.getAttribute("file");
+  node.querySelector(":scope > .sp-example-tree")?.remove();
   const host = Object.assign(document.createElement("div"), { className: "sp-example-tree" });
   node.prepend(host);
-  node.classList.add("sp-drawn");
+  markDrawn(node);
   tree(host, [...byPath.keys()], notes, first, show, true);
   show(first);
 }
@@ -165,7 +197,7 @@ function parseAsciiTree(text) {
 }
 
 function enhanceProsePre(pre) {
-  if (pre.classList.contains("sp-drawn")) return;
+  if (isDrawn(pre)) return;
   const codeEl = pre.querySelector("code");
   const rawText = (codeEl ?? pre).textContent.replace(/^\n+/, "").replace(/\n+$/, "");
   const classes = `${pre.className} ${codeEl?.className ?? ""}`;
@@ -176,9 +208,11 @@ function enhanceProsePre(pre) {
     const { paths, notes } = parseAsciiTree(rawText);
     if (paths.length > 0) {
       const host = document.createElement("sp-tree");
+      host.dataset.spSource = rawText;
+      host.setAttribute("data-sp-ascii", "");
       pre.replaceWith(host);
       tree(host, paths, notes);
-      host.classList.add("sp-drawn");
+      markDrawn(host);
       return;
     }
   }
@@ -194,13 +228,14 @@ let pendingTimer = null;
 
 function collectJobs(root = document) {
   const prosePres = [...root.querySelectorAll(".sd-prose pre, .sp-prose pre, pre.spacepress-code, pre.wp-block-code")]
-    .filter((n) => !n.classList.contains("sp-drawn") && !n.closest("sp-code, sp-diff, sp-tree, sp-example, sp-sandbox, sp-play"));
+    .filter((n) => !isDrawn(n) && !n.closest("sp-code, sp-diff, sp-tree, sp-example, sp-sandbox, sp-play"));
+  const fresh = (selector) => [...root.querySelectorAll(selector)].filter((n) => !isDrawn(n));
 
   return [
-    ...[...root.querySelectorAll("sp-example:not(.sp-drawn)")].map((n) => () => drawExample(n)),
-    ...[...root.querySelectorAll("sp-diff:not(.sp-drawn)")].map((n) => () => drawDiff(n)),
-    ...[...root.querySelectorAll("sp-tree:not(.sp-drawn)")].map((n) => () => drawTree(n)),
-    ...[...root.querySelectorAll("sp-code:not(.sp-drawn)")].filter((n) => !n.closest("sp-example, sp-diff")).map((n) => () => drawCode(n)),
+    ...fresh("sp-example").map((n) => () => drawExample(n)),
+    ...fresh("sp-diff").map((n) => () => drawDiff(n)),
+    ...fresh("sp-tree").map((n) => () => drawTree(n)),
+    ...fresh("sp-code").filter((n) => !n.closest("sp-example, sp-diff")).map((n) => () => drawCode(n)),
     ...prosePres.map((n) => () => enhanceProsePre(n)),
   ];
 }

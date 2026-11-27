@@ -42,15 +42,13 @@ final class Markdown
         // Convert only the free Markdown around them; wrapping their delimiters in core/html
         // prevents dynamic blocks such as Woo Checkout from rendering and loading their assets.
         if (str_contains($markdown, '<!-- wp:')) {
-            // Examples inside code fences are text. Use the same fence boundaries as Code::fences.
+            // Examples inside code fences are text.
             $marker = '[spacepress-code-' . hash('sha256', $markdown) . ']';
             $lines = explode("\n", $markdown); $fence = null;
             foreach ($lines as &$line) {
-                if ($fence === null && preg_match('/^ {0,3}(`{3,}|~{3,})(.*)$/', $line, $m) === 1 && !str_contains($m[1][0] === '`' ? $m[2] : '', '`')) {
-                    $fence = $m[1];
-                } elseif ($fence !== null && preg_match('/^ {0,3}(`{3,}|~{3,})\s*$/', $line, $m) === 1 && $m[1][0] === $fence[0] && strlen($m[1]) >= strlen($fence)) {
-                    $fence = null;
-                } elseif ($fence !== null || preg_match('/^(?: {4}|\t)/', $line) === 1) { $line = str_replace('<!--', $marker, $line); }
+                $next = \SpacePress\Content\Code::fence($line, $fence);
+                if ($fence !== null && $next !== null || $fence === null && $next === null && preg_match('/^(?: {4}|\t)/', $line) === 1) { $line = str_replace('<!--', $marker, $line); }
+                $fence = $next;
             }
             unset($line);
             $masked = preg_replace_callback('/(`+)(?!`)([\s\S]*?)(?<!`)\1(?!`)/', static fn ($m) => str_replace('<!--', $marker, $m[0]), implode("\n", $lines));

@@ -5588,6 +5588,16 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
         })
     );
     assert!(seen["blocks fenced"].as_str().unwrap().starts_with("<!-- wp:code"));
+    // [callouts opened, callouts closed, a </Callout> kept as code]
+    assert_eq!(
+        seen["blocks fence cases"],
+        serde_json::json!({
+            "info string": [1, 1, true],
+            "not a fence": [1, 1, false],
+            "indented": [1, 1, false],
+            "unclosed fence": "<Callout> holds a ``` code fence that is never closed: close it before </Callout>",
+        })
+    );
     let inside = seen["blocks fenced inside"].as_str().unwrap();
     assert!(
         inside.starts_with("<!-- wp:docskind/callout")

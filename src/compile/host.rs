@@ -398,7 +398,7 @@ impl Compiler<'_, '_> {
         let data = self.finish_value(data, data_expr.span)?;
         let init_php = self.response_init(args.get(1), span)?;
         Ok(Out::atom(
-            format!("\\SpacePress\\FetchResponse::json({}, {init_php})", data.php),
+            format!("\\SpacePress\\FetchResponse::fromJson({}, {init_php})", data.php),
             Ty::Host(HostTy::Response),
         ))
     }

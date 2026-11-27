@@ -72,7 +72,7 @@ final class Runner
                         $fn = '\\SpacePressApp\\' . $spec['handler'];
                         $input = \SpacePress\Seam::toJs(is_array($input) ? $input : [], $spec['input'] ?? []);
                         $ctx = \SpacePress\Seam::ctx($ctx);
-                        \SpacePress\Fetch::inJob(static fn (): mixed => \SpacePress\Timers::run(static fn (): mixed => $fn($input, $ctx)));
+                        \SpacePress\Fetch::inJob(static fn (): mixed => \SpacePress\Timers::run(static fn (): mixed => $fn($ctx, $input)));
                     }
                     Storage::run('UPDATE {jobs} SET "state" = \'done\', "attempts" = ?, "dedupe" = NULL, "lockedAt" = NULL, "lastError" = NULL, "doneAt" = ? WHERE "id" = ?', [$attempt, Js::iso(Js::now()), $id]);
                 });

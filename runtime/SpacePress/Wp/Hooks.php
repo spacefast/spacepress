@@ -22,12 +22,14 @@ final class Hooks
             $run = static function (mixed ...$args) use ($plugin, $hook, $views): mixed {
                 $given = $args[0] ?? null;
                 try {
-                    $plugin->app(); // the handler lives in the app's functions.php
-                    $result = ('SpacePressApp\\' . $hook['handler'])(...array_map(static fn ($a) => self::toJs($a, $views), array_slice($args, 0, $hook['args'])));
+                    $app = $plugin->app(); // the handler lives in the app's functions.php
+                    $ctx = \SpacePress\Seam::ctx($app->db->hookCtx());
+                    $jsArgs = array_map(static fn ($a) => self::toJs($a, $views), array_slice($args, 0, $hook['args']));
+                    $result = ('SpacePressApp\\' . $hook['handler'])($ctx, ...$jsArgs);
 
                     return $hook['filter'] ? self::toPhp($result, $given) : null;
                 } catch (\Throwable $e) {
-                    error_log(sprintf('[spacepress] sp/wp-hooks/%s: %s: %s', $hook['hook'], $e::class, $e->getMessage()));
+                    error_log(sprintf('[spacepress] wp hook %s: %s: %s', $hook['hook'], $e::class, $e->getMessage()));
 
                     return $given;
                 }

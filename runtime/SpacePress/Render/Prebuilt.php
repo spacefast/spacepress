@@ -339,7 +339,7 @@ final class Prebuilt
                 continue;
             }
             $callable = '\\SpacePressApp\\' . $fn;
-            $list = Seam::asViewer($anonymous, static fn () => Seam::toPhp(\SpacePress\JsJobs::await($callable())));
+            $list = Seam::asViewer($anonymous, static fn () => Seam::toPhp(\SpacePress\JsJobs::await($callable(new \SpacePress\JsObject([])))));
             foreach (is_array($list) ? $list : [] as $i => $params) {
                 $urls[] = ['path' => self::fill($pattern, is_array($params) ? $params : [], (string) $route['page'], $i), 'route' => (string) $route['id']];
             }

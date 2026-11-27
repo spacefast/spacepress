@@ -88,7 +88,7 @@ final class App
         $visitor = ($action['signature'] ?? null) !== null ? null : $viewer;
 
         return Extensions::execute('action:' . $name, $action, $rawBody, array_change_key_case($headers, CASE_LOWER), $viewer,
-            static fn (): Response => Response::json(JsBinary::refuseWire(Seam::asVisitor($visitor, static fn (): mixed => Timers::run(static fn (): mixed => $fn($input, $ctx))), 'action ' . $name)));
+            static fn (): Response => Response::json(JsBinary::refuseWire(Seam::asVisitor($visitor, static fn (): mixed => Timers::run(static fn (): mixed => $fn($ctx, $input))), 'action ' . $name)));
     }
 
     /**
@@ -131,7 +131,7 @@ final class App
                     // `once()` in a handler is keyed to this exact request body, as in actions.
                     $visitor = ($route['signature'] ?? null) !== null ? null : $viewer;
                     $result = Jobs\Receipts::withFingerprint(hash('sha256', $body),
-                        fn (): mixed => Seam::container(Seam::asVisitor($visitor, fn (): mixed => Timers::run(fn (): mixed => $fn($request, Seam::ctx($this->db->hookCtx()))))));
+                        fn (): mixed => Seam::asVisitor($visitor, fn (): mixed => Timers::run(fn (): mixed => $fn($request, Seam::ctx($this->db->hookCtx())))));
                 } finally {
                     $this->db->setActor($previous);
                 }
@@ -148,7 +148,12 @@ final class App
     /** @return array{int, array<string, string>, string} */
     private static function routeResponse(string $name, mixed $result): array
     {
-        $result = is_array($result) ? $result : [];
+        if ($result instanceof FetchResponse) {
+            $result = $result->toRouteArray();
+        } else {
+            $result = Seam::container($result);
+            $result = is_array($result) ? $result : [];
+        }
         // An optional property set to `undefined` is absent, as in JavaScript.
         $result = array_filter($result, static fn (mixed $value): bool => $value !== JsUndefined::Value);
         $status = $result['status'] ?? 200;

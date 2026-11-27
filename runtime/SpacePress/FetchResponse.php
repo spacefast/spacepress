@@ -53,4 +53,55 @@ final class FetchResponse implements \JsonSerializable, \Stringable
     {
         return '[object Response]';
     }
+
+    /** `Response.json(data, init?)` in route handlers. */
+    public static function fromJson(mixed $data, mixed $init = null): self
+    {
+        $body = Js::jsonStringify(JsBinary::refuseWire($data, 'Response.json')) ?? 'null';
+        $resp = self::from($body, $init);
+        if (!$resp->headers->has('content-type')) {
+            $resp->headers->set('content-type', 'application/json; charset=utf-8');
+        }
+
+        return $resp;
+    }
+
+    /** `new Response(body?, init?)` in route handlers. */
+    public static function from(string $body = '', mixed $init = null): self
+    {
+        $initArr = is_array($init) ? $init : ($init instanceof JsObject ? $init->p : []);
+        $status = $initArr['status'] ?? 200;
+        if ($status === JsUndefined::Value) {
+            $status = 200;
+        }
+        $status = (int) $status;
+        $statusText = $initArr['statusText'] ?? '';
+        if ($statusText === JsUndefined::Value) {
+            $statusText = '';
+        }
+        $rawHeaders = $initArr['headers'] ?? null;
+        if ($rawHeaders === JsUndefined::Value) {
+            $rawHeaders = null;
+        }
+        $headers = $rawHeaders instanceof FetchHeaders
+            ? $rawHeaders
+            : new FetchHeaders($rawHeaders);
+
+        return new self($status, (string) $statusText, '', false, $headers, $body);
+    }
+
+    /** Raw body + headers array for App::routeResponse(). */
+    public function toRouteArray(): array
+    {
+        $headers = [];
+        foreach ($this->headers->entries() as $entry) {
+            $headers[$entry->a[0]] = $entry->a[1];
+        }
+
+        return [
+            'status' => $this->status,
+            'headers' => $headers,
+            'body' => $this->body,
+        ];
+    }
 }

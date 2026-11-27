@@ -511,16 +511,16 @@ final class AppRouter
             return Reads::during(function () use ($route, $params, $path, $viewer, $page, $layouts): bool {
                 $props = new JsObject([
                     'params' => new JsObject(array_map(static fn ($v) => is_array($v) ? new \SpacePress\JsArray($v) : $v, $params)),
+                    'user' => self::userProp($viewer),
                 ]);
                 if (($page['search'] ?? null) !== null) {
                     $props->p['search'] = $this->search($page['search']);
                 }
-                if (($route['kind'] ?? null) !== null) {
+                if (($route['kind'] ?? null) !== null && $this->rootKind($route)) {
                     $item = Seam::asViewer($viewer, fn () => $this->item($route['kind'], $params, $path));
                     if ($item === null) {
                         return false;
                     }
-                    $props->p['item'] = $item;
                 }
                 Seam::asViewer($viewer, fn (): array => $this->render($page, $layouts, $props));
                 return true;
@@ -776,20 +776,18 @@ final class AppRouter
             $app = $this->plugin->app(); // the compiled page functions live in the app's functions.php
             $props = new JsObject([
                 'params' => new JsObject(array_map(static fn ($v) => is_array($v) ? new \SpacePress\JsArray($v) : $v, $params)),
+                'user' => self::userProp($viewer),
             ]);
             if (($page['search'] ?? null) !== null) {
                 $props->p['search'] = $this->search($page['search']);
             }
-            // The item a kind URL names is one of the render's reads: a write to any of its fields
-            // purges this URL (and rebuilds a prebuilt one), not only a write core's post hooks see.
             [$head, $body] = \SpacePress\Render\Live::page($app->db, $status === 200 ? $viewer : null, function () use ($route, $params, $viewer, $props, $page, $layouts, &$missingItem): array {
-                if (($route['kind'] ?? null) !== null) {
+                if (($route['kind'] ?? null) !== null && $this->rootKind($route)) {
                     $item = Seam::asViewer($viewer, fn () => $this->item($route['kind'], $params));
                     if ($item === null) {
                         $missingItem = true;
                         throw Halt::notFoundSignal();
                     }
-                    $props->p['item'] = $item;
                 }
                 return Seam::asViewer($viewer, fn (): array => $this->render($page, $layouts, $props));
             }, $reads, $also);
@@ -1059,19 +1057,16 @@ final class AppRouter
             $rendered = Reads::during(function () use ($match, $route, $page, $layouts, $viewer): ?array {
                 $props = new JsObject([
                     'params' => new JsObject(array_map(static fn ($v) => is_array($v) ? new \SpacePress\JsArray($v) : $v, $match['params'])),
+                    'user' => self::userProp($viewer),
                 ]);
                 if (($page['search'] ?? null) !== null) {
                     $props->p['search'] = $this->search($page['search']);
                 }
-                if (($route['kind'] ?? null) !== null) {
+                if (($route['kind'] ?? null) !== null && $this->rootKind($route)) {
                     $item = Seam::asViewer($viewer, fn () => $this->item($route['kind'], $match['params']));
                     if ($item === null) {
-                        // A kind at the site root has only its own items: WordPress's twin answers
-                        // the rest. When WordPress resolved the path to an item of this kind the
-                        // visitor may not read, the twin is a 404 like the page.
-                        return $this->rootKind($route) && !$this->rootItemQueried($route) ? ['wordpress' => true] : null;
+                        return !$this->rootItemQueried($route) ? ['wordpress' => true] : null;
                     }
-                    $props->p['item'] = $item;
                 }
                 // The page alone: its layouts add navigation and chrome, which a twin leaves out.
                 return Seam::asViewer($viewer, fn (): array => $this->render($page, $layouts, $props, false));
@@ -1137,16 +1132,10 @@ final class AppRouter
             $captured = \SpacePress\Render\Live::capture($region, function () use ($page, $layouts, $route, $match, $viewer): void {
                 $props = new JsObject([
                     'params' => new JsObject(array_map(static fn ($v) => is_array($v) ? new \SpacePress\JsArray($v) : $v, $match['params'])),
+                    'user' => self::userProp($viewer),
                 ]);
                 if (($page['search'] ?? null) !== null) {
                     $props->p['search'] = $this->search($page['search']);
-                }
-                if (($route['kind'] ?? null) !== null) {
-                    $item = Seam::asViewer($viewer, fn () => $this->item($route['kind'], $match['params']));
-                    if ($item === null) {
-                        throw Halt::notFoundSignal();
-                    }
-                    $props->p['item'] = $item;
                 }
                 Seam::asViewer($viewer, fn (): array => $this->render($page, $layouts, $props));
             });
@@ -1184,7 +1173,7 @@ final class AppRouter
         if ($file !== null) {
             try {
                 $layouts = $this->layouts($route);
-                [$head, $body] = Seam::asViewer($viewer, fn (): array => $this->render($file, $layouts, new JsObject(['params' => new JsObject([])])));
+                [$head, $body] = Seam::asViewer($viewer, fn (): array => $this->render($file, $layouts, new JsObject(['params' => new JsObject([]), 'user' => self::userProp($viewer)])));
                 $this->document(500, $head, $body);
             } catch (\Throwable $again) {
                 error_log('SpacePress error page failed too: ' . $again->getMessage());
@@ -1267,13 +1256,30 @@ final class AppRouter
             if (($layout['chrome'] ?? true) === false) {
                 continue;
             }
-            $layoutProps = new JsObject(['params' => $props->p['params'], 'children' => $html]);
+            $layoutProps = new JsObject([
+                'params' => $props->p['params'],
+                'user' => $props->p['user'] ?? null,
+                'children' => $html,
+            ]);
             $layoutFn = '\\SpacePressApp\\' . $layout['component'];
             $html = Html::component($layoutFn(...), $layoutProps);
         }
         // Rendering runs every component now, so their reads happen inside the visitor binding.
         $body = Html::child($html);
         return [self::head($metadata), $body];
+    }
+
+    private static function userProp(Viewer $viewer): ?JsObject
+    {
+        if ($viewer->user === null) {
+            return null;
+        }
+
+        return new JsObject([
+            'id' => (int) $viewer->user['id'],
+            'name' => (string) $viewer->user['name'],
+            'role' => (string) $viewer->user['role'],
+        ]);
     }
 
     /**

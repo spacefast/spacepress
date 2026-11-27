@@ -48,6 +48,7 @@ final class Db
     {
         self::$instance = $db;
         Access::clearCache();
+        Seam::clearCache();
     }
 
     /** Identity of the active Db instance (0 when none is bound), for Access cache scoping. */
@@ -162,6 +163,7 @@ final class Db
                 return $this->store->transaction($fn);
             } catch (\Throwable $e) {
                 Access::clearCache();
+        Seam::clearCache();
                 throw $e;
             }
         });
@@ -1056,9 +1058,8 @@ final class Db
                 // never saw them, and a replacement object it returns must not drop them.
                 [$data, $runtime] = RuntimeSchema\Loader::split($spec, $data, RuntimeSchema\Loader::compiled() ?? ['collections' => []]);
                 $jsCtx = Seam::ctx($ctx + ['data' => $data], $columns);
-                $data = $jsCtx->p['data'];
-                $result = $fn($data, $jsCtx);
-                $data = Seam::rowToPhp($collection, $result instanceof JsObject ? $result : $data) + $runtime;
+                $result = $fn($jsCtx);
+                $data = Seam::rowToPhp($collection, $result instanceof JsObject ? $result : $jsCtx->p['data']) + $runtime;
             } else {
                 $result = $slot($data, $ctx);
                 if (is_array($result)) { $data = $result; }
@@ -1102,6 +1103,7 @@ final class Db
             throw $this->store->mapError($e);
         }
         Access::clearCache();
+        Seam::clearCache();
         [$row, $raw] = $this->readByPk($collection, $spec, $pk);
         $pkColumn = $spec['primaryKey'];
         $allocatedKey = ($columns[$pkColumn]['autoIncrement'] ?? false) && !array_key_exists($pkColumn, $insert);
@@ -1146,10 +1148,10 @@ final class Db
             if (is_string($slot)) {
                 $fn = '\\SpacePressApp\\' . $slot;
                 [$patch, $runtime] = RuntimeSchema\Loader::split($spec, $patch, RuntimeSchema\Loader::compiled() ?? ['collections' => []]);
-                $jsCtx = Seam::ctx($ctx + ['data' => $patch], $columns);
-                $patch = $jsCtx->p['data'];
-                $result = $fn($patch, Seam::rowToJs($collection, $existing), $jsCtx);
-                $patch = Seam::rowToPhp($collection, $result instanceof JsObject ? $result : $patch) + $runtime;
+                $jsCtx = Seam::ctx($ctx + ['patch' => $patch], $columns);
+                $jsCtx->p['existing'] = Seam::rowToJs($collection, $existing);
+                $result = $fn($jsCtx);
+                $patch = Seam::rowToPhp($collection, $result instanceof JsObject ? $result : $jsCtx->p['patch']) + $runtime;
             } else {
                 $result = $slot($patch, $existing, $ctx);
                 if (is_array($result)) { $patch = $result; }
@@ -1204,6 +1206,7 @@ final class Db
             throw $this->store->mapError($e);
         }
         Access::clearCache();
+        Seam::clearCache();
         [$row, $raw] = $this->readByPk($collection, $spec, $pkValue);
         $this->recordRevision($collection, $spec, $pkValue, $raw, 'update', $previous, $row);
         $this->hook($collection, $spec, 'afterUpdate', $row, $previous);
@@ -1271,6 +1274,7 @@ final class Db
                     throw $this->store->mapError($e);
                 }
                 Access::clearCache();
+        Seam::clearCache();
                 $row['deletedAt'] = $at;
                 $row['deletedBy'] = is_int($userId) ? $userId : null;
                 if (array_key_exists('deletedGroup', $row)) {
@@ -1297,6 +1301,7 @@ final class Db
                 throw $this->store->mapError($e);
             }
             Access::clearCache();
+        Seam::clearCache();
             $this->deleted[$collection][$pk] = ++$this->deleteSequence;
             $this->deletedRows[$collection][$pk] = $row;
             $this->hook($collection, $spec, 'afterDelete', $row);
@@ -1320,6 +1325,7 @@ final class Db
             throw $this->store->mapError($e);
         }
         Access::clearCache();
+        Seam::clearCache();
         if ($cascadeChildren && !$this->restoringGroup && $group !== null) {
             $this->restoreGroupChildren($collection, $pkValue, $group, $viewer);
         }
@@ -2207,34 +2213,34 @@ final class Db
         }
     }
 
-    /** `afterPublish` (spec §2.8): the row is published now and wasn't before (or is new). */
+    /** `onPublish` (spec §2.8): the row is published now and wasn't before (or is new). */
     private function published(string $collection, array $spec, array $row, ?array $previous): void
     {
-        if (isset($spec['hooks']['afterPublish']) && ($row['status'] ?? null) === 'published'
+        if (isset($spec['hooks']['onPublish']) && ($row['status'] ?? null) === 'published'
             && ($previous === null || ($previous['status'] ?? null) !== 'published')) {
-            $this->hook($collection, $spec, 'afterPublish', $row);
+            $this->hook($collection, $spec, 'onPublish', $row, $previous);
         }
     }
 
     /**
      * A scheduled item reached its time (WP cron's `publish_future_post`, or the lazy promotion):
-     * its `afterPublish`, run as the system in one transaction.
+     * its `onPublish`, run as the system in one transaction.
      */
     public function afterPromotion(string $collection, int|string $pk): void
     {
         $spec = $this->schema->collection($collection);
-        if (!isset($spec['hooks']['afterPublish'])) {
+        if (!isset($spec['hooks']['onPublish'])) {
             return;
         }
         $this->asEditor(null, function () use ($collection, $spec, $pk) {
             [$row] = $this->readByPk($collection, $spec, $pk);
             if (($row['status'] ?? null) === 'published') {
-                $this->hook($collection, $spec, 'afterPublish', $row);
+                $this->hook($collection, $spec, 'onPublish', $row);
             }
         });
     }
 
-    /** Call a hook that receives rows (afterCreate/afterUpdate/before|afterDelete); result ignored. */
+    /** Call a hook that receives rows (afterCreate/afterUpdate/onPublish/before|afterDelete); result ignored. */
     private function hook(string $collection, array $spec, string $name, array $row, ?array $previous = null): void
     {
         if (!isset($spec['hooks'][$name])) {
@@ -2242,17 +2248,21 @@ final class Db
         }
         $slot = $spec['hooks'][$name];
         $ctx = $this->hookCtx();
-        $fn = $slot;
         if (is_string($slot)) {
             $fn = '\\SpacePressApp\\' . $slot;
-            $ctx = Seam::ctx($ctx, $spec['columns']);
-            $row = Seam::rowToJs($collection, $row);
-            $previous = $previous === null ? null : Seam::rowToJs($collection, $previous);
+            $jsCtx = Seam::ctx($ctx, $spec['columns']);
+            $jsCtx->p['row'] = Seam::rowToJs($collection, $row);
+            if ($previous !== null) {
+                $jsCtx->p['previous'] = Seam::rowToJs($collection, $previous);
+            }
+            $fn($jsCtx);
+
+            return;
         }
         if ($previous === null) {
-            $fn($row, $ctx);
+            $slot($row, $ctx);
         } else {
-            $fn($row, $previous, $ctx);
+            $slot($row, $previous, $ctx);
         }
     }
 
@@ -2670,6 +2680,7 @@ final class Db
             }
             $this->store->globalWrite($name, $values);
             Access::clearCache();
+        Seam::clearCache();
 
             return $this->globalGet($name);
         }));

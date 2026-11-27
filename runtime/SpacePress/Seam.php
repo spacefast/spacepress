@@ -186,6 +186,7 @@ final class Seam
     {
         $shape = ['user' => ['id' => ['type' => 'integer'], 'name' => ['type' => 'text'], 'role' => ['type' => 'text']]];
         if (array_key_exists('data', $ctx)) { $shape['data'] = $dataShape; }
+        if (array_key_exists('patch', $ctx)) { $shape['patch'] = $dataShape; }
         return self::inputToJs($ctx, $shape);
     }
 
@@ -330,19 +331,83 @@ final class Seam
         return Db::instance()->count($collection, $opts['where'] ?? null, $viewer, array_intersect_key($opts, ['locale' => true, 'search' => true, 'deleted' => true]));
     }
 
+    /** Per-request memoization cache for `kindGet()` (cleared on every write/rollback). */
+    private static array $getCache = [];
+
+    public static function clearCache(): void
+    {
+        self::$getCache = [];
+    }
+
     /**
-     * One row by id or by a filter (`{ slug: "hello" }`); null when no row the visitor may read matches.
-     * A kind the visitor may not read at all is the API's 401/403, as on every list.
+     * One row by id, by filter (`{ slug: "hello" }`), or by hierarchical `{ path }`; null when no row
+     * the visitor may read matches. Memoized per request so `metadata()` and `Page()` share one query.
      */
     public static function kindGet(string $collection, array $selector, mixed $opts, bool $trusted): ?JsObject
     {
         $db = Db::instance();
-        $where = array_key_exists('id', $selector)
-            ? [$db->schema()->collection($collection)['primaryKey'] => self::toPhp($selector['id'])]
-            : $selector['where'];
-        $row = $db->findFirst($collection, ['where' => $where] + self::query($collection, $opts), self::as($trusted));
+        $viewer = self::as($trusted);
+        $parsedOpts = self::query($collection, $opts);
+        $cacheKey = null;
+        try {
+            $cacheKey = json_encode([
+                $collection,
+                $selector,
+                $parsedOpts,
+                $trusted,
+                $viewer === null ? 'sys' : ($viewer->user['id'] ?? 'anon') . ':' . ($viewer->user['role'] ?? ''),
+            ], JSON_THROW_ON_ERROR);
+        } catch (\Throwable) {
+            $cacheKey = null;
+        }
+        if ($cacheKey !== null && array_key_exists($cacheKey, self::$getCache)) {
+            $cached = self::$getCache[$cacheKey];
+
+            return $cached === null ? null : self::rowToJs($collection, $cached);
+        }
+
+        if (array_key_exists('path', $selector)) {
+            $row = self::kindGetByPath($db, $collection, $selector['path'], $parsedOpts, $viewer);
+        } else {
+            $where = array_key_exists('id', $selector)
+                ? [$db->schema()->collection($collection)['primaryKey'] => self::toPhp($selector['id'])]
+                : $selector['where'];
+            $row = $db->findFirst($collection, ['where' => $where] + $parsedOpts, $viewer);
+        }
+
+        if ($cacheKey !== null) {
+            self::$getCache[$cacheKey] = $row;
+        }
 
         return $row === null ? null : self::rowToJs($collection, $row);
+    }
+
+    /** Resolves a hierarchical slug path (`['guides', 'intro']` or `'guides/intro'`) via `parent`. */
+    private static function kindGetByPath(Db $db, string $collection, mixed $path, array $opts, ?Viewer $viewer): ?array
+    {
+        $raw = self::toPhp($path);
+        $segments = is_array($raw)
+            ? array_values(array_filter(array_map('strval', $raw), static fn (string $s): bool => $s !== ''))
+            : array_values(array_filter(explode('/', trim((string) $raw, '/')), static fn (string $s): bool => $s !== ''));
+        if ($segments === []) {
+            return null;
+        }
+        $spec = $db->schema()->collection($collection);
+        $slugCol = $spec['slug'] ?? 'slug';
+        $pk = $spec['primaryKey'];
+        $parentId = null;
+        $last = count($segments) - 1;
+        for ($i = 0; $i < $last; $i++) {
+            $where = [$slugCol => $segments[$i], 'parent' => $parentId === null ? ['isNull' => true] : $parentId];
+            $parent = $db->findFirst($collection, ['where' => $where], $viewer);
+            if ($parent === null) {
+                return null;
+            }
+            $parentId = $parent[$pk];
+        }
+        $where = [$slugCol => $segments[$last], 'parent' => $parentId === null ? ['isNull' => true] : $parentId];
+
+        return $db->findFirst($collection, ['where' => $where] + $opts, $viewer);
     }
 
     public static function kindCreate(string $collection, mixed $values, bool $trusted): JsObject
@@ -465,15 +530,15 @@ final class Seam
         return $value;
     }
 
-    public static function globalGet(string $name): JsObject
+    public static function globalGet(string $name, bool $trusted = false): JsObject
     {
         $db = Db::instance();
-        return self::toJs($db->globalGet($name, self::$viewer), $db->schema()->global($name)['fields']);
+        return self::toJs($db->globalGet($name, self::as($trusted)), $db->schema()->global($name)['fields']);
     }
-    public static function globalUpdate(string $name, mixed $patch): JsObject
+    public static function globalUpdate(string $name, mixed $patch, bool $trusted = false): JsObject
     {
         $db = Db::instance();
-        return self::toJs($db->globalUpdate($name, $patch), $db->schema()->global($name)['fields']);
+        return self::toJs($db->globalUpdate($name, $patch, self::as($trusted)), $db->schema()->global($name)['fields']);
     }
     public static function enqueue(string $name, mixed $input, mixed $opts = null): JsObject
     {

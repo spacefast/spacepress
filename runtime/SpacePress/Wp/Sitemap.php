@@ -451,7 +451,7 @@ final class Sitemap
                 $meta = $app['files'][$file]['metadata'] ?? null;
                 if (is_array($meta) && isset($meta['fn'])) {
                     // A function sees what an anonymous visitor's render gives it: no params here.
-                    $props = new \SpacePress\JsObject(['params' => new \SpacePress\JsObject([])]);
+                    $props = new \SpacePress\JsObject(['params' => new \SpacePress\JsObject([]), 'user' => null]);
                     try {
                         $meta = \SpacePress\Seam::asViewer(new Viewer(null), static fn () => \SpacePress\Seam::toPhp(('\\SpacePressApp\\' . $meta['fn'])($props)));
                     } catch (\Throwable) {

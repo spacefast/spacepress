@@ -3349,6 +3349,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                     && let Ty::Predicate(index, target) = *result
                     && let Some(ArrEl::Item(argument)) = args.get(index)
                     && let Some((path, original)) = self.path_ty(argument)
+                    // The guard tests the value its argument had when it was read. An argument that
+                    // writes the path (`isStr(x, (x = null))`) runs after that read, so no fact holds.
+                    && args.iter().all(|(ArrEl::Item(e) | ArrEl::Spread(e))| self.refinement_survives(e, &path))
                 {
                     let refined = *target;
                     out.push(Refinement::branches(path, refined, original, negate));
@@ -3551,21 +3554,17 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 let mut left_by_path = HashMap::new();
                 let mut right_by_path = HashMap::new();
                 let mut order = Vec::new();
-                // A comparison may read a type computed before a write elsewhere in the logical
-                // test. Drop facts on paths that the test can change.
-                for fact in left
-                    .into_iter()
-                    .filter(|fact| self.refinement_survives(test, &fact.path))
-                {
+                // A fact holds when its own operand finishes. Drop a left fact on a path the right
+                // operand can change, and a right fact on a path the left operand can change (it
+                // was computed with the left facts applied). An operand's own writes don't undo its
+                // fact: `isNamed(item)` still holds after the call, even if the call may write `item`.
+                for fact in left.into_iter().filter(|fact| self.refinement_survives(r, &fact.path)) {
                     if !left_by_path.contains_key(&fact.path) {
                         order.push(fact.path.clone());
                     }
                     left_by_path.insert(fact.path, (fact.yes, fact.no));
                 }
-                for fact in right
-                    .into_iter()
-                    .filter(|fact| self.refinement_survives(test, &fact.path))
-                {
+                for fact in right.into_iter().filter(|fact| self.refinement_survives(l, &fact.path)) {
                     if !left_by_path.contains_key(&fact.path) && !right_by_path.contains_key(&fact.path) {
                         order.push(fact.path.clone());
                     }

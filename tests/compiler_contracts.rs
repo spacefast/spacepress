@@ -999,31 +999,37 @@ const __probe = mutation({}, (): number => {
     }
 }
 
-/// Byte values from imported JavaScript: every exported case of tests/differential/binary.mjs runs
-/// under Node and as compiled PHP, including files-sdk's own MD5 code and Blob reads and streams.
+/// Byte values from imported JavaScript: every exported case of tests/differential/binary.mjs and
+/// tests/differential/node/buffer.mjs runs under Node and as compiled PHP, including files-sdk's own
+/// MD5 code, Blob reads and streams, and Buffer.
 #[test]
 fn binary_data_matches_node_through_generated_php() {
     let tmp = tempfile::tempdir().unwrap();
-    for file in ["binary.mjs", "files-sdk-md5.mjs"] {
+    for file in ["binary.mjs", "files-sdk-md5.mjs", "node/buffer.mjs"] {
         copy_app(
             root().join("tests/differential").join(file),
-            tmp.path().join("sp").join(file),
+            tmp.path().join("sp").join(Path::new(file).file_name().unwrap()),
         )
         .unwrap();
     }
+    std::fs::write(
+        tmp.path().join("sp/cases.mjs"),
+        "export * from './binary.mjs';\nexport * from './buffer.mjs';\n",
+    )
+    .unwrap();
     let node = Command::new("node")
         .current_dir(tmp.path())
         .args([
             "--input-type=module",
             "-e",
-            "import * as cases from './sp/binary.mjs'; const out = {}; for (const [name, run] of Object.entries(cases)) out[name] = await run(); process.stdout.write(JSON.stringify(out));",
+            "import * as cases from './sp/cases.mjs'; const out = {}; for (const [name, run] of Object.entries(cases)) out[name] = await run(); process.stdout.write(JSON.stringify(out));",
         ])
         .output()
         .unwrap();
     assert!(node.status.success(), "{}", String::from_utf8_lossy(&node.stderr));
     let expected: Value = serde_json::from_slice(&node.stdout).unwrap();
     let names: Vec<&String> = expected.as_object().unwrap().keys().collect();
-    assert!(names.len() >= 14, "{expected}");
+    assert!(names.len() >= 20, "{expected}");
     let actions: Vec<String> = names
         .iter()
         .map(|name| format!("export const {name} = mutation({{}}, async () => await cases.{name}());"))
@@ -1031,7 +1037,7 @@ fn binary_data_matches_node_through_generated_php() {
     std::fs::write(
         tmp.path().join("spacepress.config.ts"),
         format!(
-            "import {{ defineConfig, mutation }} from 'spacepress';\nimport * as cases from './sp/binary.mjs';\n{}\nexport default defineConfig({{ name: 'binary-tests' }});\n",
+            "import {{ defineConfig, mutation }} from 'spacepress';\nimport * as cases from './sp/cases.mjs';\n{}\nexport default defineConfig({{ name: 'binary-tests' }});\n",
             actions.join("\n")
         ),
     )

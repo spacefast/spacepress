@@ -2524,7 +2524,7 @@ fn package_error(spec: &str, span: Span, reason: &str) -> Diag {
     Diag::new(span, format!("can't import \"{spec}\": {reason}"))
         .code(diag::Code::NpmImport)
         .help(if spec.starts_with("node:") {
-            "handlers run in PHP: use the global fetch, process.env.NAME and \"node:crypto\""
+            "handlers run in PHP: use the global fetch, process.env.NAME, \"node:crypto\" and \"node:buffer\""
         } else {
             "install a source package locally; its TypeScript, ESM, or static CommonJS source must fit SpacePress's PHP compiler subset"
         })
@@ -2542,7 +2542,7 @@ fn resolve_package(fs: &dyn Fs, from: &Path, spec: &str, span: Span, conditions:
             spec,
             span,
             if spec.starts_with("node:") {
-                "Node built-ins other than node:crypto are unavailable"
+                "Node built-ins other than node:crypto and node:buffer are unavailable"
             } else {
                 "unsupported package specifier (package aliases are unavailable)"
             },
@@ -3037,7 +3037,7 @@ mod tests {
             (
                 r#"{"exports":"./source.ts"}"#,
                 "node:fs",
-                "Node built-ins other than node:crypto are unavailable",
+                "Node built-ins other than node:crypto and node:buffer are unavailable",
             ),
         ] {
             let fs = memory(&[

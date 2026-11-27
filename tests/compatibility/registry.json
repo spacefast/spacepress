@@ -57,7 +57,7 @@
       "status": "supported",
       "evidence": "src/loader.rs",
       "test": "installed_sources_follow_nearest_packages_exact_exports_and_relative_ts_imports",
-      "guidance": "Locally installed source packages resolve through nearest node_modules: exact exports with import/default conditions, module entries, and supported main/index entries. Scoped packages and exact exported subpaths are supported. Static CommonJS runs once at build time: top-level `require(\"<literal>\")` of relative files and CommonJS packages (require/default conditions), `module.exports = …` and `exports.name = …`, with named exports for ESM importers found like Node's cjs-module-lexer. Dynamic require, require inside functions, require of ES modules, require cycles, writes to module or exports inside functions, other module properties, implicit sloppy arguments, Node built-ins other than node:crypto, export patterns, package aliases, declaration-only entries and package-target escapes are refused. Raw JavaScript uses checked runtime operations; TypeScript keeps static checking. Resolving a package does not establish compatibility with its host APIs or every export. Pinned npm probes compare selected real imports to Node."
+      "guidance": "Locally installed source packages resolve through nearest node_modules: exact exports with import/default conditions, module entries, and supported main/index entries. Scoped packages and exact exported subpaths are supported. Static CommonJS runs once at build time: top-level `require(\"<literal>\")` of relative files and CommonJS packages (require/default conditions), `module.exports = …` and `exports.name = …`, with named exports for ESM importers found like Node's cjs-module-lexer. Dynamic require, require inside functions, require of ES modules, require cycles, writes to module or exports inside functions, other module properties, implicit sloppy arguments, Node built-ins other than node:crypto and node:buffer, export patterns, package aliases, declaration-only entries and package-target escapes are refused. Raw JavaScript uses checked runtime operations; TypeScript keeps static checking. Resolving a package does not establish compatibility with its host APIs or every export. Pinned npm probes compare selected real imports to Node."
     },
     {
       "id": "unannotated-javascript",
@@ -750,7 +750,7 @@
       "status": "supported",
       "evidence": "tests/compiler_contracts.rs",
       "test": "node_modules_typed_use_matches_node",
-      "guidance": "An import or top-level require of a Node built-in module (\"node:crypto\" or \"crypto\", \"node:buffer\" or \"buffer\") and the global Buffer are run-time module objects (SpacePress\\Node\\Module), reached through checked JavaScript dispatch in typed TypeScript as in imported JavaScript. createHash and createHmac return stateful objects with update(data, inputEncoding?) and digest(encoding?), where digest() without an encoding returns a Buffer; randomBytes(n) returns a Buffer; timingSafeEqual takes buffers, typed arrays, DataViews or ArrayBuffers. In typed code their results are JavaScript values: narrow them with `as string`, `as number` or `as boolean`, which checks the type when PHP runs and throws a TypeError on a mismatch. Documented differences from Node: a createHmac key read from process.env.NAME is trimmed and refused when blank (500 crypto_key_unavailable), hash and HMAC input is capped at 1 MiB in total (413 crypto_input_too_large), and randomBytes takes 0 to 1024 bytes."
+      "guidance": "An import or top-level require of a Node built-in module (\"node:crypto\" or \"crypto\", \"node:buffer\" or \"buffer\") and the global Buffer are run-time module objects (SpacePress\\Node\\Module), reached through checked JavaScript dispatch in typed TypeScript as in imported JavaScript. createHash and createHmac return stateful objects with update(data, inputEncoding?) and digest(encoding?), where digest() without an encoding returns a Buffer; randomBytes(n) returns a Buffer; timingSafeEqual takes buffers, typed arrays, DataViews or ArrayBuffers. In typed code their results are JavaScript values: narrow them with `as string`, `as number` or `as boolean`, which checks the type when PHP runs and throws a TypeError on a mismatch. Documented differences from Node: a createHmac key read from process.env.NAME is trimmed and refused when blank (500 crypto_key_unavailable), hash and HMAC input is capped at 1 MiB in total (413 crypto_input_too_large), and randomBytes takes 0 to 1024 bytes. Buffer (the global and node:buffer's, with constants, kMaxLength, atob and btoa) is the runtime's Uint8Array with Buffer's methods, so `buf instanceof Uint8Array` holds: from (strings in utf8, hex, base64, base64url, latin1/binary, ascii, utf16le/ucs2, decoded leniently as Node does; arrays, array-likes, typed arrays, ArrayBuffer views with offset and length, and toJSON objects), alloc, allocUnsafe (zero-filled), concat, isBuffer, isEncoding, byteLength, compare, of; and on instances toString(encoding, start, end), equals, compare, write, copy, fill, indexOf, lastIndexOf, includes, toJSON, slice and subarray (views), the readUInt/writeUInt and readInt/writeInt 8/16/32 methods in both byte orders, readBigUInt64BE/LE, and every Uint8Array method. JSON.stringify gives {\"type\":\"Buffer\",\"data\":[...]}. Evidence for Buffer: tests/differential/node/buffer.mjs, run by binary_data_matches_node_through_generated_php."
     },
     {
       "id": "fetch-signal",
@@ -869,16 +869,16 @@
       "status": "refused",
       "code": "F1102",
       "fixture": "tests/fixtures/reject-node-builtin",
-      "message": "Node built-ins other than node:crypto are unavailable",
-      "guidance": "Handlers run in PHP. Use the global fetch, process.env.NAME and \"node:crypto\"."
+      "message": "Node built-ins other than node:crypto and node:buffer are unavailable",
+      "guidance": "Handlers run in PHP. Use the global fetch, process.env.NAME, \"node:crypto\" and \"node:buffer\"."
     },
     {
       "id": "require",
       "status": "refused",
       "code": "F1102",
       "fixture": "tests/fixtures/reject-require-module",
-      "message": "can't import \"node:fs\": Node built-ins other than node:crypto are unavailable",
-      "guidance": "Static CommonJS may require(\"node:crypto\") (or \"crypto\"); it resolves through the same built-in module lookup as import. Other Node built-ins are refused whether imported or required."
+      "message": "can't import \"node:fs\": Node built-ins other than node:crypto and node:buffer are unavailable",
+      "guidance": "Static CommonJS may require(\"node:crypto\") or require(\"node:buffer\") (or the bare names); they resolve through the same built-in module lookup as import. Other Node built-ins are refused whether imported or required."
     },
     {
       "id": "spacepress-fetch-import",

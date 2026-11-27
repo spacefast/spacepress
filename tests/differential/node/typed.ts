@@ -20,4 +20,22 @@ export const typedHashes = mutation({}, () => {
   return [hex, b64, n, viaNs, sig, hex.length + sig.length];
 });
 
+export const typedBuffers = mutation({}, () => {
+  const body: Buffer = Buffer.from("héllo wörld");
+  const copy = Buffer.alloc(body.length as number);
+  body.copy(copy);
+  const joined = Buffer.concat([body, Buffer.from([0x21])]);
+  const bytes: Uint8Array = new TextEncoder().encode("ok");
+  const decoded = new TextDecoder().decode(Buffer.from(bytes)) as string;
+  return [
+    joined.toString("base64") as string,
+    copy.equals(body) as boolean,
+    Buffer.byteLength("é😀") as number,
+    Buffer.isBuffer(joined) as boolean,
+    decoded,
+    JSON.stringify({ b: Buffer.from("ab") }),
+    String(Buffer.from("x")),
+  ];
+});
+
 export default defineConfig({ name: "node-typed" });

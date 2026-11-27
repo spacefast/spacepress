@@ -108,16 +108,6 @@ pub fn module(spec: &str) -> Option<BuiltinModule> {
         .find(|m| m.name() == name && !m.exports().is_empty())
 }
 
-/// The available modules' specifiers, for diagnostics.
-pub fn available_modules() -> String {
-    let names: Vec<_> = BuiltinModule::ALL
-        .into_iter()
-        .filter(|m| !m.exports().is_empty())
-        .map(|m| format!("\"{}\"", m.specifier()))
-        .collect();
-    names.join(", ")
-}
-
 #[derive(Clone, Copy)]
 pub enum Phase {
     Evaluator,

@@ -179,9 +179,10 @@ final class JsBinary
         throw new JsError(self::tag($value) . ' is not iterable', 'TypeError');
     }
 
-    /** JSON.stringify: a typed array is an object of indexes; the others are `{}`. */
+    /** JSON.stringify: a Buffer is `{type: "Buffer", data}`, another typed array an object of indexes; the others are `{}`. */
     public static function json(object $value): \stdClass
     {
+        if ($value instanceof JsTypedArray && $value->nodeBuffer) { return Node\Buffer::json($value); }
         $out = new \stdClass();
         if ($value instanceof JsTypedArray) {
             foreach ($value->values() as $i => $item) {

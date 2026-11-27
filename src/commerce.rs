@@ -243,10 +243,17 @@ pub fn kind(value: &CollectionVal, schema: &mut Schema) -> Result<()> {
     let allowed = if kind == StorageKind::Order {
         &["api", "agents", "label"][..]
     } else if kind == StorageKind::Product {
-        &["sync", "url", "api", "agents", "label", "inventory", "reviews"][..]
+        &["sync", "api", "agents", "label", "inventory", "reviews"][..]
     } else {
-        &["sync", "url", "api", "agents", "label"][..]
+        &["sync", "api", "agents", "label"][..]
     };
+    if o.get("url").is_some() {
+        return Err(Diag::new(
+            value.span,
+            "`url` on commerce kinds is gone: routes in `sp/app/` own URLs",
+        )
+        .help("create a route like `sp/app/shop/[slug]/page.tsx` that loads the item with `db.<kind>.get({ slug: params.slug })`, or set `permalinks` in `defineConfig()` for headless sites"));
+    }
     object(&o, allowed, kind.builder()).map_err(|e| Diag::new(value.span, e))?;
     let c = schema.collections.get_mut(value.table()).unwrap();
     c.editor = false;

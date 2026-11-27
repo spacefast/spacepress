@@ -378,7 +378,7 @@ impl HookKind {
             HookKind::AfterRestore => "afterRestore",
             HookKind::BeforePurge => "beforePurge",
             HookKind::AfterPurge => "afterPurge",
-            HookKind::AfterPublish => "afterPublish",
+            HookKind::AfterPublish => "onPublish",
         }
     }
 
@@ -555,10 +555,14 @@ impl Collection {
             || self.excerpt.as_deref() == Some(col)
     }
 
-    /// The WordPress post type an editor kind's items are: `post` for `wp.posts.extend()`, else `sp_<name>`.
+    /// The WordPress post type an editor kind's items are: `post`/`page` for `extend("posts"|"pages")`, else `sp_<name>`.
     pub fn post_type(&self) -> String {
         if self.native {
-            "post".into()
+            if self.hierarchical {
+                "page".into()
+            } else {
+                "post".into()
+            }
         } else {
             format!("sp_{}", self.table)
         }
@@ -739,6 +743,8 @@ pub struct Schema {
     pub retention: Option<Retention>,
     /// Opt-in migration providers registered by plugins (`use: [destructiveMigrations()]`).
     pub migration_providers: Vec<MigrationProviderConfig>,
+    /// `defineConfig({ permalinks })`: optional explicit permalink map for headless sites (`frontend: "https://..."`).
+    pub permalinks: IndexMap<String, String>,
 }
 
 /// Configuration for a CLI-only opt-in migration provider declared by a plugin package.
@@ -811,6 +817,7 @@ impl Default for Schema {
             runtime_schema: None,
             retention: None,
             migration_providers: Vec::new(),
+            permalinks: IndexMap::new(),
         }
     }
 }
@@ -818,6 +825,255 @@ impl Default for Schema {
 impl Schema {
     pub fn by_key(&self, key: &str) -> Option<&Collection> {
         self.collections.values().find(|c| c.key == key)
+    }
+
+    /// Ensures a built-in WordPress kind (`posts`, `pages`, or `users`) is materialized in
+    /// `self.collections`. No-op if the app already defined or extended a kind with that key.
+    /// Returns true if the kind is a built-in and now present in `self.collections`.
+    pub fn ensure_builtin(&mut self, name: &str) -> bool {
+        if !matches!(name, "posts" | "pages" | "users") {
+            return false;
+        }
+        if self.by_key(name).is_some() || self.collections.contains_key(name) {
+            return true;
+        }
+        let mut columns = IndexMap::new();
+        let mut id = Column::new("id", ColType::Integer);
+        id.primary_key = true;
+        id.auto_increment = true;
+        id.not_null = true;
+        columns.insert("id".into(), id);
+
+        if name == "users" {
+            let mut email = Column::new("email", ColType::Email);
+            email.not_null = true;
+            email.unique = true;
+            email.rules.max = Some(191.0);
+            columns.insert("email".into(), email);
+            let mut role = Column::new("role", ColType::Text);
+            role.system = true;
+            role.enum_values = Some(ROLES.iter().map(|r| (*r).into()).collect());
+            role.not_null = true;
+            role.default = Some(DefaultKind::Value(Json::String("subscriber".into())));
+            role.access.insert("update".into(), Access::Role("admin".into()));
+            columns.insert("role".into(), role);
+            for (cname, ty) in [
+                ("passwordHash", ColType::Text),
+                ("suspendedAt", ColType::Timestamp),
+                ("guest", ColType::Boolean),
+            ] {
+                let mut col = Column::new(cname, ty);
+                col.system = true;
+                col.hidden = true;
+                columns.insert(cname.into(), col);
+            }
+            let mut access = IndexMap::new();
+            access.insert("read".into(), Access::editor());
+            access.insert("create".into(), Access::Role("admin".into()));
+            access.insert("update".into(), Access::Role("admin".into()));
+            access.insert("delete".into(), Access::Role("admin".into()));
+            self.collections.insert(
+                "users".into(),
+                Collection {
+                    key: "users".into(),
+                    table: "users".into(),
+                    existing_table: None,
+                    was: None,
+                    label: "Users".into(),
+                    editor: false,
+                    drafts: false,
+                    revisions: false,
+                    soft_delete: false,
+                    retention: None,
+                    staged: false,
+                    comments: false,
+                    comment_policy: None,
+                    title: None,
+                    content: None,
+                    slug: None,
+                    excerpt: None,
+                    native: false,
+                    columns,
+                    relations: IndexMap::new(),
+                    hooks: IndexMap::new(),
+                    before_create_fills: Vec::new(),
+                    access,
+                    api: Api {
+                        list: true,
+                        get: true,
+                        create: true,
+                        update: true,
+                        delete: true,
+                    },
+                    uid: false,
+                    sync: None,
+                    auth: true,
+                    agents: true,
+                    localized: false,
+                    url: None,
+                    hierarchical: false,
+                    taxonomy: None,
+                    commerce: None,
+                    indexes: Vec::new(),
+                    ui: None,
+                },
+            );
+            return true;
+        }
+
+        let is_pages = name == "pages";
+        let mut title = Column::new("title", ColType::Text);
+        title.not_null = true;
+        columns.insert("title".into(), title);
+        let mut slug = Column::new("slug", ColType::Slug);
+        slug.not_null = true;
+        slug.source = Some("title".into());
+        columns.insert("slug".into(), slug);
+        let mut content = Column::new("content", ColType::RichText);
+        content.not_null = true;
+        content.default = Some(DefaultKind::Value(Json::String(String::new())));
+        columns.insert("content".into(), content);
+        let mut excerpt = Column::new("excerpt", ColType::Text);
+        excerpt.multiline = true;
+        columns.insert("excerpt".into(), excerpt);
+
+        let mut relations = IndexMap::new();
+        if is_pages {
+            let mut parent = Column::new("parent", ColType::Integer);
+            parent.references = Some(Reference {
+                collection: "pages".into(),
+                column: "id".into(),
+                on_delete: Some(RefAction::SetNull),
+                on_update: None,
+                join: None,
+            });
+            parent.system = true;
+            let mut order = Column::new("order", ColType::Integer);
+            order.not_null = true;
+            order.default = Some(DefaultKind::Value(Json::from(0)));
+            order.system = true;
+            columns.insert("parent".into(), parent);
+            columns.insert("order".into(), order);
+            relations.insert(
+                "parent".into(),
+                Relation {
+                    name: "parent".into(),
+                    kind: RelKind::One,
+                    collection: "pages".into(),
+                    from: "parent".into(),
+                    to: "id".into(),
+                    optional: true,
+                    through: None,
+                },
+            );
+            relations.insert(
+                "children".into(),
+                Relation {
+                    name: "children".into(),
+                    kind: RelKind::Many,
+                    collection: "pages".into(),
+                    from: "id".into(),
+                    to: "parent".into(),
+                    optional: false,
+                    through: None,
+                },
+            );
+        }
+
+        let mut status = Column::new("status", ColType::Text);
+        status.not_null = true;
+        status.enum_values = Some(vec!["draft".into(), "published".into(), "scheduled".into()]);
+        status.default = Some(DefaultKind::Value(Json::String("published".into())));
+        status.system = true;
+        columns.insert("status".into(), status);
+        let mut published_at = Column::new("publishedAt", ColType::Timestamp);
+        published_at.system = true;
+        columns.insert("publishedAt".into(), published_at);
+        let mut author = Column::new("author", ColType::Integer);
+        author.system = true;
+        author.read_only = true;
+        columns.insert("author".into(), author);
+        let mut created_at = Column::new("createdAt", ColType::Timestamp);
+        created_at.not_null = true;
+        created_at.default = Some(DefaultKind::Now);
+        created_at.system = true;
+        created_at.read_only = true;
+        columns.insert("createdAt".into(), created_at);
+        let mut updated_at = Column::new("updatedAt", ColType::Timestamp);
+        updated_at.not_null = true;
+        updated_at.default = Some(DefaultKind::Now);
+        updated_at.on_update = Some(DefaultKind::Now);
+        updated_at.system = true;
+        updated_at.read_only = true;
+        columns.insert("updatedAt".into(), updated_at);
+        let mut deleted_at = Column::new("deletedAt", ColType::Timestamp);
+        deleted_at.system = true;
+        deleted_at.read_only = true;
+        columns.insert("deletedAt".into(), deleted_at);
+        let mut deleted_by = Column::new("deletedBy", ColType::Integer);
+        deleted_by.system = true;
+        deleted_by.read_only = true;
+        columns.insert("deletedBy".into(), deleted_by);
+        let mut deleted_group = Column::new("deletedGroup", ColType::Text);
+        deleted_group.rules.max = Some(36.0);
+        deleted_group.system = true;
+        deleted_group.read_only = true;
+        deleted_group.hidden = true;
+        columns.insert("deletedGroup".into(), deleted_group);
+
+        let mut access = IndexMap::new();
+        access.insert("read".into(), Access::anyone());
+        access.insert("create".into(), Access::Role("author".into()));
+        access.insert("update".into(), Access::Role("author".into()));
+        access.insert("delete".into(), Access::Role("author".into()));
+
+        self.collections.insert(
+            name.into(),
+            Collection {
+                key: name.into(),
+                table: name.into(),
+                existing_table: None,
+                was: None,
+                label: if is_pages { "Pages".into() } else { "Posts".into() },
+                editor: true,
+                drafts: true,
+                revisions: true,
+                soft_delete: true,
+                retention: None,
+                staged: true,
+                comments: !is_pages,
+                comment_policy: (!is_pages).then(CommentPolicy::default),
+                title: Some("title".into()),
+                content: Some("content".into()),
+                slug: Some("slug".into()),
+                excerpt: Some("excerpt".into()),
+                native: true,
+                columns,
+                relations,
+                hooks: IndexMap::new(),
+                before_create_fills: Vec::new(),
+                access,
+                api: Api {
+                    list: true,
+                    get: true,
+                    create: true,
+                    update: true,
+                    delete: true,
+                },
+                uid: false,
+                sync: None,
+                auth: false,
+                agents: true,
+                localized: false,
+                url: None,
+                hierarchical: is_pages,
+                taxonomy: None,
+                commerce: None,
+                indexes: Vec::new(),
+                ui: None,
+            },
+        );
+        true
     }
 
     /// The column a path names. Paths come from the extractor, so they always resolve.
@@ -1045,6 +1301,8 @@ pub struct AppFile {
     /// slug), on a page or layout. A layout that imports `<TemplatePart>` places the theme's parts
     /// itself, so it is `"blank"` unless it says otherwise (docs/pages.md "Block templates").
     pub template: Option<String>,
+    /// `export const canonical = "<kind>" | false`: explicitly claims or opts out of canonical route binding for a kind.
+    pub canonical: Option<Option<String>>,
 }
 
 #[derive(Debug, Clone)]

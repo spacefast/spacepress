@@ -273,21 +273,32 @@ fn require_static_coercion(value: &Value, span: Span) -> R<()> {
     visit(value, span, &mut HashSet::new())
 }
 
-/// The fields every `wp.posts` kind has: the post row's own columns.
+/// The fields every `extend("posts" | "pages")` kind has: the post row's own columns.
 pub const POST_FIELDS: &[&str] = &["id", "title", "slug", "content", "excerpt", "status", "publishedAt"];
 
 /// Schema, DSL and config names exported by `"spacepress"`.
 pub const SP_EXPORTS: &[&str] = &[
     "collection",
     "table",
-    "userProjection",
-    "store",
-    "product",
-    "productCategory",
-    "productTag",
-    "order",
     "taxonomy",
-    "terms",
+    "global",
+    "files",
+    "extend",
+    "f",
+    "defineConfig",
+    "query",
+    "mutation",
+    "job",
+    "cron",
+    "env",
+    "definePlugin",
+];
+/// Commerce schema builders exported by `"spacepress/commerce"`.
+pub const COMMERCE_EXPORTS: &[&str] = &["store", "product", "productCategory", "productTag", "order"];
+/// Admin UI builders exported by `"spacepress/admin"`.
+pub const ADMIN_EXPORTS: &[&str] = &["adminScreen", "adminWidget", "adminDashboard", "item"];
+/// Field builders available on `f` (`f.text()`, `f.integer()`, ...).
+pub const FIELD_EXPORTS: &[&str] = &[
     "integer",
     "number",
     "text",
@@ -300,39 +311,37 @@ pub const SP_EXPORTS: &[&str] = &[
     "slug",
     "richText",
     "media",
+    "file",
     "select",
     "group",
     "repeater",
     "blocks",
-    "global",
     "ref",
-    "defineConfig",
-    "defineRelations",
-    "query",
-    "mutation",
-    "file",
-    "files",
-    "job",
-    "cron",
-    "env",
-    "definePlugin",
-    "adminScreen",
-    "adminWidget",
-    "adminDashboard",
-    "item",
-    "wp",
+    "terms",
 ];
 /// Server-only runtime APIs exported by `"spacepress/server"`.
-pub const SERVER_EXPORTS: &[&str] = &["db", "HttpError", "once", "mail", "connectors"];
+pub const SERVER_EXPORTS: &[&str] = &["db", "HttpError"];
 /// Type-only exports of `"spacepress/server"`: importable, erased.
 const SERVER_TYPES: &[&str] = &[
-    "MailAddress",
-    "MailMessage",
+    "Db",
+    "ReadOnlyDb",
+    "SystemDb",
+    "SystemReadOnlyDb",
+    "Database",
+    "QueryCtx",
+    "MutationCtx",
+    "JobCtx",
+    "CronCtx",
+    "RouteCtx",
     "HookCtx",
     "AccessCtx",
     "FieldAccessCtx",
     "ValidateCtx",
-    "JobCtx",
+    "MailAddress",
+    "MailMessage",
+    "MailApi",
+    "ConnectorsApi",
+    "FilesApi",
     "FileBucket",
     "AnyFileBucket",
     "PrivateFileInfo",
@@ -1192,6 +1201,12 @@ impl<'p> Evaluator<'p> {
         if source == WORDPRESS_MODULE {
             return wordpress_export(name, span);
         }
+        if source == crate::loader::COMMERCE_MODULE {
+            return commerce_export(name, span);
+        }
+        if source == crate::loader::ADMIN_MODULE {
+            return admin_export(name, span);
+        }
         if source == crate::loader::DANGER_MODULE {
             return match name {
                 "destructiveMigrations" | "default" => Ok(Value::Builtin(Builtin::DestructiveMigrations)),
@@ -1218,26 +1233,6 @@ impl<'p> Evaluator<'p> {
             source,
         ) {
             return Ok(Value::Undef);
-        }
-        if source == crate::loader::CONTENT_MODULE {
-            return crate::compile::CONTENT_EXPORTS
-                .iter()
-                .find(|e| **e == name)
-                .map(|e| Value::Builtin(Builtin::Content(e)))
-                .or_else(|| crate::compile::CONTENT_TYPES.contains(&name).then_some(Value::Undef))
-                .ok_or_else(|| {
-                    let mut d = Diag::new(span, format!("\"spacepress/content\" has no export named `{name}`"));
-                    if let Some(s) = suggest(
-                        name,
-                        crate::compile::CONTENT_EXPORTS
-                            .iter()
-                            .chain(crate::compile::CONTENT_TYPES)
-                            .copied(),
-                    ) {
-                        d = d.help(format!("did you mean `{s}`?"));
-                    }
-                    Ctl::Err(d)
-                });
         }
         if source == "react-email" && crate::loader::email_module(&self.program.root, &self.program.modules[from].path)
         {
@@ -1288,34 +1283,6 @@ impl<'p> Evaluator<'p> {
     fn bind_imports(&mut self, id: usize, source: &str, specs: &[ImportSpec], span: Span, scope: &Rc<Scope>) -> R<()> {
         for spec in specs {
             if spec.type_only {
-                continue;
-            }
-            // A kind may be declared in a module that runs later, so the binding starts
-            // uninitialized: reading it while modules load is a TDZ error, and handlers, which run
-            // after every module, see the registered kind.
-            if source == crate::loader::DB_MODULE {
-                let ImportName::Named(name) = &spec.imported else {
-                    return err_help(
-                        spec.span,
-                        "\"spacepress/server/db\" exports one name per kind",
-                        "import the kinds you use: `import { posts } from \"spacepress/server/db\"`",
-                    );
-                };
-                scope.vars.borrow_mut().insert(
-                    spec.local.clone(),
-                    Binding {
-                        initialized: false,
-                        value: Value::Undef,
-                        mutable: false,
-                        module_level: true,
-                        ann: None,
-                    },
-                );
-                self.db_imports
-                    .push((scope.clone(), spec.local.clone(), name.clone(), spec.span));
-                if let Some(kinds) = self.db_kinds.clone() {
-                    self.bind_db(&kinds).map_err(Ctl::Err)?;
-                }
                 continue;
             }
             // TypeScript elides imports that only name types.
@@ -2745,29 +2712,18 @@ impl<'p> Evaluator<'p> {
             }
             Value::Builtin(Builtin::Db) => err(
                 span,
-                "`db` only works inside hooks and actions, which run in PHP at request time",
+                "`db` only works inside handlers and components, which run in PHP at request time",
             ),
-            // WordPress's own kinds. Posts are the first; the others say so.
-            Value::Builtin(Builtin::Wp) => match prop {
-                "posts" => Ok(Value::Builtin(Builtin::WpPosts)),
-                "pages" | "media" | "users" | "comments" | "categories" | "tags" | "menus" | "settings" => err_help(
-                    span,
-                    format!("`wp.{prop}` isn't supported yet: `wp.posts` is the one WordPress kind an app can use"),
-                    "use `wp.posts.extend({ ... }, { url })` for WordPress's posts, or `wp.posts.clone({ ... })` for a kind like them",
-                ),
-                _ => err_help(
-                    span,
-                    format!("`wp` has no kind `{prop}`"),
-                    "`wp.posts` is WordPress's posts",
-                ),
-            },
-            Value::Builtin(Builtin::WpPosts) if matches!(prop, "extend" | "clone") => {
+            // `f.*`: field builders namespace (`f.text()`, `f.integer()`, `f.ref()`, ...).
+            Value::Builtin(Builtin::FieldNamespace) => field_export(prop, span),
+            // `wp.action(...)` / `wp.filter(...)` from `"spacepress/server/wp"`.
+            Value::Builtin(Builtin::WpServer) if matches!(prop, "action" | "filter") => {
                 Ok(Value::Bound(Rc::new(v.clone()), Rc::from(prop)))
             }
-            Value::Builtin(Builtin::WpPosts) => err_help(
+            Value::Builtin(Builtin::WpServer) => err_help(
                 span,
-                format!("`wp.posts` has no `{prop}`"),
-                "`wp.posts.extend(fields, { url })` adds fields to WordPress's posts; `wp.posts.clone(fields, options)` makes another kind like them",
+                format!("`wp` has no method `{prop}`"),
+                "use `wp.action(hook, [options,] handler)` or `wp.filter(hook, [options,] handler)`",
             ),
             Value::Builtin(Builtin::Global("globalThis")) => match global_member(prop) {
                 GlobalMember::Provided("Infinity") => Ok(Value::Num(f64::INFINITY)),
@@ -2974,49 +2930,104 @@ impl<'p> Evaluator<'p> {
         }
     }
 
-    /// `wp.posts.extend(fields, options)` and `wp.posts.clone(fields, options)`: a kind with posts'
-    /// own fields (title, slug, content, excerpt, status, publishedAt) and the authored ones.
-    fn wp_posts(&mut self, m: &str, args: Vec<Value>, span: Span) -> R<Value> {
-        let post = match m {
-            "extend" => PostKind::Native,
-            "clone" => PostKind::Clone,
-            _ => unreachable!("get_prop binds extend and clone only"),
-        };
-        if args.len() > 2 {
-            return err(span, format!("`wp.posts.{m}()` takes fields and options"));
-        }
+    /// `extend("posts" | "pages" | "users", options?)`: extends a built-in WordPress entity.
+    fn extend_builtin(&mut self, args: Vec<Value>, span: Span) -> R<Value> {
         let mut args = args.into_iter();
-        let fields = match args.next() {
-            None | Some(Value::Undef) => Value::object(IndexMap::new()),
-            Some(v) => v,
+        let target = match args.next() {
+            Some(Value::Str(s)) => s,
+            Some(other) => {
+                return err_help(
+                    span,
+                    format!("`extend()` takes \"posts\", \"pages\" or \"users\" first, not {}", other.describe()),
+                    "write `export const posts = extend(\"posts\", { fields: { subtitle: f.text().optional() } })`",
+                );
+            }
+            None => {
+                return err_help(
+                    span,
+                    "`extend()` needs a target: \"posts\", \"pages\" or \"users\"",
+                    "write `export const posts = extend(\"posts\", { sync: \"content/posts/*.md\" })`",
+                );
+            }
         };
-        let columns = self.fields_object(
-            &fields,
-            span,
-            &format!(
-                "`wp.posts.{m}()` takes an object of fields first: `wp.posts.{m}({{ cover: media().optional() }})`"
-            ),
-        )?;
-        let options = match args.next() {
+        if !matches!(target.as_ref(), "posts" | "pages" | "users") {
+            return err_help(
+                span,
+                format!("`extend(\"{target}\")` isn't supported"),
+                "use `extend(\"posts\", ...)`, `extend(\"pages\", ...)`, or `extend(\"users\", ...)`",
+            );
+        }
+        let options_arg = match args.next() {
             None | Some(Value::Undef) => None,
             Some(o @ Value::Object(_)) => Some(o),
             Some(other) => {
                 return err(
                     span,
-                    format!("`wp.posts.{m}()` options must be an object, not {}", other.describe()),
+                    format!("`extend()` options must be an object, not {}", other.describe()),
                 );
             }
         };
-        // Posts' own fields, stored in the post row itself (post_title, post_name, post_content,
-        // post_excerpt, post_status, post_date_gmt). An authored field can't take their names.
+        // Split optional `fields` out of options into the columns map, passing remaining keys as options.
+        let (columns, options) = match options_arg {
+            None => (IndexMap::new(), None),
+            Some(ref opts_val) => {
+                let Value::Object(obj) = opts_val else { unreachable!() };
+                let map = obj.borrow().clone();
+                let cols = match map.get("fields") {
+                    None | Some(Value::Undef) => IndexMap::new(),
+                    Some(fv) => self.fields_object(
+                        fv,
+                        self.key_span(opts_val, "fields").unwrap_or(span),
+                        "`extend()` `fields` must be an object of `f.*` field builders",
+                    )?,
+                };
+                let mut rest = IndexMap::new();
+                for (k, v) in map {
+                    if k != "fields" {
+                        rest.insert(k, v);
+                    }
+                }
+                let rest_val = if rest.is_empty() { None } else { Some(Value::object(rest)) };
+                (cols, rest_val)
+            }
+        };
+        if target.as_ref() == "users" {
+            let mut all = IndexMap::new();
+            if let Some(authored) = columns.get("id") {
+                return err_help(
+                    authored.span,
+                    "`id` is built in: every kind has an integer `id`",
+                    "delete this field",
+                );
+            }
+            all.insert("id".to_string(), Rc::new(implicit_id(span)));
+            all.extend(columns);
+            let value = Value::Collection(Rc::new(CollectionVal {
+                kind: StorageKind::UserProjection,
+                table: OnceCell::new(),
+                columns: all,
+                options,
+                span,
+                hooks: RefCell::new(Vec::new()),
+                indexes: RefCell::new(Vec::new()),
+                post: None,
+            }));
+            self.built.push(value.clone());
+            return Ok(value);
+        }
+        let post_kind = if target.as_ref() == "pages" {
+            PostKind::NativePage
+        } else {
+            PostKind::Native
+        };
         for (name, b) in &columns {
-            if POST_FIELDS.contains(&name.as_str()) {
+            if POST_FIELDS.contains(&name.as_str())
+                || (post_kind == PostKind::NativePage && matches!(name.as_str(), "parent" | "order"))
+            {
                 return err_help(
                     b.span,
-                    format!("`{name}` is built into every post; delete this field"),
-                    format!(
-                        "`wp.posts.{m}()` kinds have id, title, slug, content, excerpt, status and publishedAt; add only the fields posts don't have"
-                    ),
+                    format!("`{name}` is built into WordPress `{target}`; delete this field"),
+                    format!("`extend(\"{target}\")` already has id, title, slug, content, excerpt, status and publishedAt; add only custom fields"),
                 );
             }
         }
@@ -3044,7 +3055,97 @@ impl<'p> Evaluator<'p> {
             span,
             hooks: RefCell::new(Vec::new()),
             indexes: RefCell::new(Vec::new()),
-            post: Some(post),
+            post: Some(post_kind),
+        }));
+        self.built.push(value.clone());
+        Ok(value)
+    }
+
+    /// `wp.action(hook, [options,] handler)` and `wp.filter(hook, [options,] handler)` from `"spacepress/server/wp"`.
+    fn wp_hook(&mut self, m: &str, args: Vec<Value>, span: Span) -> R<Value> {
+        crate::builtins::check("wp", m, args.len(), crate::builtins::Phase::Evaluator, span).map_err(Ctl::Err)?;
+        let filter = m == "filter";
+        let hook_name = match args.first() {
+            Some(Value::Str(s)) => s.to_string(),
+            Some(other) => {
+                return err_help(
+                    span,
+                    format!("`wp.{m}()` takes a WordPress hook name first, not {}", other.describe()),
+                    format!("write `export const myHook = wp.{m}(\"init\", (ctx) => {{ ... }})`"),
+                );
+            }
+            None => unreachable!("arity checked"),
+        };
+        let Some(spec) = crate::wordpress::hook(&hook_name) else {
+            let mut d = Diag::new(span, format!("`{hook_name}` is not a WordPress hook SpacePress types"));
+            d = match suggest(&hook_name, crate::wordpress::hook_names()) {
+                Some(s) => d.help(format!("did you mean `{s}`?")),
+                None => d.help(format!(
+                    "supported WordPress hooks: {}",
+                    crate::wordpress::hook_names().collect::<Vec<_>>().join(", ")
+                )),
+            };
+            return Err(Ctl::Err(d));
+        };
+        if spec.filter != filter {
+            let right = if spec.filter { "filter" } else { "action" };
+            return err_help(
+                span,
+                format!("`{hook_name}` is a WordPress {right}, not a {m}"),
+                format!("use `wp.{right}(\"{hook_name}\", ...)`"),
+            );
+        }
+        let (priority, handler) = if args.len() == 2 {
+            (10, args[1].clone())
+        } else {
+            let opts = &args[1];
+            let prio = match opts {
+                Value::Object(o) => {
+                    let o = o.borrow();
+                    for k in o.keys() {
+                        if k != "priority" {
+                            return err_help(
+                                span,
+                                format!("`wp.{m}()` has no option `{k}`"),
+                                "supported option is `priority` (integer, default 10)",
+                            );
+                        }
+                    }
+                    match o.get("priority") {
+                        None | Some(Value::Undef) => 10,
+                        Some(Value::Num(n)) if n.fract() == 0.0 && n.abs() < 1e9 => *n as i64,
+                        Some(other) => {
+                            return err_help(
+                                span,
+                                format!("`priority` must be an integer, not {}", other.describe()),
+                                "WordPress runs lower priorities first; the default is 10",
+                            );
+                        }
+                    }
+                }
+                other => {
+                    return err_help(
+                        span,
+                        format!("`wp.{m}()` options must be an object, not {}", other.describe()),
+                        format!("write `wp.{m}(\"{hook_name}\", {{ priority: 20 }}, (ctx, ...) => ...)`"),
+                    );
+                }
+            };
+            (prio, args[2].clone())
+        };
+        if !matches!(handler, Value::Closure(_)) {
+            return err_help(
+                span,
+                format!("`wp.{m}()` handler must be a function, not {}", handler.describe()),
+                format!("write `wp.{m}(\"{hook_name}\", (ctx, ...) => ...)`"),
+            );
+        }
+        let value = Value::WpHook(Rc::new(WpHookVal {
+            hook: hook_name,
+            filter,
+            priority,
+            handler,
+            span,
         }));
         self.built.push(value.clone());
         Ok(value)
@@ -3053,6 +3154,7 @@ impl<'p> Evaluator<'p> {
     fn call_builtin(&mut self, b: &Builtin, args: Vec<Value>, span: Span) -> R<Value> {
         let name = match b {
             Builtin::Collection(kind) => Some(kind.builder()),
+            Builtin::Extend => Some("extend"),
             Builtin::Id => Some("id"),
             Builtin::DefineGlobal => Some("global"),
             Builtin::Store => Some("store"),
@@ -3088,6 +3190,7 @@ impl<'p> Evaluator<'p> {
         }
         let arg = |i: usize| args.get(i).cloned().unwrap_or(Value::Undef);
         match b {
+            Builtin::Extend => self.extend_builtin(args, span),
             Builtin::Store => {
                 let options = arg(0);
                 if !matches!(options, Value::Object(_)) {
@@ -3458,12 +3561,16 @@ impl<'p> Evaluator<'p> {
                 Ok(value)
             }
             Builtin::Job => {
-                let (config, handler) = (arg(0), arg(1));
+                let (config, handler) = if args.len() == 1 {
+                    (Value::object(IndexMap::new()), arg(0))
+                } else {
+                    (arg(0), arg(1))
+                };
                 if !matches!(config, Value::Object(_)) || !matches!(handler, Value::Closure(_)) {
                     return err_help(
                         span,
-                        "job() takes an options object, then the handler function",
-                        "write `job({ retries: 3 }, async ({ postId }: { postId: number }) => { ... })`",
+                        "job() takes a handler function, or an options object then a handler function",
+                        "write `job(async ({ db }, { postId }: { postId: number }) => { ... })` or `job({ retries: 3 }, async ({ db }, { postId }: { postId: number }) => { ... })`",
                     );
                 }
                 let value = Value::Job(Rc::new(ActionVal {
@@ -3477,12 +3584,17 @@ impl<'p> Evaluator<'p> {
             }
             Builtin::Db => err(
                 span,
-                "`db` only works inside hooks and actions, which run in PHP at request time",
+                "`db` only works inside handlers and server components, which run in PHP at request time",
             ),
-            Builtin::Wp | Builtin::WpPosts => err_help(
+            Builtin::FieldNamespace => err_help(
                 span,
-                "`wp` and `wp.posts` aren't functions",
-                "write `export const posts = wp.posts.extend({ ... }, { url: \"/blog/:slug\" })`",
+                "`f` is a namespace of field builders, not a function",
+                "call a field builder on it: `f.text()`, `f.integer()`, `f.ref(posts)`, ...",
+            ),
+            Builtin::WpServer => err_help(
+                span,
+                "`wp` isn't a function",
+                "write `export const myFilter = wp.filter(\"excerpt_more\", (ctx, more) => \"…\")`",
             ),
             Builtin::HttpError => err(span, "use `new HttpError(status, code, message)`"),
             Builtin::Global(g) => call_global(g, &args, span),
@@ -4261,7 +4373,7 @@ impl<'p> Evaluator<'p> {
                 self.object_prototype_method(method, &this, &rest, span)
             }
             Value::Column(c) => column_method(c, m, &args, span),
-            Value::Builtin(Builtin::WpPosts) => self.wp_posts(m, args, span),
+            Value::Builtin(Builtin::WpServer) => self.wp_hook(m, args, span),
             // `.on({ beforeCreate, ... })` (spec §2.8, ruling 18): handlers in call order; returns the kind.
             Value::Collection(c) if m == "on" => {
                 let extra = args.len() > 1;
@@ -4592,23 +4704,12 @@ pub fn uncaught(c: Ctl) -> Diag {
     }
 }
 
-fn sp_export(name: &str, span: Span) -> R<Value> {
+fn field_export(name: &str, span: Span) -> R<Value> {
     Ok(Value::Builtin(match name {
-        "collection" => Builtin::Collection(StorageKind::Collection),
-        "table" => Builtin::Collection(StorageKind::Table),
-        "userProjection" => Builtin::Collection(StorageKind::UserProjection),
-        "taxonomy" => Builtin::Collection(StorageKind::Taxonomy),
-        "product" => Builtin::Collection(StorageKind::Product),
-        "productCategory" => Builtin::Collection(StorageKind::ProductCategory),
-        "productTag" => Builtin::Collection(StorageKind::ProductTag),
-        "order" => Builtin::Collection(StorageKind::Order),
-        "store" => Builtin::Store,
-        "terms" => Builtin::Terms,
-        // Deleted builders still resolve, so the call says what replaces them.
-        "id" => Builtin::Id,
-        "real" => Builtin::Field("real"),
         "integer" => Builtin::Column(ColType::Integer),
         "number" => Builtin::Field("number"),
+        "real" => Builtin::Field("real"),
+        "id" => Builtin::Id,
         "text" => Builtin::Column(ColType::Text),
         "boolean" => Builtin::Column(ColType::Boolean),
         "date" => Builtin::Column(ColType::Date),
@@ -4620,11 +4721,123 @@ fn sp_export(name: &str, span: Span) -> R<Value> {
         "richText" => Builtin::Field("richText"),
         "media" => Builtin::Field("media"),
         "file" => Builtin::Field("file"),
+        "select" => Builtin::Field("select"),
+        "group" => Builtin::Field("group"),
+        "repeater" => Builtin::Field("repeater"),
+        "blocks" => Builtin::Field("blocks"),
+        "ref" => Builtin::Ref,
+        "terms" => Builtin::Terms,
+        _ => {
+            let mut d = Diag::new(span, format!("`f` has no field builder `{name}`"));
+            if let Some(s) = suggest(name, FIELD_EXPORTS.iter().copied()) {
+                d = d.help(format!("did you mean `f.{s}()`?"));
+            }
+            return Err(Ctl::Err(d));
+        }
+    }))
+}
+
+fn commerce_export(name: &str, span: Span) -> R<Value> {
+    Ok(Value::Builtin(match name {
+        "store" => Builtin::Store,
+        "product" => Builtin::Collection(StorageKind::Product),
+        "productCategory" => Builtin::Collection(StorageKind::ProductCategory),
+        "productTag" => Builtin::Collection(StorageKind::ProductTag),
+        "order" => Builtin::Collection(StorageKind::Order),
+        "CommerceStore" | "StoreOptions" | "CommerceOptions" => return Ok(Value::Undef),
+        _ => {
+            let mut d = Diag::new(span, format!("\"spacepress/commerce\" has no export named `{name}`"));
+            if let Some(s) = suggest(name, COMMERCE_EXPORTS.iter().copied()) {
+                d = d.help(format!("did you mean `{s}`?"));
+            }
+            return Err(Ctl::Err(d));
+        }
+    }))
+}
+
+fn admin_export(name: &str, span: Span) -> R<Value> {
+    Ok(Value::Builtin(match name {
+        "adminScreen" => Builtin::AdminScreen,
+        "adminWidget" => Builtin::AdminWidget,
+        "adminDashboard" => Builtin::AdminDashboard,
+        "item" => Builtin::Item,
+        "AdminScreen"
+        | "AdminScreenDefinition"
+        | "AdminWidget"
+        | "AdminWidgetDefinition"
+        | "AdminDashboard"
+        | "AdminDashboardDefinition"
+        | "BuiltinWidgetId"
+        | "WidgetMetric"
+        | "WidgetField"
+        | "DashboardWidgetPlacement"
+        | "ScreenField"
+        | "ScreenAction"
+        | "ItemRef" => return Ok(Value::Undef),
+        _ => {
+            let mut d = Diag::new(span, format!("\"spacepress/admin\" has no export named `{name}`"));
+            if let Some(s) = suggest(name, ADMIN_EXPORTS.iter().copied()) {
+                d = d.help(format!("did you mean `{s}`?"));
+            }
+            return Err(Ctl::Err(d));
+        }
+    }))
+}
+
+fn sp_export(name: &str, span: Span) -> R<Value> {
+    Ok(Value::Builtin(match name {
+        "collection" => Builtin::Collection(StorageKind::Collection),
+        "table" => Builtin::Collection(StorageKind::Table),
+        "taxonomy" => Builtin::Collection(StorageKind::Taxonomy),
+        "extend" => Builtin::Extend,
+        "f" => Builtin::FieldNamespace,
         "files" => Builtin::Files,
         "job" => Builtin::Job,
         "cron" => Builtin::Cron,
         "query" => Builtin::Query,
         "mutation" => Builtin::Mutation,
+        "env" => Builtin::Env,
+        "global" => Builtin::DefineGlobal,
+        "defineConfig" => Builtin::DefineConfig,
+        "definePlugin" => Builtin::DefinePlugin,
+        "defineRelations" => Builtin::DefineRelations,
+        "id" => Builtin::Id,
+        "real" => Builtin::Field("real"),
+        "userProjection" => {
+            return err_help(
+                span,
+                "`userProjection()` is now `extend(\"users\", ...)`",
+                "write `export const users = extend(\"users\", { fields: { ... }, access: { ... } })`",
+            );
+        }
+        "wp" => {
+            return err_help(
+                span,
+                "`wp` moved out of \"spacepress\": use `extend(\"posts\", ...)` for built-in posts, or import `wp` from \"spacepress/server/wp\" for WordPress hooks",
+                "write `import { extend } from \"spacepress\"` and `export const posts = extend(\"posts\", { ... })`",
+            );
+        }
+        n if FIELD_EXPORTS.contains(&n) => {
+            return err_help(
+                span,
+                format!("`{name}()` moved onto the `f` field namespace"),
+                format!("import `{{ f }}` from \"spacepress\" and write `f.{name}(...)`"),
+            );
+        }
+        n if COMMERCE_EXPORTS.contains(&n) => {
+            return err_help(
+                span,
+                format!("`{name}` moved to \"spacepress/commerce\""),
+                format!("import it from \"spacepress/commerce\": `import {{ {name} }} from \"spacepress/commerce\"`"),
+            );
+        }
+        n if ADMIN_EXPORTS.contains(&n) => {
+            return err_help(
+                span,
+                format!("`{name}` moved to \"spacepress/admin\""),
+                format!("import it from \"spacepress/admin\": `import {{ {name} }} from \"spacepress/admin\"`"),
+            );
+        }
         "jobs" => {
             return err_help(
                 span,
@@ -4632,33 +4845,25 @@ fn sp_export(name: &str, span: Span) -> R<Value> {
                 "import the job and call `notifyLowStock.enqueue({ itemId }, { delay: 60, key: \"low-1\" })`",
             );
         }
-        "db" | "HttpError" | "once" | "mail" | "connectors" => {
+        "db" | "HttpError" => {
             return err_help(
                 span,
                 format!("`{name}` moved to \"spacepress/server\""),
                 format!("import it from the server runtime module: `import {{ {name} }} from \"spacepress/server\"`"),
             );
         }
-        "env" => Builtin::Env,
-        "select" => Builtin::Field("select"),
-        "group" => Builtin::Field("group"),
-        "repeater" => Builtin::Field("repeater"),
-        "blocks" => Builtin::Field("blocks"),
-        "global" => Builtin::DefineGlobal,
-        "defineRelations" => Builtin::DefineRelations,
-        "ref" => Builtin::Ref,
-        "defineConfig" => Builtin::DefineConfig,
-        "definePlugin" => Builtin::DefinePlugin,
-        "adminScreen" => Builtin::AdminScreen,
-        "adminWidget" => Builtin::AdminWidget,
-        "adminDashboard" => Builtin::AdminDashboard,
-        "item" => Builtin::Item,
-        "wp" => Builtin::Wp,
+        "once" | "mail" | "connectors" => {
+            return err_help(
+                span,
+                format!("`{name}` is now passed on `ctx` instead of imported"),
+                format!("destructure it from the handler's first parameter: `async ({{ db, {name} }}, input) => ...`"),
+            );
+        }
         "action" => {
             return err_help(
                 span,
                 "`action()` is gone: a server function is `query()` when it only reads and `mutation()` when it writes",
-                "write `export const like = mutation({ access: \"subscriber\" }, async ({ id }: { id: number }) => { ... })`; the input comes from the handler's parameter type",
+                "write `export const like = mutation({ access: \"subscriber\" }, async ({ db }, { id }: { id: number }) => { ... })`",
             );
         }
         n if SP_TYPES.contains(&n) => return Ok(Value::Undef),
@@ -4666,7 +4871,7 @@ fn sp_export(name: &str, span: Span) -> R<Value> {
             return err_help(
                 span,
                 "\"spacepress\" has no export named `route`",
-                "an HTTP route is a file: sp/app/<path>/route.ts exporting `guard` (or `signature`) and GET, POST, … handlers",
+                "an HTTP route is a file: sp/app/<path>/route.ts exporting `access` (or `signature`) and GET, POST, … handlers",
             );
         }
         "fetch" | "crypto" => {
@@ -4697,9 +4902,13 @@ fn server_export(name: &str, span: Span) -> R<Value> {
     Ok(Value::Builtin(match name {
         "db" => Builtin::Db,
         "HttpError" => Builtin::HttpError,
-        "once" => Builtin::Once,
-        "mail" => Builtin::Mail,
-        "connectors" => Builtin::Connectors,
+        "once" | "mail" | "connectors" => {
+            return err_help(
+                span,
+                format!("`{name}` is now passed on `ctx` instead of imported from \"spacepress/server\""),
+                format!("destructure it from the handler's first parameter: `async ({{ db, {name} }}, input) => ...`"),
+            );
+        }
         n if SERVER_TYPES.contains(&n) => return Ok(Value::Undef),
         n if SP_EXPORTS.contains(&n) => {
             return err_help(
@@ -4843,9 +5052,9 @@ fn node_crypto_export(module: crate::builtins::BuiltinModule, source: &str, name
     Err(Ctl::Err(d))
 }
 
-/// Names exported by `"php/wordpress"`.
-pub const WORDPRESS_EXPORTS: &[&str] = &["abilities"];
-/// Type-only exports of `"php/wordpress"`: importable, erased.
+/// Names exported by `"spacepress/server/wp"`.
+pub const WORDPRESS_EXPORTS: &[&str] = &["wp", "abilities"];
+/// Type-only exports of `"spacepress/server/wp"`: importable, erased.
 const WORDPRESS_TYPES: &[&str] = &[
     "Abilities",
     "AbilityName",
@@ -4854,6 +5063,8 @@ const WORDPRESS_TYPES: &[&str] = &[
     "Hooks",
     "HookName",
     "Handler",
+    "WpHook",
+    "WpCtx",
     "WP_Post",
     "WP_User",
     "WP_Query",
@@ -4861,6 +5072,7 @@ const WORDPRESS_TYPES: &[&str] = &[
 
 fn wordpress_export(name: &str, span: Span) -> R<Value> {
     Ok(Value::Builtin(match name {
+        "wp" => Builtin::WpServer,
         "abilities" => Builtin::Abilities,
         n if crate::wordpress::function(n).is_some() => Builtin::WpFunction(n.into()),
         n if WORDPRESS_TYPES.contains(&n) => return Ok(Value::Undef),
@@ -5334,29 +5546,31 @@ fn column_method(c: &Rc<ColBuilder>, m: &str, args: &[Value], span: Span) -> R<V
         "validate" => c.validate = Some(closure_arg()?),
         "default" => {
             let v = arg(0);
-            if matches!(v, Value::Closure(_) | Value::Builtin(_) | Value::Bound(..)) {
-                return err_help(
-                    span,
-                    "`.default()` takes a literal value, not a function",
-                    "use a literal, `.defaultNow()` on a date or timestamp, or `.$default(() => ...)`",
-                );
+            match v {
+                Value::Closure(f) => c.default = Some(now_or_fn(f, c.ty)),
+                Value::Builtin(_) | Value::Bound(..) => {
+                    return err_help(
+                        span,
+                        "`.default()` needs a literal value or an arrow function",
+                        "write `.default(\"value\")` or `.default(() => crypto.randomUUID())`",
+                    );
+                }
+                _ => c.default = Some(DefaultVal::Value(v)),
             }
-            c.default = Some(DefaultVal::Value(v));
         }
         "defaultNow" => {
             if !matches!(c.ty, ColType::Timestamp | ColType::Date) {
                 return err(
                     span,
                     format!(
-                        "`.defaultNow()` only works on timestamp() and date(), not {}()",
+                        "`.defaultNow()` only works on f.timestamp() and f.date(), not f.{}()",
                         c.ty.name()
                     ),
                 );
             }
             c.default = Some(DefaultVal::Now);
         }
-        "$default" => c.default = Some(now_or_fn(closure_arg()?, c.ty)),
-        "$onUpdate" => c.on_update = Some(now_or_fn(closure_arg()?, c.ty)),
+        "onUpdate" => c.on_update = Some(now_or_fn(closure_arg()?, c.ty)),
         "onDelete" => {
             let Some(r) = c.references.as_mut() else {
                 return err_help(
@@ -5425,8 +5639,7 @@ const MODIFIERS: &[&str] = &[
     "default",
     "defaultNow",
     "many",
-    "$default",
-    "$onUpdate",
+    "onUpdate",
     "onDelete",
     "reverse",
     "min",
@@ -5446,16 +5659,16 @@ const MODIFIERS: &[&str] = &[
 fn removed_modifier(m: &str) -> Option<(&'static str, &'static str)> {
     Some(match m {
         "references" => (
-            "`.references()` is gone: a reference is a `ref()` field, which refers to the target's `id`",
-            "write `locationId: ref(locations)`, with `.onDelete(\"cascade\" | \"restrict\" | \"setNull\")` for the delete action; a reference to another column isn't supported, so keep that value as a plain field",
+            "`.references()` is gone: a reference is an `f.ref()` field, which refers to the target's `id`",
+            "write `locationId: f.ref(locations)`, with `.onDelete(\"cascade\" | \"restrict\" | \"setNull\")` for the delete action",
         ),
-        "$defaultFn" => (
-            "`.$defaultFn()` is gone: it was a second name for `.$default()`",
-            "write `.$default(() => ...)`",
+        "$default" | "$defaultFn" => (
+            "`.$default()` is now `.default(() => ...)`",
+            "write `.default(() => ...)`",
         ),
-        "$onUpdateFn" => (
-            "`.$onUpdateFn()` is gone: it was a second name for `.$onUpdate()`",
-            "write `.$onUpdate(() => ...)`",
+        "$onUpdate" | "$onUpdateFn" => (
+            "`.$onUpdate()` is now `.onUpdate(() => ...)`",
+            "write `.onUpdate(() => ...)`",
         ),
         "notNull" => (
             "`.notNull()` is gone: fields are required by default",
@@ -5463,11 +5676,11 @@ fn removed_modifier(m: &str) -> Option<(&'static str, &'static str)> {
         ),
         "primaryKey" => (
             "`.primaryKey()` is gone: every kind has an integer `id`",
-            "for a text key, declare `code: text().unique().max(191)` and read it with `get({ code })`",
+            "for a text key, declare `code: f.text().unique().max(191)` and read it with `get({ code })`",
         ),
         "$type" => (
-            "`json().$type<T>()` is now `json<T>()`",
-            "write the type on the builder: `json<string[]>()`",
+            "`json().$type<T>()` is now `f.json<T>()`",
+            "write the type on the builder: `f.json<string[]>()`",
         ),
         _ => return None,
     })
@@ -5488,9 +5701,9 @@ pub fn kind_phrase(ty: ColType) -> String {
 fn modifier_invalid(c: &ColBuilder, m: &str) -> Option<(String, String)> {
     use ColType as T;
     let ty = c.ty;
-    if ty == T::RefList && matches!(m, "unique" | "default" | "$default" | "defaultNow" | "$onUpdate") {
+    if ty == T::RefList && matches!(m, "unique" | "default" | "defaultNow" | "onUpdate") {
         return Some((
-            format!("`.{m}()` isn't valid on a `ref().many()` field"),
+            format!("`.{m}()` isn't valid on an `f.ref().many()` field"),
             "a many-ref is a list of links SpacePress keeps in its own table; remove the modifier".into(),
         ));
     }

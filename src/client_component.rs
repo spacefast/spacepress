@@ -603,14 +603,14 @@ pub fn analyse(
                                 return Err(refuse(
                                     *span,
                                     "`useMutation` is assigned to a name",
-                                    "write `const save = useMutation(api.actions.saveNote)`",
+                                    "write `const save = useMutation(api.saveNote)`",
                                 ));
                             };
-                            let help = "import `{ api }` from \"../_generated/api\" and write `const save = useMutation(api.actions.saveNote)`";
+                            let help = "import `{ api }` from \"#sp/api\" and write `const save = useMutation(api.saveNote)`";
                             let [ArrEl::Item(arg)] = args.as_slice() else {
                                 return Err(refuse(
                                     init.span,
-                                    "`useMutation` takes an action reference from `_generated/api`",
+                                    "`useMutation` takes an action reference from `#sp/api`",
                                     help,
                                 ));
                             };
@@ -621,29 +621,29 @@ pub fn analyse(
                                     optional: false,
                                     ..
                                 } => match &obj.kind {
+                                    ExprKind::Ident(api_name)
+                                        if a.bindings.get(api_name) == Some(&Binding::GeneratedApi) =>
+                                    {
+                                        action_name.clone()
+                                    }
                                     ExprKind::Member {
                                         obj: root,
                                         prop: actions_prop,
                                         optional: false,
                                         ..
-                                    } if actions_prop == "actions" => match &root.kind {
-                                        ExprKind::Ident(api_name)
-                                            if a.bindings.get(api_name) == Some(&Binding::GeneratedApi) =>
-                                        {
-                                            action_name.clone()
-                                        }
-                                        _ => {
-                                            return Err(refuse(
-                                                arg.span,
-                                                "`useMutation` takes `api.actions.<name>` from `_generated/api`",
-                                                help,
-                                            ));
-                                        }
-                                    },
+                                    } if actions_prop == "actions"
+                                        && matches!(&root.kind, ExprKind::Ident(api_name) if a.bindings.get(api_name) == Some(&Binding::GeneratedApi)) =>
+                                    {
+                                        return Err(refuse(
+                                            arg.span,
+                                            format!("`api.actions.{action_name}` is now `api.{action_name}`"),
+                                            format!("write `useMutation(api.{action_name})`"),
+                                        ));
+                                    }
                                     _ => {
                                         return Err(refuse(
                                             arg.span,
-                                            "`useMutation` takes `api.actions.<name>` from `_generated/api`",
+                                            "`useMutation` takes `api.<name>` from `#sp/api`",
                                             help,
                                         ));
                                     }
@@ -651,7 +651,7 @@ pub fn analyse(
                                 _ => {
                                     return Err(refuse(
                                         arg.span,
-                                        "`useMutation` takes `api.actions.<name>` from `_generated/api`",
+                                        "`useMutation` takes `api.<name>` from `#sp/api`",
                                         help,
                                     ));
                                 }
@@ -842,26 +842,28 @@ pub fn analyse(
                     called.insert(name.clone());
                 }
                 Some(Binding::UploadFile) if upload_err.is_none() => {
-                    match args.as_slice() {
-                        [
-                            ArrEl::Item(Expr {
-                                kind: ExprKind::Str(bucket),
-                                span,
-                            }),
-                            ArrEl::Item(_),
-                        ]
-                        | [
-                            ArrEl::Item(Expr {
-                                kind: ExprKind::Str(bucket),
-                                span,
-                            }),
-                            ArrEl::Item(_),
-                            ArrEl::Item(_),
-                        ] => {
+                    let bucket_arg = match args.as_slice() {
+                        [ArrEl::Item(first), ArrEl::Item(_)]
+                        | [ArrEl::Item(first), ArrEl::Item(_), ArrEl::Item(_)] => match &first.kind {
+                            ExprKind::Str(b) => Some((b.as_str(), first.span)),
+                            ExprKind::Member {
+                                obj,
+                                prop,
+                                optional: false,
+                                ..
+                            } if matches!(&obj.kind, ExprKind::Ident(api_name) if a.bindings.get(api_name) == Some(&Binding::GeneratedApi)) => {
+                                Some((prop.as_str(), first.span))
+                            }
+                            _ => None,
+                        },
+                        _ => None,
+                    };
+                    match bucket_arg {
+                        Some((bucket, span)) => {
                             if file_buckets.contains(bucket) {
-                                uploads.insert(bucket.clone());
+                                uploads.insert(bucket.to_string());
                             } else {
-                                let mut d = Diag::new(*span, format!("unknown file bucket `{bucket}`"));
+                                let mut d = Diag::new(span, format!("unknown file bucket `{bucket}`"));
                                 if let Some(s) = crate::diag::suggest(bucket, file_buckets.iter().map(String::as_str)) {
                                     d = d.help(format!("did you mean `{s}`?"));
                                 } else {
@@ -870,11 +872,11 @@ pub fn analyse(
                                 upload_err = Some(d);
                             }
                         }
-                        _ => {
+                        None => {
                             upload_err = Some(refuse(
                                 e.span,
-                                "`uploadFile` takes a bucket name literal, a File/Blob, and optional `{ filename }`",
-                                "write `await uploadFile(\"inbox\", file)`",
+                                "`uploadFile` takes `api.<bucket>` (or a bucket name literal), a File/Blob, and optional `{ filename }`",
+                                "write `await uploadFile(api.inbox, file)`",
                             ));
                         }
                     }
@@ -1629,11 +1631,30 @@ impl Analysis {
                                 ArrEl::Item(file),
                                 ArrEl::Item(opts),
                             ] => format!("__spUpload({}, {}, {})", js_str(bucket), js(file)?, js(opts)?),
+                            [
+                                ArrEl::Item(Expr {
+                                    kind: ExprKind::Member { obj, prop: bucket, optional: false, .. },
+                                    ..
+                                }),
+                                ArrEl::Item(file),
+                            ] if matches!(&obj.kind, ExprKind::Ident(api_name) if self.bindings.get(api_name) == Some(&Binding::GeneratedApi)) => {
+                                format!("__spUpload({}, {})", js_str(bucket), js(file)?)
+                            }
+                            [
+                                ArrEl::Item(Expr {
+                                    kind: ExprKind::Member { obj, prop: bucket, optional: false, .. },
+                                    ..
+                                }),
+                                ArrEl::Item(file),
+                                ArrEl::Item(opts),
+                            ] if matches!(&obj.kind, ExprKind::Ident(api_name) if self.bindings.get(api_name) == Some(&Binding::GeneratedApi)) => {
+                                format!("__spUpload({}, {}, {})", js_str(bucket), js(file)?, js(opts)?)
+                            }
                             _ => {
                                 return Err(refuse(
                                     e.span,
-                                    "`uploadFile` takes a bucket name literal, a File/Blob, and optional `{ filename }`",
-                                    "write `await uploadFile(\"inbox\", file)`",
+                                    "`uploadFile` takes `api.<bucket>` (or a bucket name literal), a File/Blob, and optional `{ filename }`",
+                                    "write `await uploadFile(api.inbox, file)`",
                                 ));
                             }
                         },

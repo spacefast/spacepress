@@ -151,10 +151,10 @@ const CONFIG_KEYS: &[&str] = &[
     "runtimeSchema",
     "seed",
     "retention",
+    "permalinks",
 ];
-/// `wp.posts.extend(fields, options)`: what may change about WordPress's own posts.
+/// `extend("posts" | "pages", options)`: what may change about WordPress's own posts and pages.
 const POST_OPTIONS: &[&str] = &[
-    "url",
     "comments",
     "access",
     "label",
@@ -164,30 +164,14 @@ const POST_OPTIONS: &[&str] = &[
     "agents",
     "api",
     "staged",
-    "softDelete",
-    "retention",
-];
-/// `wp.posts.clone(fields, options)`: the same, and its own stored name.
-const POST_CLONE_OPTIONS: &[&str] = &[
-    "url",
-    "comments",
-    "access",
-    "label",
-    "ui",
-    "sync",
-    "uid",
-    "agents",
-    "api",
-    "staged",
-    "storageName",
     "softDelete",
     "retention",
 ];
 
 fn post_call(post: PostKind) -> &'static str {
     match post {
-        PostKind::Native => "wp.posts.extend()",
-        PostKind::Clone => "wp.posts.clone()",
+        PostKind::Native => "extend(\"posts\")",
+        PostKind::NativePage => "extend(\"pages\")",
     }
 }
 
@@ -210,7 +194,6 @@ const COLLECTION_OPTIONS: &[&str] = &[
     "sync",
     "uid",
     "agents",
-    "url",
     "hierarchical",
 ];
 /// Registries populated by the app's named exports.
@@ -228,6 +211,7 @@ const REGISTRIES: &[&str] = &[
     "files",
     "actions",
     "jobs",
+    "wpHooks",
     "screens",
     "widgets",
     "dashboards",
@@ -246,7 +230,6 @@ const TAXONOMY_OPTIONS: &[&str] = &[
     "label",
     "access",
     "hierarchical",
-    "url",
     "on",
     "translations",
     "sync",
@@ -568,10 +551,14 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
                     "use a name of at most {MAX_TAXONOMY_TABLE} characters, or give it a shorter `storageName`"
                 )));
             }
-            // WordPress's posts are one kind, and its name is theirs.
+            // WordPress's native posts and pages have fixed export names.
             if c.post == Some(PostKind::Native) && key != "posts" {
                 return Err(Diag::new(c.span, format!("WordPress's posts are exported as `posts`, not `{key}`"))
-                    .help("write `export const posts = wp.posts.extend({ ... }, { url })`; for another kind like posts, use `wp.posts.clone(...)`"));
+                    .help("write `export const posts = extend(\"posts\", { ... })`; for a custom collection, use `collection(...)`"));
+            }
+            if c.post == Some(PostKind::NativePage) && key != "pages" {
+                return Err(Diag::new(c.span, format!("WordPress's pages are exported as `pages`, not `{key}`"))
+                    .help("write `export const pages = extend(\"pages\", { ... })`; for a custom hierarchical collection, use `collection({ ... }, { hierarchical: true })`"));
             }
             if c.table.set(table.clone()).is_err() {
                 return Err(Diag::new(span, "a definition can only be registered once"));
@@ -819,7 +806,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
         coll.content = opts.content;
         coll.slug = opts.slug;
         coll.excerpt = c.post.map(|_| "excerpt".to_string());
-        coll.native = c.post == Some(PostKind::Native);
+        coll.native = c.post.is_some();
         coll.access = opts.access;
         coll.api = opts.api;
         coll.uid = opts.uid;
@@ -1091,6 +1078,17 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
         )?;
     }
     phase2_jobs(&cfg_map, ev, config_span, &mut out)?;
+    if let Some(wp_hooks_val) = cfg_map.get("wpHooks") {
+        extract_wp_hooks(wp_hooks_val, span_of(ev, config, "wpHooks", config_span), ev, &mut out)?;
+    }
+    if let Some(permalinks_val) = cfg_map.get("permalinks").filter(|v| !matches!(v, Value::Undef)) {
+        extract_permalinks(
+            permalinks_val,
+            span_of(ev, config, "permalinks", config_span),
+            ev,
+            &mut out,
+        )?;
+    }
     if let Some(v) = cfg_map.get("use").filter(|v| !matches!(v, Value::Undef)) {
         uses(v, span_of(ev, config, "use", config_span), ev, &mut out)?;
     }
@@ -1175,8 +1173,15 @@ fn kind_hooks(
         for (hname, f) in per_map.borrow().iter() {
             let fspan = ev.key_span(per, hname).unwrap_or(kspan);
             let Some(kind) = HookKind::parse(hname) else {
-                let mut d = Diag::new(fspan, format!("there's no hook called `{hname}`"));
-                if let Some(s) = suggest(hname, HookKind::ALL.iter().map(|h| h.name())) {
+                let mut d = if hname == "afterPublish" {
+                    Diag::new(fspan, "`afterPublish` is now `onPublish`")
+                        .help("rename the hook to `onPublish: ({ row, previous, db }) => { ... }`")
+                } else {
+                    Diag::new(fspan, format!("there's no hook called `{hname}`"))
+                };
+                if hname != "afterPublish"
+                    && let Some(s) = suggest(hname, HookKind::ALL.iter().map(|h| h.name()))
+                {
                     d = d.help(format!("did you mean `{s}`?"));
                 }
                 return Err(d);
@@ -1190,7 +1195,7 @@ fn kind_hooks(
             if kind == HookKind::AfterPublish && !out.schema.collections[&table].drafts {
                 return Err(Diag::new(
                     fspan,
-                    "`afterPublish` is for collections: a table() row is never published",
+                    "`onPublish` is for collections: a table() row is never published",
                 )
                 .help("use afterCreate or afterUpdate on a table()"));
             }
@@ -1925,6 +1930,11 @@ fn taxonomy_kind(
             continue;
         }
         let (message, help) = match k.as_str() {
+            "url" => (
+                "`url` on taxonomy() is gone: routes in `sp/app/` own URLs".to_string(),
+                "create a route like `sp/app/topics/[slug]/page.tsx` that loads the term with `db.<taxonomy>.get({ slug: params.slug })`, or set `permalinks` in `defineConfig()` for headless sites"
+                    .to_string(),
+            ),
             "was" => (
                 "`was` on a taxonomy isn't built yet: renaming one has to move its terms".to_string(),
                 "keep the stored name under a new export with `storageName: \"<old name>\"`, which moves nothing"
@@ -2225,38 +2235,48 @@ fn collection_options(
             )),
         }
     };
-    // `wp.posts.extend()` and `.clone()`: posts' own fields are built in, and storage is posts'.
+    // `extend("posts" | "pages")`: built-in fields and native WordPress storage.
     if let Some(post) = c.post {
         let call = post_call(post);
-        let allowed: &[&str] = match post {
-            PostKind::Native => POST_OPTIONS,
-            PostKind::Clone => POST_CLONE_OPTIONS,
-        };
+        let allowed = POST_OPTIONS;
         for k in o.keys() {
             if !allowed.contains(&k.as_str()) {
-                let mut d = Diag::new(span(k), format!("{call} has no option `{k}`"));
-                d = match k.as_str() {
-                    "title" | "content" | "drafts" | "revisions" | "hierarchical" => {
-                        d.help("posts always have their title, content, drafts and revisions, and don't nest")
-                    }
-                    "storageName" | "existingTable" | "was" => {
-                        d.help("WordPress's posts are stored as core's `post` type; use `wp.posts.clone()` for a kind of your own")
-                    }
-                    _ => match suggest(k, allowed.iter().copied()) {
-                        Some(s) => d.help(format!("did you mean `{s}`?")),
-                        None => d.help(format!("the options are {}", allowed.join(", "))),
-                    },
+                let mut d = if k == "url" {
+                    Diag::new(
+                        span(k),
+                        format!("`url` on {call} is gone: routes in `sp/app/` own URLs"),
+                    )
+                    .help("create a route like `sp/app/blog/[slug]/page.tsx` that loads the item with `db.<kind>.get({ slug: params.slug })`, or set `permalinks` in `defineConfig()` for headless sites")
+                } else {
+                    Diag::new(span(k), format!("{call} has no option `{k}`"))
                 };
+                if k != "url" {
+                    d = match k.as_str() {
+                        "title" | "content" | "drafts" | "revisions" | "hierarchical" => {
+                            d.help("native WordPress posts and pages already define their title, content, drafts, revisions, and hierarchy")
+                        }
+                        "storageName" | "existingTable" | "was" => {
+                            d.help("WordPress's native posts and pages keep core storage; use `collection()` for a custom collection")
+                        }
+                        _ => match suggest(k, allowed.iter().copied()) {
+                            Some(s) => d.help(format!("did you mean `{s}`?")),
+                            None => d.help(format!("the options are {}", allowed.join(", "))),
+                        },
+                    };
+                }
                 return Err(d);
             }
-        }
-        if post == PostKind::Native && matches!(o.get("url"), None | Some(Value::Undef)) {
-            return Err(Diag::new(c.span, "`wp.posts.extend()` needs a `url`")
-                .help("say where a post lives: `wp.posts.extend({}, { url: \"/blog/:slug\" })`"));
         }
     }
     for k in o.keys() {
         if c.post.is_none() && !COLLECTION_OPTIONS.contains(&k.as_str()) {
+            if k == "url" {
+                return Err(Diag::new(
+                    span(k),
+                    format!("`url` on {}() is gone: routes in `sp/app/` own URLs", c.kind.builder()),
+                )
+                .help("create a route like `sp/app/blog/[slug]/page.tsx` that loads the item with `db.<kind>.get({ slug: params.slug })`, or set `permalinks` in `defineConfig()` for headless sites"));
+            }
             let mut d = Diag::new(span(k), format!("{}() has no option `{k}`", c.kind.builder()));
             if k == "editor" {
                 d = d.help(match c.kind {
@@ -2265,7 +2285,7 @@ fn collection_options(
                     }
                     StorageKind::Table => "storage follows the builder: table() is always a SQL table; remove the option",
                     StorageKind::UserProjection => {
-                        "storage follows the builder: userProjection() is always WordPress users; remove the option"
+                        "storage follows the builder: extend(\"users\") is always WordPress users; remove the option"
                     }
                     _ => unreachable!("other kinds have their own options"),
                 });
@@ -2390,11 +2410,13 @@ fn collection_options(
     // comments are off on every kind that doesn't turn them on.
     // Posts take comments unless `comments: false` (WordPress's own posts do).
     let comment_policy = match o.get("comments") {
-        None | Some(Value::Undef) if c.post.is_some() => Some(crate::schema::CommentPolicy::default()),
+        None | Some(Value::Undef) if c.post == Some(PostKind::Native) => {
+            Some(crate::schema::CommentPolicy::default())
+        }
         given => comment_policy(given, ev, span("comments"), editor)?,
     };
 
-    if editor && c.post != Some(PostKind::Native) && c.table().len() > MAX_POST_TYPE_TABLE {
+    if editor && c.post.is_none() && c.table().len() > MAX_POST_TYPE_TABLE {
         return Err(Diag::new(
             c.span,
             format!(
@@ -2529,7 +2551,7 @@ fn collection_options(
 
     // hierarchical (spec §2.6): a collection whose items nest, like WordPress Pages. The compiler
     // adds `parent` and `order`; they are the post's own `post_parent` and `menu_order`.
-    let hierarchical = flag("hierarchical")?.unwrap_or(false);
+    let hierarchical = c.post == Some(PostKind::NativePage) || flag("hierarchical")?.unwrap_or(false);
     if hierarchical {
         if !editor {
             return Err(
@@ -2556,59 +2578,17 @@ fn collection_options(
         }
         if !columns.values().any(|c| c.ty == ColType::Slug) {
             return Err(Diag::new(span("sync"), "a folder tree of files needs a slug field")
-                .help("add `slug: slug({ source: \"title\" })`: a file's name is its slug, and a folder's name its index file's"));
+                .help("add `slug: f.slug({ source: \"title\" })`: a file's name is its slug, and a folder's name its index file's"));
         }
     }
 
-    // url (spec §2.7): post kinds only; tables have no public pages.
-    let url = match o.get("url") {
-        None | Some(Value::Undef) => None,
-        Some(Value::Str(pattern)) if editor => {
-            // A collection's read rule defaults to "anyone"; only that default or the literal keeps
-            // its items' slugs public. (Drafts never have a permalink, so they never reach a URL.)
-            let public_slug = |table: &str| {
-                out.collections.iter().any(|c| {
-                    c.table() == table
-                        && matches!(c.kind, StorageKind::Collection | StorageKind::Taxonomy)
-                        && match c.options.as_ref() {
-                            Some(Value::Object(o)) => match o.borrow().get("access") {
-                                None | Some(Value::Undef) => true,
-                                Some(Value::Object(a)) => {
-                                    matches!(a.borrow().get("read"), None | Some(Value::Undef))
-                                        || matches!(a.borrow().get("read"), Some(Value::Str(r)) if &**r == "anyone")
-                                }
-                                Some(_) => false,
-                            },
-                            _ => true,
-                        }
-                })
-            };
-            let kind = crate::kind_url::UrlKind {
-                columns,
-                dated: drafts,
-                hierarchical,
-                public_slug: &public_slug,
-            };
-            let shape =
-                crate::kind_url::check(pattern, &kind).map_err(|e| Diag::new(span("url"), e.message).help(e.help))?;
-            Some((pattern.to_string(), shape, span("url")))
-        }
-        Some(Value::Str(_)) => {
-            return Err(Diag::new(span("url"), "only collection() kinds have URLs")
-                .help("a table() has no public pages; serve its rows from an `app/` route instead"));
-        }
-        Some(other) => {
-            return Err(Diag::new(
-                span("url"),
-                format!("`url` must be a pattern like \"/blog/:slug\", not {}", other.describe()),
-            ));
-        }
-    };
+    // URLs are owned by sp/app/ routes or defineConfig({ permalinks }).
+    let url = None;
 
-    // access. WordPress's own posts default to what core already allows (authors write, core's
-    // capabilities decide whose posts): the rules narrow core's capabilities, never widen them.
+    // access. WordPress's own posts and pages default to what core already allows (authors write,
+    // core's capabilities decide whose items): the rules narrow core's capabilities, never widen them.
     let owner = Owner::Collection(c.table().to_string());
-    let native = c.post == Some(PostKind::Native);
+    let native = c.post.is_some();
     let mut access: IndexMap<String, Access> = ["read", "create", "update", "delete"]
         .iter()
         .map(|op| {
@@ -3926,36 +3906,56 @@ pub fn join_key(table: &str, field: &str) -> String {
     format!("{table}_{}", crate::schema::physical_name(field))
 }
 
-/// Keys the function assigns on its first parameter (`data.slug = ...`).
+/// Keys the `beforeCreate` hook assigns on `data` (either `({ data }) => { data.slug = ... }` or
+/// `(ctx) => { ctx.data.slug = ... }`).
 pub fn assigned_keys(f: &Closure) -> Vec<String> {
-    let Some(Pat::Id(param, _)) = f.func.params.first().map(|p| &p.pat) else {
+    let Some(first) = f.func.params.first() else {
         return vec![];
     };
     let mut out = Vec::new();
-    match &f.func.body {
-        FnBody::Expr(e) => scan_expr(e, param, &mut out),
-        FnBody::Block(b) => scan_stmts(b, param, &mut out),
+    match &first.pat {
+        Pat::Obj { props, .. } => {
+            let data_ident = props.iter().find_map(|(k, pat)| {
+                if k == "data"
+                    && let Pat::Id(name, _) = pat
+                {
+                    return Some(name.as_str());
+                }
+                None
+            });
+            if let Some(param) = data_ident {
+                match &f.func.body {
+                    FnBody::Expr(e) => scan_expr(e, param, false, &mut out),
+                    FnBody::Block(b) => scan_stmts(b, param, false, &mut out),
+                }
+            }
+        }
+        Pat::Id(param, _) => match &f.func.body {
+            FnBody::Expr(e) => scan_expr(e, param, true, &mut out),
+            FnBody::Block(b) => scan_stmts(b, param, true, &mut out),
+        },
+        _ => {}
     }
     out
 }
 
-fn scan_stmts(stmts: &[Stmt], param: &str, out: &mut Vec<String>) {
+fn scan_stmts(stmts: &[Stmt], param: &str, via_ctx: bool, out: &mut Vec<String>) {
     for s in stmts {
         match s {
-            Stmt::Expr(e) | Stmt::Throw(e) => scan_expr(e, param, out),
-            Stmt::Return(Some(e), _) => scan_expr(e, param, out),
-            Stmt::Decl { init: Some(e), .. } => scan_expr(e, param, out),
+            Stmt::Expr(e) | Stmt::Throw(e) => scan_expr(e, param, via_ctx, out),
+            Stmt::Return(Some(e), _) => scan_expr(e, param, via_ctx, out),
+            Stmt::Decl { init: Some(e), .. } => scan_expr(e, param, via_ctx, out),
             Stmt::If(t, a, b) => {
-                scan_expr(t, param, out);
-                scan_stmts(a, param, out);
+                scan_expr(t, param, via_ctx, out);
+                scan_stmts(a, param, via_ctx, out);
                 if let Some(b) = b {
-                    scan_stmts(b, param, out);
+                    scan_stmts(b, param, via_ctx, out);
                 }
             }
-            Stmt::Block(b) | Stmt::While(_, b) | Stmt::DoWhile(b, _) => scan_stmts(b, param, out),
-            Stmt::Labeled(_, s, _) => scan_stmts(std::slice::from_ref(s), param, out),
+            Stmt::Block(b) | Stmt::While(_, b) | Stmt::DoWhile(b, _) => scan_stmts(b, param, via_ctx, out),
+            Stmt::Labeled(_, s, _) => scan_stmts(std::slice::from_ref(s), param, via_ctx, out),
             Stmt::For { body, .. } | Stmt::ForOf { body, .. } | Stmt::ForIn { body, .. } => {
-                scan_stmts(body, param, out)
+                scan_stmts(body, param, via_ctx, out)
             }
             Stmt::Try {
                 block,
@@ -3963,17 +3963,17 @@ fn scan_stmts(stmts: &[Stmt], param: &str, out: &mut Vec<String>) {
                 finalizer,
                 ..
             } => {
-                scan_stmts(block, param, out);
+                scan_stmts(block, param, via_ctx, out);
                 if let Some(h) = handler {
-                    scan_stmts(h, param, out);
+                    scan_stmts(h, param, via_ctx, out);
                 }
                 if let Some(f) = finalizer {
-                    scan_stmts(f, param, out);
+                    scan_stmts(f, param, via_ctx, out);
                 }
             }
             Stmt::Switch { cases, .. } => {
                 for (_, b) in cases {
-                    scan_stmts(b, param, out);
+                    scan_stmts(b, param, via_ctx, out);
                 }
             }
             _ => {}
@@ -3983,10 +3983,10 @@ fn scan_stmts(stmts: &[Stmt], param: &str, out: &mut Vec<String>) {
 
 /// `data.slug = slugify(data.name)` fills `slug`; `data.name = data.name.trim()`
 /// only rewrites `name`, which the writer must still provide.
-fn scan_expr(e: &crate::ir::Expr, param: &str, out: &mut Vec<String>) {
+fn scan_expr(e: &crate::ir::Expr, param: &str, via_ctx: bool, out: &mut Vec<String>) {
     if let ExprKind::Sequence(items) = &e.kind {
         for item in items {
-            scan_expr(item, param, out);
+            scan_expr(item, param, via_ctx, out);
         }
     }
     if let ExprKind::Assign {
@@ -3995,11 +3995,15 @@ fn scan_expr(e: &crate::ir::Expr, param: &str, out: &mut Vec<String>) {
         value,
     } = &e.kind
         && let ExprKind::Member { obj, prop, .. } = &target.kind
-        && matches!(&obj.kind, ExprKind::Ident(n) if n == param)
-        && !reads_key(value, param, prop)
-        && !out.contains(prop)
     {
-        out.push(prop.clone());
+        let matches_target = if via_ctx {
+            matches!(&obj.kind, ExprKind::Member { obj: inner, prop: p, .. } if p == "data" && matches!(&inner.kind, ExprKind::Ident(n) if n == param))
+        } else {
+            matches!(&obj.kind, ExprKind::Ident(n) if n == param)
+        };
+        if matches_target && !reads_key(value, param, prop) && !out.contains(prop) {
+            out.push(prop.clone());
+        }
     }
 }
 
@@ -4631,17 +4635,23 @@ fn phase2_collections(ev: &Evaluator<'_>, out: &mut Extracted) -> Result<()> {
         if c.auth {
             if auth_owner.replace(c.table.clone()).is_some() {
                 return Err(
-                    Diag::new(b.span, "at most one userProjection() is allowed").help("keep one members collection")
+                    Diag::new(b.span, "at most one `extend(\"users\")` is allowed").help("keep one users definition")
                 );
             }
-            if !c
+            if !c.columns.contains_key("email") {
+                let mut email = Column::new("email", ColType::Email);
+                email.not_null = true;
+                email.unique = true;
+                email.rules.max = Some(191.0);
+                c.columns.insert("email".into(), email);
+            } else if !c
                 .columns
                 .get("email")
                 .is_some_and(|c| c.ty == ColType::Email && c.not_null && c.unique)
             {
                 return Err(
-                    Diag::new(b.span, "userProjection() needs `email: email().unique().max(191)`")
-                        .help("add the required unique email column with .max(191)"),
+                    Diag::new(b.span, "extended `users` `email` must be `f.email().unique().max(191)`")
+                        .help("omit `email` to use the built-in column, or keep it required and unique with `.max(191)`"),
                 );
             }
             if c.slug.is_some() || c.localized {
@@ -4756,6 +4766,79 @@ fn phase2_jobs(cfg: &IndexMap<String, Value>, ev: &mut Evaluator<'_>, span: Span
         Some(v) => jobs(v, ev, span, out, None),
         None => Ok(()),
     }
+}
+
+/// Exported `wp.action(...)` and `wp.filter(...)` hooks.
+fn extract_wp_hooks(v: &Value, span: Span, ev: &Evaluator<'_>, out: &mut Extracted) -> Result<()> {
+    let entries = object(v, span, "wpHooks")?;
+    for (name, value) in entries {
+        let hspan = ev.key_span(v, &name).unwrap_or(span);
+        let Value::WpHook(h) = value else {
+            return Err(Diag::new(hspan, format!("`wpHooks.{name}` must be `wp.action(...)` or `wp.filter(...)`")));
+        };
+        if h.hook.is_empty() || !h.hook.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b'/' | b'.')) {
+            return Err(Diag::new(h.span, format!("invalid WordPress hook name {:?}", h.hook)));
+        }
+        let Value::Closure(handler) = &h.handler else {
+            return Err(Diag::new(h.span, "`wp.action()`/`wp.filter()` needs a handler function"));
+        };
+        // Handler receives `(ctx, ...wpArgs)`: number of WordPress arguments is params.len().saturating_sub(1).
+        let wp_args = handler.func.params.len().saturating_sub(1).max(usize::from(h.filter));
+        let index = out.schema.wp_hooks.len();
+        out.schema.wp_hooks.push(WpHook {
+            hook: h.hook.clone(),
+            filter: h.filter,
+            priority: h.priority,
+            args: wp_args,
+            handler: String::new(),
+        });
+        out.roots.push(Root {
+            closure: handler.clone(),
+            slot: Slot::WpHook { index },
+            name: format!("wp_hook__{name}"),
+            plugin: None,
+        });
+    }
+    Ok(())
+}
+
+/// `defineConfig({ permalinks: { posts: "/blog/[slug]", docs: "/docs/[...path]" } })`:
+/// optional canonical URLs for headless sites (without `sp/app/` routes).
+fn extract_permalinks(v: &Value, span: Span, ev: &Evaluator<'_>, out: &mut Extracted) -> Result<()> {
+    let entries = object(v, span, "permalinks")?;
+    for (kind, value) in entries {
+        let kspan = ev.key_span(v, &kind).unwrap_or(span);
+        let Value::Str(raw) = value else {
+            return Err(Diag::new(
+                kspan,
+                format!("`permalinks.{kind}` must be a URL pattern like \"/blog/[slug]\", not {}", value.describe()),
+            ));
+        };
+        let pattern = normalize_permalink(&raw);
+        out.schema.permalinks.insert(kind, pattern);
+    }
+    Ok(())
+}
+
+/// Converts Next-style `[slug]` / `[...path]` segments to SpacePress `:slug` / `:path` syntax.
+pub fn normalize_permalink(raw: &str) -> String {
+    if !raw.contains('[') {
+        return raw.to_string();
+    }
+    raw.split('/')
+        .map(|seg| {
+            if let Some(inner) = seg.strip_prefix("[...").and_then(|s| s.strip_suffix(']')) {
+                format!(":{inner}")
+            } else if let Some(inner) = seg.strip_prefix("[[...").and_then(|s| s.strip_suffix("]]")) {
+                format!(":{inner}")
+            } else if let Some(inner) = seg.strip_prefix('[').and_then(|s| s.strip_suffix(']')) {
+                format!(":{inner}")
+            } else {
+                seg.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("/")
 }
 
 /// Each registered job; a plugin's are registered as `<plugin>_<name>`.

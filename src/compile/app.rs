@@ -37,15 +37,8 @@ impl Compiler<'_, '_> {
             props.insert("lostPasswordUrl".to_string(), (Ty::Str, false));
             props.insert("registerUrl".to_string(), (Ty::union([Ty::Str, Ty::Null]), false));
         }
-        // A page that serves a kind's URL receives its item, read as the visitor (spec §2.7).
-        if let Some((kind, _)) = app
-            .routes
-            .iter()
-            .find(|r| r.page.as_deref() == Some(file))
-            .and_then(|r| r.kind.as_ref())
-        {
-            props.insert("item".to_string(), (types::row(self.schema, kind), false));
-        }
+        props.insert("user".to_string(), (types::user().nullable(), false));
+        props.insert("db".to_string(), (Ty::Db(types::DbCap::ReadOnly), false));
         Ty::Obj(props)
     }
 
@@ -301,6 +294,7 @@ impl Compiler<'_, '_> {
         self.route_opaque(name);
         match name {
             "useFormState" => self.use_form_state(args, span),
+            "headings" | "apiReference" => self.content_call(name, args, span),
             "notFound" => {
                 if !args.is_empty() {
                     return err_help(span, "`notFound()` takes no arguments", "call `notFound()`");

@@ -143,6 +143,8 @@ pub enum Value {
     Widget(Rc<ActionVal>),
     /// `adminDashboard({ ... })`: a SpacePress Admin custom dashboard, registered by its export.
     Dashboard(Rc<ActionVal>),
+    /// `wp.action(...)` / `wp.filter(...)` from `"spacepress/server/wp"`, registered by its export.
+    WpHook(Rc<WpHookVal>),
     FileBucket(Rc<FileBucketVal>),
     Env(Rc<str>),
     /// An imported file's URL (`import logo from "./compass.svg"`): its name below the app
@@ -316,14 +318,16 @@ pub enum Builtin {
     /// Runtime-only values: usable in compiled code, an error at build time.
     Db,
     HttpError,
-    /// `ref(kind)` from "spacepress".
+    /// `ref(kind)` (from `f.ref`).
     Ref,
-    /// `terms(taxonomy)` from "spacepress": an item's terms of one taxonomy.
+    /// `terms(taxonomy)` (from `f.terms`): an item's terms of one taxonomy.
     Terms,
-    /// `wp` from "spacepress": WordPress's own kinds.
-    Wp,
-    /// `wp.posts`: core's posts, whose `.extend()` and `.clone()` make kinds.
-    WpPosts,
+    /// `f` from `"spacepress"`: field builder namespace (`f.text()`, `f.integer()`, `f.ref()`, ...).
+    FieldNamespace,
+    /// `extend("posts" | "users" | "pages", options)` from `"spacepress"`.
+    Extend,
+    /// `wp` from `"spacepress/server/wp"`: WordPress hook registration (`wp.action`, `wp.filter`).
+    WpServer,
     // JavaScript globals
     Global(&'static str),
     /// A static function on a global, e.g. `Math.max`.
@@ -496,17 +500,27 @@ pub struct CollectionVal {
     pub hooks: RefCell<Vec<(Value, Span)>>,
     /// `.index(fields, { unique? })` calls: compound indexes the author declared (spec §2.9).
     pub indexes: std::cell::RefCell<Vec<(Vec<String>, bool, Span)>>,
-    /// Made by `wp.posts.extend()` (WordPress's own posts) or `wp.posts.clone()` (a kind like them).
+    /// Made by `extend("posts" | "pages", ...)` (WordPress's built-in post/page types).
     pub post: Option<PostKind>,
 }
 
-/// A kind with WordPress posts' fields: title, slug, content and excerpt.
+/// Built-in WordPress post types extended via `extend("posts" | "pages", ...)`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PostKind {
-    /// `wp.posts.extend(fields, options)`: core's `post` type, with the fields as post meta.
+    /// `extend("posts", ...)`: core's `post` type, with custom fields as post meta.
     Native,
-    /// `wp.posts.clone(fields, options)`: its own post type, `sp_<name>`, shaped like posts.
-    Clone,
+    /// `extend("pages", ...)`: core's `page` type (hierarchical), with custom fields as post meta.
+    NativePage,
+}
+
+/// A WordPress hook declared via `wp.action(hook, [opts,] handler)` or `wp.filter(hook, [opts,] handler)`.
+#[derive(Debug)]
+pub struct WpHookVal {
+    pub hook: String,
+    pub filter: bool,
+    pub priority: i64,
+    pub handler: Value,
+    pub span: Span,
 }
 
 impl CollectionVal {
@@ -709,6 +723,7 @@ impl Value {
             Value::Screen(_) => "an admin screen".into(),
             Value::Widget(_) => "an admin widget".into(),
             Value::Dashboard(_) => "an admin dashboard".into(),
+            Value::WpHook(_) => "a WordPress hook".into(),
             Value::FileBucket(_) => "a file bucket".into(),
             Value::Env(n) => format!("env({n:?})"),
             Value::Asset(file) => format!("the URL of {file}"),

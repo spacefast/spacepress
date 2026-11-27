@@ -31,37 +31,84 @@ pub const CONTENT_TYPES: &[&str] = &[
 pub const NAV_DEPTH: usize = 4;
 
 impl Compiler<'_, '_> {
-    /// The `"spacepress/content"` export an identifier names, if it does.
-    pub(super) fn content_builtin(&mut self, e: &Expr) -> Result<Option<&'static str>> {
-        let ExprKind::Ident(n) = &e.kind else { return Ok(None) };
-        Ok(match self.resolve(n, e.span)? {
-            Resolved::Value(Value::Builtin(Builtin::Content(name)), _) => Some(name),
-            _ => None,
-        })
-    }
-
-    /// A kind passed to `nav` or `pager`: a hierarchical collection with a url, named directly.
-    fn content_kind(&mut self, args: &[ArrEl], span: Span, name: &str) -> Result<String> {
-        let k = self.arg(args, 0, span, "a hierarchical kind")?;
-        let v = self.expr(k)?;
-        let Ty::Collection(table) = v.ty else {
+    /// `db.<kind>.nav(current?)`: hierarchical kind navigation tree.
+    pub(super) fn kind_nav(&mut self, table: &str, args: &[ArrEl], span: Span) -> Result<Out> {
+        for a in args {
+            if let ArrEl::Spread(x) = a {
+                return err(x.span, "spread arguments aren't supported here");
+            }
+        }
+        if args.len() > 1 {
             return err_help(
-                k.span,
-                format!("`{name}()` needs a kind, not {}", v.ty.describe()),
-                "import the kind from \"spacepress/server/db\" and pass it: `nav(docs)`",
+                span,
+                "`nav()` takes at most one argument (the current item or its id)",
+                "call `await db.<kind>.nav(item)` or `await db.<kind>.nav()`",
             );
-        };
-        let c = &self.schema.collections[&table];
+        }
+        let c = &self.schema.collections[table];
         if !c.hierarchical || c.url.is_none() {
             return err_help(
-                k.span,
-                format!("`{name}()` needs a hierarchical kind with a url; `{}` isn't one", c.key),
-                "declare it with `hierarchical: true` and `url: \"/docs/:path\"`",
+                span,
+                format!("`db.{}.nav()` needs a hierarchical kind with a canonical route; `{}` isn't one", c.key, c.key),
+                "declare it with `hierarchical: true` and serve it from a route like `sp/app/docs/[...path]/page.tsx`",
             );
         }
         let key = c.key.clone();
-        self.uses("read", key, k.span);
-        Ok(table)
+        self.uses("read", key, span);
+        self.route_dep(RouteDependency::List {
+            collection: table.to_string(),
+        });
+        let current = match args.first() {
+            Some(ArrEl::Item(e)) => self.content_current(e, table, "nav")?,
+            _ => "null".into(),
+        };
+        Ok(Out::atom(
+            format!(
+                "\\SpacePress\\Content\\Nav::tree({}, {current}, {NAV_DEPTH})",
+                php_str(table)
+            ),
+            Ty::Promise(Box::new(Ty::Array(Box::new(nav_item(NAV_DEPTH))))),
+        ))
+    }
+
+    /// `db.<kind>.pager(current)`: previous/next links in a hierarchical kind's tree.
+    pub(super) fn kind_pager(&mut self, table: &str, args: &[ArrEl], span: Span) -> Result<Out> {
+        for a in args {
+            if let ArrEl::Spread(x) = a {
+                return err(x.span, "spread arguments aren't supported here");
+            }
+        }
+        if args.len() != 1 {
+            return err_help(
+                span,
+                "`pager()` takes the current item or its id",
+                "call `await db.<kind>.pager(item)`",
+            );
+        }
+        let c = &self.schema.collections[table];
+        if !c.hierarchical || c.url.is_none() {
+            return err_help(
+                span,
+                format!("`db.{}.pager()` needs a hierarchical kind with a canonical route; `{}` isn't one", c.key, c.key),
+                "declare it with `hierarchical: true` and serve it from a route like `sp/app/docs/[...path]/page.tsx`",
+            );
+        }
+        let key = c.key.clone();
+        self.uses("read", key, span);
+        self.route_dep(RouteDependency::List {
+            collection: table.to_string(),
+        });
+        let ArrEl::Item(e) = &args[0] else {
+            unreachable!("spreads refused above")
+        };
+        let current = self.content_current(e, table, "pager")?;
+        let mut out = IndexMap::new();
+        out.insert("prev".to_string(), (pager_link().nullable(), false));
+        out.insert("next".to_string(), (pager_link().nullable(), false));
+        Ok(Out::atom(
+            format!("\\SpacePress\\Content\\Nav::pager({}, {current})", php_str(table)),
+            Ty::Promise(Box::new(Ty::Obj(out))),
+        ))
     }
 
     /// The current item's id, from a number or a row (`item`, `item.id`).
@@ -79,7 +126,7 @@ impl Compiler<'_, '_> {
         err_help(
             e.span,
             format!("`{name}()` takes the current item or its id, not {}", v.ty.describe()),
-            "pass the page's `item`, or `item.id`",
+            "pass the loaded item, or `item.id`",
         )
     }
 
@@ -90,48 +137,6 @@ impl Compiler<'_, '_> {
             }
         }
         match name {
-            "nav" => {
-                if args.is_empty() || args.len() > 2 {
-                    return err_help(
-                        span,
-                        "`nav()` takes a kind and the current item",
-                        "call `nav(docs, item)`",
-                    );
-                }
-                let table = self.content_kind(args, span, "nav")?;
-                let current = match args.get(1) {
-                    Some(ArrEl::Item(e)) => self.content_current(e, &table, "nav")?,
-                    _ => "null".into(),
-                };
-                Ok(Out::atom(
-                    format!(
-                        "\\SpacePress\\Content\\Nav::tree({}, {current}, {NAV_DEPTH})",
-                        php_str(&table)
-                    ),
-                    Ty::Promise(Box::new(Ty::Array(Box::new(nav_item(NAV_DEPTH))))),
-                ))
-            }
-            "pager" => {
-                if args.len() != 2 {
-                    return err_help(
-                        span,
-                        "`pager()` takes a kind and the current item",
-                        "call `pager(docs, item)`",
-                    );
-                }
-                let table = self.content_kind(args, span, "pager")?;
-                let ArrEl::Item(e) = &args[1] else {
-                    unreachable!("spreads refused above")
-                };
-                let current = self.content_current(e, &table, "pager")?;
-                let mut out = IndexMap::new();
-                out.insert("prev".to_string(), (pager_link().nullable(), false));
-                out.insert("next".to_string(), (pager_link().nullable(), false));
-                Ok(Out::atom(
-                    format!("\\SpacePress\\Content\\Nav::pager({}, {current})", php_str(&table)),
-                    Ty::Promise(Box::new(Ty::Obj(out))),
-                ))
-            }
             "headings" => {
                 if args.len() != 1 {
                     return err_help(span, "`headings()` takes the item", "call `headings(item)`");
@@ -143,7 +148,7 @@ impl Compiler<'_, '_> {
                     .schema
                     .collections
                     .values()
-                    .filter(|c| c.hierarchical)
+                    .filter(|c| c.content.is_some())
                     .find_map(|c| {
                         let row = types::row(self.schema, &c.table);
                         (assignable(&v.ty, &row) || assignable(&v.ty, &row.nullable())).then(|| c.content.clone())
@@ -152,10 +157,10 @@ impl Compiler<'_, '_> {
                     return err_help(
                         e.span,
                         format!(
-                            "`headings()` takes an item of a hierarchical kind with content, not {}",
+                            "`headings()` takes an item with a richText content field, not {}",
                             v.ty.describe()
                         ),
-                        "pass the page's `item`",
+                        "pass a loaded collection item",
                     );
                 };
                 Ok(Out::atom(
@@ -189,7 +194,7 @@ impl Compiler<'_, '_> {
                     api_reference(),
                 ))
             }
-            other => unreachable!("spacepress/content has no export {other}"),
+            other => unreachable!("spacepress/app has no content helper {other}"),
         }
     }
 }

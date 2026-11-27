@@ -88,24 +88,77 @@ pub enum Ty {
     Html,
     // SpacePress runtime values
     Collection(String),
-    Db,
-    DbQuery,
-    QueryColl(String),
-    /// `posts.system`: a `"spacepress:db"` kind's trusted calls (spec §3).
-    KindSystem(String),
-    /// `posts.revisions` / `posts.system.revisions`: a kind's revision history API.
-    KindRevisions(String, bool),
-    /// `db.globals` and `db.globals.<key>`.
-    DbGlobals,
-    DbGlobal(String),
+    /// A database handle (`db` or `db.system`), carrying its compile-time read/write & trust capability.
+    Db(DbCap),
+    /// A kind handle (`db.<kind>` or `db.system.<kind>`).
+    Kind(String, DbCap),
+    /// `db.<kind>.revisions` / `db.system.<kind>.revisions`: a kind's revision history API.
+    KindRevisions(String, DbCap),
+    /// `db.<global>` / `db.system.<global>`.
+    DbGlobal(String, DbCap),
+    /// `ctx.mail`: `mail.send(...)` / `mail.render(...)`.
+    Mail,
+    /// `ctx.connectors`: `connectors.call(...)` / `connectors.enqueue(...)`.
+    Connectors,
+    /// `ctx.once`: `once(key, fn)` in jobs/crons.
+    Once,
+    /// `ctx.files`: namespace of private file buckets (`files.<bucket>`).
+    Files,
     /// A `files({ ... })` private file bucket: `bucket.get(id)`, `bucket.readText(id)`, `bucket.readBase64(id)`.
     FileBucket(String),
-    Builder(Box<Builder>),
 }
 
-/// Host objects with a nominal type: `Response` from `fetch`, `Headers`, and
-/// the `node:crypto` hash/HMAC chains and `randomBytes` buffers, which only exist inside one
-/// recognized expression.
+/// Compile-time capability carried by a `db` handle.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum DbCap {
+    /// Viewer-scoped reads only (`query()`, `page.tsx`, `layout.tsx`, `metadata`).
+    ReadOnly,
+    /// Viewer-scoped reads and writes (`mutation()`, `route.ts`, `.on()` hooks, `import { db } from "spacepress/server"`).
+    Full,
+    /// System-scoped reads only (`access` rules, `staticParams`, `ReadOnlyDb.system`).
+    SystemReadOnly,
+    /// System-scoped reads and writes (`job()`, `cron()`, `wp.action()`, `wp.filter()`, `Db.system`).
+    System,
+}
+
+impl DbCap {
+    pub fn allows_write(self) -> bool {
+        matches!(self, DbCap::Full | DbCap::System)
+    }
+
+    pub fn is_system(self) -> bool {
+        matches!(self, DbCap::SystemReadOnly | DbCap::System)
+    }
+
+    pub fn as_system(self) -> Self {
+        if self.allows_write() {
+            DbCap::System
+        } else {
+            DbCap::SystemReadOnly
+        }
+    }
+
+    pub fn assignable_to(self, want: DbCap) -> bool {
+        self == want
+            || matches!(
+                (self, want),
+                (DbCap::Full, DbCap::ReadOnly)
+                    | (DbCap::System, DbCap::SystemReadOnly | DbCap::Full | DbCap::ReadOnly)
+                    | (DbCap::SystemReadOnly, DbCap::ReadOnly)
+            )
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            DbCap::ReadOnly => "ReadOnlyDb",
+            DbCap::Full => "Db",
+            DbCap::SystemReadOnly => "SystemReadOnlyDb",
+            DbCap::System => "SystemDb",
+        }
+    }
+}
+
+/// Host objects with a nominal type: `Response` from `fetch` or `Response.json`/`new Response`, and `Headers`.
 #[derive(Debug, Clone, PartialEq)]
 pub enum HostTy {
     Response,
@@ -117,54 +170,6 @@ impl HostTy {
         match self {
             HostTy::Response => "Response",
             HostTy::Headers => "Headers",
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum BuilderKind {
-    Insert,
-    Update,
-    Delete,
-}
-
-/// `db.insert(t).values(v).returning()` and friends, assembled into one runtime call when awaited.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Builder {
-    pub kind: BuilderKind,
-    pub table: String,
-    pub values: Option<String>,
-    pub set: Option<String>,
-    pub filter: Option<String>,
-    pub returning: bool,
-}
-
-impl Builder {
-    pub fn php(&self) -> String {
-        let t = crate::compile::php_str(&self.table);
-        let r = if self.returning { ", true" } else { "" };
-        match self.kind {
-            BuilderKind::Insert => format!(
-                "\\SpacePress\\Seam::insert({t}, {}{r})",
-                self.values.as_deref().unwrap_or("[]")
-            ),
-            BuilderKind::Update => format!(
-                "\\SpacePress\\Seam::update({t}, {}, {}{r})",
-                self.set.as_deref().unwrap_or("[]"),
-                self.filter.as_deref().unwrap_or("[]")
-            ),
-            BuilderKind::Delete => format!(
-                "\\SpacePress\\Seam::delete({t}, {}{r})",
-                self.filter.as_deref().unwrap_or("[]")
-            ),
-        }
-    }
-
-    pub fn result(&self, schema: &Schema) -> Ty {
-        if self.returning {
-            Ty::Array(Box::new(row(schema, &self.table)))
-        } else {
-            Ty::Null
         }
     }
 }
@@ -378,15 +383,21 @@ impl Ty {
             Ty::Error => "Error".into(),
             Ty::Html => "JSX.Element".into(),
             Ty::Collection(t) => format!("collection \"{t}\""),
-            Ty::Db => "db".into(),
-            Ty::DbQuery => "db.query".into(),
-            Ty::QueryColl(t) => format!("db.query for \"{t}\""),
-            Ty::KindSystem(t) => format!("the trusted calls of \"{t}\""),
+            Ty::Db(cap) => cap.name().into(),
+            Ty::Kind(t, cap) => {
+                if cap.is_system() {
+                    format!("db.system.{t}")
+                } else {
+                    format!("db.{t}")
+                }
+            }
             Ty::KindRevisions(t, _) => format!("revisions of \"{t}\""),
-            Ty::DbGlobals => "db.globals".into(),
-            Ty::DbGlobal(g) => format!("db.globals.{g}"),
+            Ty::DbGlobal(g, _) => format!("db.{g}"),
+            Ty::Mail => "Mail".into(),
+            Ty::Connectors => "Connectors".into(),
+            Ty::Once => "Once".into(),
+            Ty::Files => "Files".into(),
             Ty::FileBucket(b) => format!("file bucket \"{b}\""),
-            Ty::Builder(b) => format!("an unfinished db.{:?} for \"{}\"", b.kind, b.table).to_lowercase(),
         }
     }
 
@@ -794,17 +805,100 @@ pub fn role() -> Ty {
     Ty::union(ROLES.map(|role| Ty::StrLit(role.into())))
 }
 
-/// `HookCtx<T>` as a helper names it: what every hook and action handler receives. Before-hooks
-/// also carry their data, so `data` is optional and the action and after-hook context fit too.
+/// `ctx` for `query()` handlers: read-only `db`, current `user`, and read-only `files`.
+pub fn query_ctx() -> Ty {
+    obj(&[
+        ("db", Ty::Db(DbCap::ReadOnly)),
+        ("user", user().nullable()),
+        ("files", Ty::Files),
+    ])
+}
+
+/// `ctx` for `mutation()` handlers: full `db`, `user`, `mail`, `connectors`, `files`.
+pub fn mutation_ctx() -> Ty {
+    obj(&[
+        ("db", Ty::Db(DbCap::Full)),
+        ("user", user().nullable()),
+        ("mail", Ty::Mail),
+        ("connectors", Ty::Connectors),
+        ("files", Ty::Files),
+    ])
+}
+
+/// `ctx` for `route.ts` / page HTTP handlers: full `db`, `user`, `mail`, `connectors`, `files`.
+pub fn route_ctx() -> Ty {
+    mutation_ctx()
+}
+
+/// `ctx` for `wp.action` / `wp.filter` handlers: system `db`, `user`, `mail`, `files`.
+pub fn wp_ctx() -> Ty {
+    obj(&[
+        ("db", Ty::Db(DbCap::System)),
+        ("user", user().nullable()),
+        ("mail", Ty::Mail),
+        ("files", Ty::Files),
+    ])
+}
+
+/// `ctx` for `staticParams`: system read-only `db`.
+pub fn static_params_ctx() -> Ty {
+    obj(&[("db", Ty::Db(DbCap::SystemReadOnly))])
+}
+
+/// `ctx` for `beforeCreate` hooks: `{ data, user, db }`.
+pub fn hook_before_create_ctx(data: Ty) -> Ty {
+    obj(&[
+        ("data", data),
+        ("user", user().nullable()),
+        ("db", Ty::Db(DbCap::Full)),
+    ])
+}
+
+/// `ctx` for `beforeUpdate` hooks: `{ patch, existing, user, db }`.
+pub fn hook_before_update_ctx(patch: Ty, existing: Ty) -> Ty {
+    obj(&[
+        ("patch", patch),
+        ("existing", existing),
+        ("user", user().nullable()),
+        ("db", Ty::Db(DbCap::Full)),
+    ])
+}
+
+/// `ctx` for `beforeDelete`, `beforeRestore`, `beforePurge` hooks: `{ row, user, db }`.
+pub fn hook_before_row_ctx(row: Ty) -> Ty {
+    obj(&[
+        ("row", row),
+        ("user", user().nullable()),
+        ("db", Ty::Db(DbCap::Full)),
+    ])
+}
+
+/// `ctx` for `afterCreate`, `afterUpdate`, `afterDelete`, `afterRestore`, `afterPurge`, `onPublish`:
+/// `{ row, previous?, user, db, mail, connectors, files }`.
+pub fn hook_after_ctx(row: Ty, previous: Option<Ty>) -> Ty {
+    let mut f = IndexMap::new();
+    f.insert("row".into(), (row, false));
+    if let Some(prev) = previous {
+        f.insert("previous".into(), (prev, false));
+    }
+    f.insert("user".into(), (user().nullable(), false));
+    f.insert("db".into(), (Ty::Db(DbCap::Full), false));
+    f.insert("mail".into(), (Ty::Mail, false));
+    f.insert("connectors".into(), (Ty::Connectors, false));
+    f.insert("files".into(), (Ty::Files, false));
+    Ty::Obj(f)
+}
+
+/// `HookCtx<T>` alias for helpers that accept a hook/action context.
 pub fn hook_ctx_with(data: Ty) -> Ty {
     let Ty::Obj(mut f) = hook_ctx() else { unreachable!() };
     f.insert("data".into(), (data, true));
     Ty::Obj(f)
 }
 
-/// `ctx` for hooks and actions (§1.7).
+/// `ctx` base shape for helpers.
 pub fn hook_ctx() -> Ty {
-    obj(&[("user", user().nullable())])
+    mutation_ctx()
 }
 
 /// A route handler's first argument: the request as received, the body as raw text.
@@ -834,30 +928,40 @@ pub fn route_query() -> Ty {
     ])
 }
 
-/// What a route handler returns: `{ status?, headers?, body? }`.
+/// What a route handler returns: a Web `Response` (`Response.json(...)` / `new Response(...)`) or `{ status?, headers?, body? }`.
 pub fn route_response() -> Ty {
-    Ty::Obj(
-        [
-            ("status".to_string(), (Ty::Num, true)),
-            ("headers".to_string(), (Ty::Map(Box::new(Ty::Str)), true)),
-            ("body".to_string(), (Ty::Str, true)),
-        ]
-        .into_iter()
-        .collect(),
-    )
+    Ty::union([
+        Ty::Host(HostTy::Response),
+        Ty::Obj(
+            [
+                ("status".to_string(), (Ty::Num, true)),
+                ("headers".to_string(), (Ty::Map(Box::new(Ty::Str)), true)),
+                ("body".to_string(), (Ty::Str, true)),
+            ]
+            .into_iter()
+            .collect(),
+        ),
+    ])
 }
 
 pub fn job_ctx() -> Ty {
-    let Ty::Obj(mut props) = hook_ctx() else { unreachable!() };
-    props.insert("attempt".into(), (Ty::Num, false));
-    props.insert("jobId".into(), (Ty::Str, false));
-    Ty::Obj(props)
+    obj(&[
+        ("db", Ty::Db(DbCap::System)),
+        ("user", user().nullable()),
+        ("mail", Ty::Mail),
+        ("connectors", Ty::Connectors),
+        ("files", Ty::Files),
+        ("once", Ty::Once),
+        ("attempt", Ty::Num),
+        ("jobId", Ty::Str),
+    ])
 }
 
 pub fn field_access_ctx() -> Ty {
     let Ty::Obj(mut props) = access_ctx(Ty::Map(Box::new(Ty::Unknown))) else {
         unreachable!()
     };
+    props.shift_remove("db");
     props.insert("data".into(), (Ty::Map(Box::new(Ty::Unknown)), false));
     props.insert(
         "op".into(),
@@ -869,9 +973,13 @@ pub fn field_access_ctx() -> Ty {
     Ty::Obj(props)
 }
 
-/// `ctx` for access rules (§1.6). `data` is the incoming row (create) or the patch (update).
+/// `ctx` for access rules (§1.6): `{ user, op, data?, db: SystemReadOnlyDb }`.
 pub fn access_ctx(data: Ty) -> Ty {
-    let Ty::Obj(mut f) = obj(&[("user", user().nullable()), ("op", Ty::Str)]) else {
+    let Ty::Obj(mut f) = obj(&[
+        ("user", user().nullable()),
+        ("op", Ty::Str),
+        ("db", Ty::Db(DbCap::SystemReadOnly)),
+    ]) else {
         unreachable!()
     };
     f.insert("data".into(), (data.nullable(), true));

@@ -227,16 +227,16 @@ fn register_guard(
     roots: &mut Vec<Root>,
 ) -> Result<(), Diag> {
     if handler && file.signature.is_some() {
-        return Err(Diag::new(span, format!("{path} exports both `guard` and `signature`"))
+        return Err(Diag::new(span, format!("{path} exports both `access` and `signature`"))
             .help("choose one authorization rule for the HTTP handlers"));
     }
     if let Value::Object(rules) = value {
         if handler || file.methods.is_empty() || file.signature.is_some() {
             return Err(Diag::new(
                 span,
-                "`guard = { page, handlers }` requires a page with unsigned HTTP handlers",
+                "`access = { page, handlers }` requires a page with unsigned HTTP handlers",
             )
-            .help("use a single `guard` on this file"));
+            .help("use a single `access` on this file"));
         }
         let rules = rules.borrow();
         if let Some((key, _)) = rules
@@ -244,19 +244,19 @@ fn register_guard(
             .find(|(key, _)| !matches!(key.as_str(), "page" | "handlers"))
         {
             return Err(
-                Diag::new(span, format!("`guard` has an unknown field `{key}`")).help("use `page` and `handlers`")
+                Diag::new(span, format!("`access` has an unknown field `{key}`")).help("use `page` and `handlers`")
             );
         }
         let methods = rules.get("handlers").ok_or_else(|| {
-            Diag::new(span, "`guard = { page, handlers }` needs a `handlers` rule")
+            Diag::new(span, "`access = { page, handlers }` needs a `handlers` rule")
                 .help("set `handlers` for the HTTP methods; omit `page` if the page is public")
         })?;
         if let Some(page) = rules.get("page").filter(|page| !matches!(page, Value::Undef)) {
-            file.guard = Some(guard_rule(page, span, path, "guard.page", false, roots)?);
+            file.guard = Some(guard_rule(page, span, path, "access.page", false, roots)?);
         }
-        file.handler_guard = Some(guard_rule(methods, span, path, "guard.handlers", true, roots)?);
+        file.handler_guard = Some(guard_rule(methods, span, path, "access.handlers", true, roots)?);
     } else {
-        let rule = guard_rule(value, span, path, "guard", handler, roots)?;
+        let rule = guard_rule(value, span, path, "access", handler, roots)?;
         if handler {
             file.handler_guard = Some(rule);
         } else {
@@ -266,6 +266,690 @@ fn register_guard(
             }
             file.guard = Some(rule);
         }
+    }
+    Ok(())
+}
+
+/// Scans all loaded modules for implicit references to built-in WordPress kinds (`posts`, `pages`,
+/// `users`) on `db` / `db.system` and materializes them in `ext.schema` if not already declared.
+pub fn materialize_builtins(program: &loader::Program, ext: &mut extract::Extracted) {
+    use crate::ir::{ArrEl, Expr, ExprKind, FnBody, Pat, Prop, PropKey, Stmt};
+
+    fn check_name(name: &str, out: &mut Vec<&'static str>) {
+        let target = match name {
+            "posts" => "posts",
+            "pages" => "pages",
+            "users" => "users",
+            _ => return,
+        };
+        if !out.contains(&target) {
+            out.push(target);
+        }
+    }
+
+    fn is_db_expr(e: &Expr) -> bool {
+        match &e.kind {
+            ExprKind::Ident(n) => n == "db",
+            ExprKind::Member { obj, prop, .. } => prop == "db" || (prop == "system" && is_db_expr(obj)),
+            _ => false,
+        }
+    }
+
+    fn walk_expr(e: &Expr, out: &mut Vec<&'static str>) {
+        match &e.kind {
+            ExprKind::Member { obj, prop, .. } => {
+                if is_db_expr(obj) {
+                    check_name(prop, out);
+                }
+                walk_expr(obj, out);
+            }
+            ExprKind::Index { obj, index, .. } => {
+                walk_expr(obj, out);
+                walk_expr(index, out);
+            }
+            ExprKind::Call { callee, args, .. } | ExprKind::New { callee, args, .. } => {
+                walk_expr(callee, out);
+                for a in args {
+                    match a {
+                        ArrEl::Item(x) | ArrEl::Spread(x) => walk_expr(x, out),
+                    }
+                }
+            }
+            ExprKind::Assign { target, value, .. } => {
+                walk_expr(target, out);
+                walk_expr(value, out);
+            }
+            ExprKind::Binary(_, a, b) | ExprKind::Logical(_, a, b) => {
+                walk_expr(a, out);
+                walk_expr(b, out);
+            }
+            ExprKind::Cond(a, b, c) => {
+                walk_expr(a, out);
+                walk_expr(b, out);
+                walk_expr(c, out);
+            }
+            ExprKind::Unary(_, x)
+            | ExprKind::Update { target: x, .. }
+            | ExprKind::Await(x)
+            | ExprKind::Yield { arg: Some(x), .. }
+            | ExprKind::Chain(x)
+            | ExprKind::As(x, _)
+            | ExprKind::NonNull(x) => walk_expr(x, out),
+            ExprKind::Array(els) => {
+                for a in els {
+                    match a {
+                        ArrEl::Item(x) | ArrEl::Spread(x) => walk_expr(x, out),
+                    }
+                }
+            }
+            ExprKind::Object(props) => {
+                for p in props {
+                    match p {
+                        Prop::KV(PropKey::Static(_), value) | Prop::Spread(value) => walk_expr(value, out),
+                        Prop::KV(PropKey::Computed(key), value) => {
+                            walk_expr(key, out);
+                            walk_expr(value, out);
+                        }
+                        Prop::NullPrototype => {}
+                    }
+                }
+            }
+            ExprKind::Template(_, exprs) | ExprKind::Sequence(exprs) => {
+                for x in exprs {
+                    walk_expr(x, out);
+                }
+            }
+            ExprKind::Func(f) => walk_body(&f.body, out),
+            ExprKind::Jsx(j) => {
+                for x in j.exprs() {
+                    walk_expr(x, out);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn walk_body(body: &FnBody, out: &mut Vec<&'static str>) {
+        match body {
+            FnBody::Expr(e) => walk_expr(e, out),
+            FnBody::Block(stmts) => walk_stmts(stmts, out),
+        }
+    }
+
+    fn walk_stmts(stmts: &[Stmt], out: &mut Vec<&'static str>) {
+        for s in stmts {
+            match s {
+                Stmt::Exported(inner) => walk_stmts(std::slice::from_ref(inner), out),
+                Stmt::ExportDefault(e) | Stmt::Expr(e) | Stmt::Throw(e) => walk_expr(e, out),
+                Stmt::Return(Some(e), _) => walk_expr(e, out),
+                Stmt::Decl { pat, init, .. } => {
+                    if let Some(init) = init {
+                        if is_db_expr(init)
+                            && let Pat::Obj { props, .. } = pat
+                        {
+                            for (k, _) in props {
+                                check_name(k, out);
+                            }
+                        }
+                        walk_expr(init, out);
+                    }
+                }
+                Stmt::Func(f) => walk_body(&f.body, out),
+                Stmt::If(t, a, b) => {
+                    walk_expr(t, out);
+                    walk_stmts(a, out);
+                    if let Some(b) = b {
+                        walk_stmts(b, out);
+                    }
+                }
+                Stmt::Block(b) => walk_stmts(b, out),
+                Stmt::While(t, b) | Stmt::DoWhile(b, t) => {
+                    walk_expr(t, out);
+                    walk_stmts(b, out);
+                }
+                Stmt::For {
+                    init,
+                    test,
+                    update,
+                    body,
+                    ..
+                } => {
+                    if let Some(i) = init {
+                        walk_stmts(std::slice::from_ref(i), out);
+                    }
+                    if let Some(t) = test {
+                        walk_expr(t, out);
+                    }
+                    if let Some(u) = update {
+                        walk_expr(u, out);
+                    }
+                    walk_stmts(body, out);
+                }
+                Stmt::ForOf { iter, body, .. } | Stmt::ForIn { iter, body, .. } => {
+                    walk_expr(iter, out);
+                    walk_stmts(body, out);
+                }
+                Stmt::Try {
+                    block,
+                    handler,
+                    finalizer,
+                    ..
+                } => {
+                    walk_stmts(block, out);
+                    if let Some(h) = handler {
+                        walk_stmts(h, out);
+                    }
+                    if let Some(f) = finalizer {
+                        walk_stmts(f, out);
+                    }
+                }
+                Stmt::Switch { disc, cases, .. } => {
+                    walk_expr(disc, out);
+                    for (c, b) in cases {
+                        if let Some(c) = c {
+                            walk_expr(c, out);
+                        }
+                        walk_stmts(b, out);
+                    }
+                }
+                Stmt::Labeled(_, inner, _) => walk_stmts(std::slice::from_ref(inner), out),
+                _ => {}
+            }
+        }
+    }
+
+    let mut used = Vec::new();
+    for m in &program.modules {
+        walk_stmts(&m.body, &mut used);
+    }
+    for name in used {
+        ext.schema.ensure_builtin(name);
+    }
+}
+
+/// Validates and applies `defineConfig({ permalinks })` to `ext.schema.collections`.
+pub fn apply_permalinks(ext: &mut extract::Extracted, span: Span) -> Result<(), Diag> {
+    let permalinks: Vec<(String, String)> = ext
+        .schema
+        .permalinks
+        .iter()
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+    if permalinks.is_empty() {
+        return Ok(());
+    }
+    let mut url_shapes: Vec<(String, Vec<crate::kind_url::Segment>)> = Vec::new();
+    for (kind_key, pattern) in permalinks {
+        ext.schema.ensure_builtin(&kind_key);
+        let Some(table) = ext.schema.by_key(&kind_key).map(|c| c.table.clone()) else {
+            return Err(Diag::new(
+                span,
+                format!("`permalinks.{kind_key}` names no collection, taxonomy, or built-in kind"),
+            )
+            .help("use the export name of a collection, taxonomy, or built-in kind (`posts`, `pages`)"));
+        };
+        let shape = check_kind_url(&ext.schema, &table, &pattern, span)?;
+        let root = |s: &[crate::kind_url::Segment]| matches!(s, [crate::kind_url::Segment::Path]);
+        if let Some((other, _)) = url_shapes
+            .iter()
+            .find(|(_, s)| crate::kind_url::overlaps(s, &shape) && root(s) == root(&shape))
+        {
+            return Err(Diag::new(
+                span,
+                format!("\"{pattern}\" can match the same URLs as `{other}`'s permalink"),
+            )
+            .help("give one of them a different literal prefix, e.g. \"/blog/[slug]\" and \"/docs/[slug]\""));
+        }
+        url_shapes.push((kind_key, shape));
+        ext.schema.collections.get_mut(&table).unwrap().url = Some(pattern);
+    }
+    Ok(())
+}
+
+fn check_kind_url(
+    schema: &Schema,
+    table: &str,
+    pattern: &str,
+    span: Span,
+) -> Result<Vec<crate::kind_url::Segment>, Diag> {
+    let coll = &schema.collections[table];
+    if !coll.editor && coll.taxonomy.is_none() && coll.commerce.is_none() {
+        return Err(Diag::new(
+            span,
+            format!(
+                "`{}` has no public pages: only collections and taxonomies have canonical URLs",
+                coll.key
+            ),
+        ));
+    }
+    let public_slug = |target: &str| {
+        schema.collections.get(target).is_some_and(|c| {
+            (c.editor || c.taxonomy.is_some())
+                && match c.access.get("read") {
+                    None => true,
+                    Some(Access::Role(r)) => r == "anyone",
+                    _ => false,
+                }
+        })
+    };
+    let kind = crate::kind_url::UrlKind {
+        columns: &coll.columns,
+        dated: coll.drafts,
+        hierarchical: coll.hierarchical,
+        public_slug: &public_slug,
+    };
+    crate::kind_url::check(pattern, &kind).map_err(|e| Diag::new(span, e.message).help(e.help))
+}
+
+/// Scans a page module's AST for `db.<kind>.get(...)` calls using route `params`, returning
+/// `(kind_key, param_field_map)` pairs (e.g., `("posts", {"slug": "slug"})`).
+fn infer_route_kinds(
+    module: &crate::ir::Module,
+    param_names: &[String],
+) -> Vec<(String, indexmap::IndexMap<String, String>)> {
+    use crate::ir::{ArrEl, Expr, ExprKind, FnBody, Prop, PropKey, Stmt};
+
+    fn db_kind_get(callee: &Expr) -> Option<String> {
+        let ExprKind::Member { obj, prop, .. } = &callee.kind else {
+            return None;
+        };
+        if prop != "get" {
+            return None;
+        }
+        let ExprKind::Member {
+            obj: root, prop: kind, ..
+        } = &obj.kind
+        else {
+            return None;
+        };
+        let is_db = match &root.kind {
+            ExprKind::Ident(n) => n == "db",
+            ExprKind::Member {
+                obj: inner, prop: p, ..
+            } => {
+                p == "db"
+                    || (p == "system"
+                        && (matches!(&inner.kind, ExprKind::Ident(n) if n == "db")
+                            || matches!(&inner.kind, ExprKind::Member { prop: p2, .. } if p2 == "db")))
+            }
+            _ => false,
+        };
+        is_db.then(|| kind.clone())
+    }
+
+    fn extract_param_ref(e: &Expr, param_names: &[String]) -> Option<String> {
+        match &e.kind {
+            ExprKind::Member { obj, prop, .. }
+                if matches!(&obj.kind, ExprKind::Ident(n) if n == "params")
+                    && param_names.iter().any(|p| p == prop) =>
+            {
+                Some(prop.clone())
+            }
+            ExprKind::Ident(n) if param_names.iter().any(|p| p == n) => Some(n.clone()),
+            ExprKind::Call { callee, args, .. } => {
+                if let ExprKind::Member { obj, .. } = &callee.kind
+                    && let Some(p) = extract_param_ref(obj, param_names)
+                {
+                    return Some(p);
+                }
+                args.iter().find_map(|a| match a {
+                    ArrEl::Item(x) => extract_param_ref(x, param_names),
+                    _ => None,
+                })
+            }
+            _ => None,
+        }
+    }
+
+    fn walk_expr(
+        e: &Expr,
+        param_names: &[String],
+        out: &mut Vec<(String, indexmap::IndexMap<String, String>)>,
+    ) {
+        match &e.kind {
+            ExprKind::Call { callee, args, .. } => {
+                if let Some(kind) = db_kind_get(callee)
+                    && let Some(ArrEl::Item(arg)) = args.first()
+                {
+                    let mut mapping = indexmap::IndexMap::new();
+                    match &arg.kind {
+                        ExprKind::Object(props) => {
+                            for p in props {
+                                if let Prop::KV(PropKey::Static(key), value) = p
+                                    && let Some(param) = extract_param_ref(value, param_names)
+                                {
+                                    mapping.insert(param, key.clone());
+                                }
+                            }
+                        }
+                        _ => {
+                            if let Some(param) = extract_param_ref(arg, param_names) {
+                                mapping.insert(param, "id".into());
+                            }
+                        }
+                    }
+                    if !mapping.is_empty() && !out.iter().any(|(k, _)| k == &kind) {
+                        out.push((kind, mapping));
+                    }
+                }
+                walk_expr(callee, param_names, out);
+                for a in args {
+                    match a {
+                        ArrEl::Item(x) | ArrEl::Spread(x) => walk_expr(x, param_names, out),
+                    }
+                }
+            }
+            ExprKind::Member { obj, .. } => walk_expr(obj, param_names, out),
+            ExprKind::Index { obj, index, .. } => {
+                walk_expr(obj, param_names, out);
+                walk_expr(index, param_names, out);
+            }
+            ExprKind::Assign { target, value, .. } => {
+                walk_expr(target, param_names, out);
+                walk_expr(value, param_names, out);
+            }
+            ExprKind::Binary(_, a, b) | ExprKind::Logical(_, a, b) => {
+                walk_expr(a, param_names, out);
+                walk_expr(b, param_names, out);
+            }
+            ExprKind::Cond(a, b, c) => {
+                walk_expr(a, param_names, out);
+                walk_expr(b, param_names, out);
+                walk_expr(c, param_names, out);
+            }
+            ExprKind::Unary(_, x)
+            | ExprKind::Update { target: x, .. }
+            | ExprKind::Await(x)
+            | ExprKind::Yield { arg: Some(x), .. }
+            | ExprKind::Chain(x)
+            | ExprKind::As(x, _)
+            | ExprKind::NonNull(x) => walk_expr(x, param_names, out),
+            ExprKind::Array(els) => {
+                for a in els {
+                    match a {
+                        ArrEl::Item(x) | ArrEl::Spread(x) => walk_expr(x, param_names, out),
+                    }
+                }
+            }
+            ExprKind::Object(props) => {
+                for p in props {
+                    match p {
+                        Prop::KV(PropKey::Static(_), value) | Prop::Spread(value) => {
+                            walk_expr(value, param_names, out)
+                        }
+                        Prop::KV(PropKey::Computed(key), value) => {
+                            walk_expr(key, param_names, out);
+                            walk_expr(value, param_names, out);
+                        }
+                        Prop::NullPrototype => {}
+                    }
+                }
+            }
+            ExprKind::Template(_, exprs) | ExprKind::Sequence(exprs) => {
+                for x in exprs {
+                    walk_expr(x, param_names, out);
+                }
+            }
+            ExprKind::Func(f) => walk_body(&f.body, param_names, out),
+            ExprKind::Jsx(j) => {
+                for x in j.exprs() {
+                    walk_expr(x, param_names, out);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn walk_body(
+        body: &FnBody,
+        param_names: &[String],
+        out: &mut Vec<(String, indexmap::IndexMap<String, String>)>,
+    ) {
+        match body {
+            FnBody::Expr(e) => walk_expr(e, param_names, out),
+            FnBody::Block(stmts) => walk_stmts(stmts, param_names, out),
+        }
+    }
+
+    fn walk_stmts(
+        stmts: &[Stmt],
+        param_names: &[String],
+        out: &mut Vec<(String, indexmap::IndexMap<String, String>)>,
+    ) {
+        for s in stmts {
+            match s {
+                Stmt::Exported(inner) => walk_stmts(std::slice::from_ref(inner), param_names, out),
+                Stmt::ExportDefault(e) | Stmt::Expr(e) | Stmt::Throw(e) => walk_expr(e, param_names, out),
+                Stmt::Return(Some(e), _) => walk_expr(e, param_names, out),
+                Stmt::Decl { init: Some(e), .. } => walk_expr(e, param_names, out),
+                Stmt::Func(f) => walk_body(&f.body, param_names, out),
+                Stmt::If(t, a, b) => {
+                    walk_expr(t, param_names, out);
+                    walk_stmts(a, param_names, out);
+                    if let Some(b) = b {
+                        walk_stmts(b, param_names, out);
+                    }
+                }
+                Stmt::Block(b) => walk_stmts(b, param_names, out),
+                Stmt::While(t, b) | Stmt::DoWhile(b, t) => {
+                    walk_expr(t, param_names, out);
+                    walk_stmts(b, param_names, out);
+                }
+                Stmt::For {
+                    init,
+                    test,
+                    update,
+                    body,
+                    ..
+                } => {
+                    if let Some(i) = init {
+                        walk_stmts(std::slice::from_ref(i), param_names, out);
+                    }
+                    if let Some(t) = test {
+                        walk_expr(t, param_names, out);
+                    }
+                    if let Some(u) = update {
+                        walk_expr(u, param_names, out);
+                    }
+                    walk_stmts(body, param_names, out);
+                }
+                Stmt::ForOf { iter, body, .. } | Stmt::ForIn { iter, body, .. } => {
+                    walk_expr(iter, param_names, out);
+                    walk_stmts(body, param_names, out);
+                }
+                Stmt::Try {
+                    block,
+                    handler,
+                    finalizer,
+                    ..
+                } => {
+                    walk_stmts(block, param_names, out);
+                    if let Some(h) = handler {
+                        walk_stmts(h, param_names, out);
+                    }
+                    if let Some(f) = finalizer {
+                        walk_stmts(f, param_names, out);
+                    }
+                }
+                Stmt::Switch { disc, cases, .. } => {
+                    walk_expr(disc, param_names, out);
+                    for (c, b) in cases {
+                        if let Some(c) = c {
+                            walk_expr(c, param_names, out);
+                        }
+                        walk_stmts(b, param_names, out);
+                    }
+                }
+                Stmt::Labeled(_, inner, _) => walk_stmts(std::slice::from_ref(inner), param_names, out),
+                _ => {}
+            }
+        }
+    }
+
+    let mut out = Vec::new();
+    walk_stmts(&module.body, param_names, &mut out);
+    out
+}
+
+/// Converts a dynamic `app::Route` into a `kind_url` pattern (e.g. `/blog/:slug` or `/docs/:path`).
+fn route_to_url_pattern(
+    route: &app::Route,
+    param_fields: &indexmap::IndexMap<String, String>,
+    coll: &crate::schema::Collection,
+) -> String {
+    let mut out = String::new();
+    for seg in &route.segments {
+        out.push('/');
+        match seg {
+            app::Segment::Literal(l) => out.push_str(l),
+            app::Segment::Param(p) => {
+                out.push(':');
+                if let Some(field) = param_fields.get(p) {
+                    out.push_str(field);
+                } else if p == "id" || p == "slug" || p == "year" || p == "month" || p == "day" {
+                    out.push_str(p);
+                } else if coll.columns.contains_key(p) {
+                    out.push_str(p);
+                } else if coll.slug.is_some() {
+                    out.push_str("slug");
+                } else {
+                    out.push_str("id");
+                }
+            }
+            app::Segment::CatchAll(_) | app::Segment::OptionalCatchAll(_) => {
+                out.push_str(":path");
+            }
+        }
+    }
+    out
+}
+
+/// Binds each kind's canonical URL from `sp/app/` dynamic pages (or explicit `export const canonical`).
+fn bind_canonical_routes(
+    program: &loader::Program,
+    files: &indexmap::IndexMap<String, AppFile>,
+    ext: &mut extract::Extracted,
+) -> Result<(), Diag> {
+    struct Candidate {
+        file: String,
+        pattern: String,
+        explicit: bool,
+        span: Span,
+    }
+    let module_of = |file: &str| program.app_files.iter().find(|(p, _)| p == file).map(|(_, m)| *m);
+    let mut per_kind: indexmap::IndexMap<String, Vec<Candidate>> = indexmap::IndexMap::new();
+
+    for route in &program.app.routes {
+        if route.kind != RouteKind::Page {
+            continue;
+        }
+        let Some(file) = files.get(&route.file) else { continue };
+        let Some(module_idx) = module_of(&route.file) else { continue };
+        let span = at(program, module_idx);
+        let param_names: Vec<String> = route
+            .segments
+            .iter()
+            .filter_map(|s| match s {
+                app::Segment::Param(n) | app::Segment::CatchAll(n) | app::Segment::OptionalCatchAll(n) => {
+                    Some(n.clone())
+                }
+                app::Segment::Literal(_) => None,
+            })
+            .collect();
+        if param_names.is_empty() {
+            if let Some(Some(kind_key)) = &file.canonical {
+                return Err(Diag::new(
+                    export_at(program, module_idx, "canonical"),
+                    format!("`canonical = \"{kind_key}\"` needs a dynamic route segment like `[slug]` or `[...path]`"),
+                ));
+            }
+            continue;
+        }
+        match &file.canonical {
+            Some(None) => continue, // `export const canonical = false`
+            Some(Some(kind_key)) => {
+                let cspan = export_at(program, module_idx, "canonical");
+                ext.schema.ensure_builtin(kind_key);
+                let Some(table) = ext.schema.by_key(kind_key).map(|c| c.table.clone()) else {
+                    return Err(Diag::new(
+                        cspan,
+                        format!("`canonical = \"{kind_key}\"` names no collection, taxonomy, or built-in kind"),
+                    ));
+                };
+                let inferred = infer_route_kinds(&program.modules[module_idx], &param_names);
+                let fields = inferred
+                    .into_iter()
+                    .find(|(k, _)| k == kind_key)
+                    .map(|(_, m)| m)
+                    .unwrap_or_default();
+                let pattern = route_to_url_pattern(route, &fields, &ext.schema.collections[&table]);
+                check_kind_url(&ext.schema, &table, &pattern, cspan)?;
+                per_kind.entry(table).or_default().push(Candidate {
+                    file: route.file.clone(),
+                    pattern,
+                    explicit: true,
+                    span: cspan,
+                });
+            }
+            None => {
+                let inferred = infer_route_kinds(&program.modules[module_idx], &param_names);
+                // Only auto-bind when the page unambiguously loads a single kind by route param.
+                let matched: Vec<(String, indexmap::IndexMap<String, String>)> = inferred
+                    .into_iter()
+                    .filter(|(k, _)| {
+                        ext.schema.ensure_builtin(k);
+                        ext.schema
+                            .by_key(k)
+                            .is_some_and(|c| c.editor || c.taxonomy.is_some() || c.commerce.is_some())
+                    })
+                    .collect();
+                if matched.len() == 1 {
+                    let (kind_key, fields) = &matched[0];
+                    let table = ext.schema.by_key(kind_key).unwrap().table.clone();
+                    let pattern = route_to_url_pattern(route, fields, &ext.schema.collections[&table]);
+                    // Auto-inference silently skips patterns that aren't valid canonical URLs (e.g. non-identifying params).
+                    if check_kind_url(&ext.schema, &table, &pattern, span).is_ok() {
+                        per_kind.entry(table).or_default().push(Candidate {
+                            file: route.file.clone(),
+                            pattern,
+                            explicit: false,
+                            span,
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    for (table, candidates) in per_kind {
+        if ext.schema.collections[&table].url.is_some() {
+            continue; // Already set via `permalinks`.
+        }
+        let explicit: Vec<&Candidate> = candidates.iter().filter(|c| c.explicit).collect();
+        let chosen = if explicit.len() == 1 {
+            explicit[0]
+        } else if explicit.len() > 1 {
+            let key = &ext.schema.collections[&table].key;
+            let list = explicit.iter().map(|c| c.file.as_str()).collect::<Vec<_>>().join(", ");
+            return Err(Diag::new(
+                explicit[1].span,
+                format!("multiple pages set `canonical = \"{key}\"` ({list})"),
+            )
+            .help("keep `export const canonical` on the single canonical page for this kind"));
+        } else if candidates.len() == 1 {
+            &candidates[0]
+        } else {
+            let key = &ext.schema.collections[&table].key;
+            let list = candidates.iter().map(|c| c.file.as_str()).collect::<Vec<_>>().join(", ");
+            return Err(Diag::new(
+                candidates[1].span,
+                format!("multiple pages load `{key}` ({list}), so its canonical URL is ambiguous"),
+            )
+            .help(format!(
+                "add `export const canonical = \"{key}\"` on the canonical page, or `export const canonical = false` on the others"
+            )));
+        };
+        ext.schema.collections.get_mut(&table).unwrap().url = Some(chosen.pattern.clone());
     }
     Ok(())
 }
@@ -288,10 +972,8 @@ pub fn register(
         let allowed = app::allowed_exports(path);
         for name in exports.keys() {
             if !allowed.contains(&name.as_str()) {
-                let help = if name == "access" && path.ends_with("/page.tsx") {
-                    "use `export const guard`; on a page with HTTP methods, use `guard = { handlers: rule }` to authorize only those methods".to_string()
-                } else if name == "access" {
-                    "use `export const guard` to authorize pages and HTTP handlers".to_string()
+                let help = if name == "guard" {
+                    "rename `export const guard` to `export const access`".to_string()
                 } else if name.chars().next().is_some_and(|c| c.is_ascii_uppercase()) {
                     "move components into sp/components/ (or a `_private` folder) and import them".to_string()
                 } else {
@@ -300,7 +982,12 @@ pub fn register(
                         allowed.join(", ")
                     )
                 };
-                return Err(Diag::new(span, format!("{path} can't export `{name}`")).help(help));
+                let msg = if name == "guard" {
+                    format!("{path}: `export const guard` is now `export const access`")
+                } else {
+                    format!("{path} can't export `{name}`")
+                };
+                return Err(Diag::new(span, msg).help(help));
             }
         }
         let stem = stem(path);
@@ -430,33 +1117,46 @@ pub fn register(
             return Err(Diag::new(span, format!("{path} exports no HTTP handler"))
                 .help("export `GET`, `POST`, `PUT`, `PATCH` or `DELETE`"));
         }
+        match exports.get("canonical") {
+            None | Some(Value::Undef) => {}
+            Some(Value::Bool(false)) => file.canonical = Some(None),
+            Some(Value::Str(s)) => file.canonical = Some(Some(s.to_string())),
+            Some(other) => {
+                return Err(Diag::new(
+                    export_at(program, *module, "canonical"),
+                    format!("`canonical` is {}, not a collection name or false", other.describe()),
+                )
+                .help("write `export const canonical = \"posts\"` to claim a kind's canonical URL, or `export const canonical = false` to opt out"));
+            }
+        }
         // A signed webhook proves its sender with an HMAC over the raw body and runs as the system.
         if let Some(signature) = exports.get("signature") {
             let span = export_at(program, *module, "signature");
             if file.methods.is_empty() {
                 return Err(
                     Diag::new(span, format!("{path} exports `signature` but no HTTP handler")).help(
-                        "a signature authenticates HTTP handlers such as `POST`; use `guard` for the page itself",
+                        "a signature authenticates HTTP handlers such as `POST`; use `access` for the page itself",
                     ),
                 );
             }
             file.signature = Some(extract::signature_config(signature, span)?);
         }
-        if let Some(value) = exports.get("guard") {
+        if let Some(value) = exports.get("access") {
             register_guard(
                 path,
-                export_at(program, *module, "guard"),
+                export_at(program, *module, "access"),
                 value,
                 handler,
                 &mut file,
                 &mut ext.roots,
             )?;
         } else if !file.methods.is_empty() && file.signature.is_none() {
-            return Err(Diag::new(span, format!("{path} has HTTP handlers but no `guard`"))
-                .help("say who may call them: `export const guard = \"anyone\"` (or a role), or `export const signature = { secret: env(\"…\"), header, scheme }` for a signed webhook"));
+            return Err(Diag::new(span, format!("{path} has HTTP handlers but no `access`"))
+                .help("say who may call them: `export const access = \"anyone\"` (or a role), or `export const signature = { secret: env(\"…\"), header, scheme }` for a signed webhook"));
         }
         files.insert(path.clone(), file);
     }
+    bind_canonical_routes(program, &files, ext)?;
     let kinds: Vec<(String, String)> = ext
         .schema
         .collections

@@ -50,13 +50,13 @@ impl Compiler<'_, '_> {
         Ok(out)
     }
 
-    /// The input fields of one handler, and the type its first parameter has inside the handler.
+    /// The input fields of one handler, and the type its second parameter (after `ctx`) has inside the handler.
     fn inferred_input(&mut self, f: &Func, what: &str) -> Result<(IndexMap<String, Column>, Ty)> {
-        // A function that reads `this` takes it as a hidden first parameter, never an input.
-        let Some(p) = f.params.get(usize::from(receives_this(f))) else {
+        // Param 0 is `ctx` (after hidden `this` if present); param 1 is the typed input.
+        let Some(p) = f.params.get(usize::from(receives_this(f)) + 1) else {
             return Ok((IndexMap::new(), Ty::Obj(IndexMap::new())));
         };
-        let help = "type it: `async ({ id, limit = 10 }: { id: number; limit?: number }) => ...`";
+        let help = "type the second parameter after `ctx`: `async (ctx, { id, limit = 10 }: { id: number; limit?: number }) => ...`";
         if p.rest {
             return err_help(
                 p.span,

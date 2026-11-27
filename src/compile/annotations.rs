@@ -235,9 +235,9 @@ impl Compiler<'_, '_> {
                                 }
                             }
                         }
-                        // `"spacepress/content"`'s types, so a component can take the tree `nav()` returns.
+                        // `"spacepress/app"`'s content types (`NavItem`, `PagerLink`, `Heading`, `ApiReference`, ...).
                         if let Stmt::Import { source, specs, .. } = stmt
-                            && source == crate::loader::CONTENT_MODULE
+                            && source == crate::loader::APP_MODULE
                         {
                             for spec in specs {
                                 if spec.local == *name
@@ -249,7 +249,9 @@ impl Compiler<'_, '_> {
                             }
                         }
                         if let Stmt::Import { source, specs, .. } = stmt
-                            && (source == crate::loader::SP_MODULE || source == crate::loader::SERVER_MODULE)
+                            && (source == crate::loader::SP_MODULE
+                                || source == crate::loader::SERVER_MODULE
+                                || source == crate::loader::WORDPRESS_MODULE)
                         {
                             for spec in specs {
                                 if spec.local == *name
@@ -258,6 +260,18 @@ impl Compiler<'_, '_> {
                                     match imported.as_str() {
                                         "FieldAccessCtx" => return Ok(types::field_access_ctx()),
                                         "JobCtx" => return Ok(types::job_ctx()),
+                                        "QueryCtx" => return Ok(types::query_ctx()),
+                                        "MutationCtx" => return Ok(types::mutation_ctx()),
+                                        "RouteCtx" => return Ok(types::route_ctx()),
+                                        "WpCtx" => return Ok(types::wp_ctx()),
+                                        "Db" => return Ok(Ty::Db(types::DbCap::Full)),
+                                        "ReadOnlyDb" => return Ok(Ty::Db(types::DbCap::ReadOnly)),
+                                        "SystemDb" => return Ok(Ty::Db(types::DbCap::System)),
+                                        "SystemReadOnlyDb" => return Ok(Ty::Db(types::DbCap::SystemReadOnly)),
+                                        "Mail" => return Ok(Ty::Mail),
+                                        "Connectors" => return Ok(Ty::Connectors),
+                                        "Once" => return Ok(Ty::Once),
+                                        "Files" => return Ok(Ty::Files),
                                         _ => {}
                                     }
                                 }
@@ -302,6 +316,8 @@ impl Compiler<'_, '_> {
                     ("AbortSignal", []) => Ty::AbortSignal,
                     ("URL", []) => Ty::Url,
                     ("URLSearchParams", []) => Ty::UrlParams,
+                    ("Response", []) => Ty::Host(types::HostTy::Response),
+                    ("Headers", []) => Ty::Host(types::HostTy::Headers),
                     // The built-in subclasses are the same runtime value as `Error`; `name` tells them apart.
                     (name, []) if ERROR_CONSTRUCTORS.contains(&name) => Ty::Error,
                     // JSX's result type, with the names TypeScript's React typings use for it.

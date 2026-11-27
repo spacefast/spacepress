@@ -170,7 +170,6 @@ pub fn build(
             }
         }
     }
-    wp_hooks(program, &mut ev, &mut ext).map_err(|d| d.phase(diag::Code::Schema))?;
     let blocks = components(program, &mut ev, &mut ext).map_err(|d| d.phase(diag::Code::Schema))?;
     // Content renders block components on any page, so every route links their stylesheets.
     let block_modules: Vec<usize> = program
@@ -183,6 +182,8 @@ pub fn build(
         })
         .map(|(_, m)| *m)
         .collect();
+    app::materialize_builtins(program, &mut ext);
+    app::apply_permalinks(&mut ext, config_span).map_err(|d| d.phase(diag::Code::Schema))?;
     app::register(program, &mut ev, &mut ext, &block_modules).map_err(|d| d.phase(diag::Code::Schema))?;
     crate::content_page::register(program, &mut ext).map_err(|d| d.phase(diag::Code::Schema))?;
     crate::commerce::pages(&ext.schema, config_span).map_err(|d| d.phase(diag::Code::Schema))?;
@@ -535,82 +536,6 @@ pub fn build(
         plugin_report: settled.report,
         wordpress_uses,
     })
-}
-
-/// Each `sp/wp-hooks/` file becomes a root: its default export is the handler, an optional
-/// `export const priority = <integer>` its priority (default 10, so a hook's files run in file order).
-/// The hook must be in the catalog; the handler is typed from it when it compiles.
-fn wp_hooks(program: &loader::Program, ev: &mut eval::Evaluator, ext: &mut extract::Extracted) -> Result<(), Diag> {
-    use crate::value::Value;
-    for file in &program.wp_hooks {
-        let module = &program.modules[file.module];
-        let span = Span {
-            file: module.file,
-            start: 0,
-            end: 0,
-        };
-        let Some(hook) = crate::wordpress::hook(&file.hook) else {
-            let mut d = Diag::new(
-                span,
-                format!("`{}` is not a WordPress hook SpacePress types", file.hook),
-            );
-            d = match diag::suggest(&file.hook, crate::wordpress::hook_names()) {
-                Some(s) => d.help(format!(
-                    "did you mean `{s}`? Rename the file or directory under sp/wp-hooks/"
-                )),
-                None => d.help(format!(
-                    "sp/wp-hooks/ supports: {}",
-                    crate::wordpress::hook_names().collect::<Vec<_>>().join(", ")
-                )),
-            };
-            return Err(d);
-        };
-        let exports = ev.run_module(file.module)?;
-        let Some(Value::Closure(closure)) = exports.get("default") else {
-            return Err(
-                Diag::new(span, "a first/wp-hooks/ file needs a default-exported handler function").help(format!(
-                    "write `export default function ({}) {{ ... }}`",
-                    hook.params
-                        .iter()
-                        .map(|(n, _)| n.as_str())
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                )),
-            );
-        };
-        let priority = match exports.get("priority") {
-            None => 10,
-            Some(Value::Num(n)) if n.fract() == 0.0 && n.abs() < 1e9 => *n as i64,
-            Some(_) => {
-                return Err(Diag::new(span, "`priority` must be an integer")
-                    .help("WordPress runs lower priorities first; the default is 10"));
-            }
-        };
-        for name in exports.keys() {
-            if name != "default" && name != "priority" {
-                return Err(Diag::new(
-                    span,
-                    format!("a first/wp-hooks/ file exports only `default` and `priority`, not `{name}`"),
-                )
-                .help("move shared code into a module both files import"));
-            }
-        }
-        let index = ext.schema.wp_hooks.len();
-        ext.schema.wp_hooks.push(crate::schema::WpHook {
-            hook: file.hook.clone(),
-            filter: hook.filter,
-            priority,
-            args: hook.params.len(),
-            handler: String::new(),
-        });
-        ext.roots.push(extract::Root {
-            closure: closure.clone(),
-            slot: Slot::WpHook { index },
-            name: format!("wp_hook__{}_{}", file.hook, file.order),
-            plugin: None,
-        });
-    }
-    Ok(())
 }
 
 /// Every function exported from a `sp/components/` file under a capitalized name becomes a

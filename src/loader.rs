@@ -23,18 +23,20 @@ pub(crate) fn email_module(root: &Path, path: &Path) -> bool {
     path.starts_with(root.join(EMAILS_DIR))
 }
 
-/// Server-only runtime APIs (`db`, `HttpError`, `once`, `mail`, `connectors`).
+/// Server-only runtime APIs (`db`, `HttpError`).
 pub const SERVER_MODULE: &str = "spacepress/server";
-/// Page and layout helpers for `<dir>/app/` and components (docs/spec/rendering.md §2–§4).
+/// Page and layout helpers for `<dir>/app/` and components (`Link`, `Content`, `headings`, `apiReference`, ...).
 pub const APP_MODULE: &str = "spacepress/app";
-/// Navigation and OpenAPI helpers for server pages (src/compile/content.rs).
-pub const CONTENT_MODULE: &str = "spacepress/content";
+/// Commerce schema builders (`store`, `product`, `productCategory`, `productTag`, `order`).
+pub const COMMERCE_MODULE: &str = "spacepress/commerce";
+/// Admin UI builders (`adminScreen`, `adminWidget`, `adminDashboard`, `item`).
+pub const ADMIN_MODULE: &str = "spacepress/admin";
 /// Opt-in CLI-only destructive migration escape hatch (ADR 2026-11-21 §3).
 pub const DANGER_MODULE: &str = "spacepress/danger";
-/// WordPress core from TypeScript: abilities, hook types and functions (docs/decisions/2026-11-07-wordpress-from-typescript.md).
+/// WordPress core from TypeScript: `wp.action`, `wp.filter`, `abilities`, and core functions.
 pub const WORDPRESS_MODULE: &str = "spacepress/server/wp";
-/// The app's kinds, by registered name (docs/spec/spec.md §2.1); typed by `<dir>/_generated/db.d.ts`.
-pub const DB_MODULE: &str = "spacepress/server/db";
+/// Standard package.json subpath import for `<dir>/_generated/api`.
+pub const GENERATED_API_ALIAS: &str = "#sp/api";
 /// Standard React hooks in `"use client"` components (`useState`, `useEffect`, `useRef`).
 pub const REACT_MODULE: &str = "react";
 /// SpacePress client React hooks (`useLive`, `useMutation`, `useMount`, `useEvent`, `sharedState`, `uploadFile`).
@@ -52,7 +54,7 @@ pub fn is_server_module(spec: &str) -> bool {
 
 /// Whether `spec` is compiled server-only in SpacePress (refused inside `"use client"` components).
 pub fn is_server_only_module(spec: &str) -> bool {
-    is_server_module(spec) || spec == APP_MODULE || spec == CONTENT_MODULE
+    is_server_module(spec) || spec == APP_MODULE
 }
 
 /// Whether `spec` is SpacePress's React hooks module (`spacepress/react` or `@spacepress/client/react`).
@@ -70,14 +72,17 @@ pub fn client_builtin_module(spec: &str) -> bool {
     spec == REACT_MODULE || is_client_react_module(spec) || is_client_sdk_module(spec)
 }
 
-/// Whether a relative import `spec` from `from_file` targets `<dir>/_generated/api` (the zero-server-code
-/// generated client/island API bridge).
+/// Whether an import `spec` from `from_file` targets `#sp/api` or `<dir>/_generated/api`
+/// (the zero-server-code generated client/island API bridge).
 pub fn is_generated_api_import(
     project_root: &Path,
     layout: &crate::layout::Layout,
     from_file: &Path,
     spec: &str,
 ) -> bool {
+    if matches!(spec, GENERATED_API_ALIAS | "#sp/api.js" | "#sp/api.mjs" | "#sp/api.ts" | "#sp/api.d.ts") {
+        return true;
+    }
     if !spec.starts_with('.') {
         return false;
     }
@@ -126,9 +131,9 @@ pub fn builtin_module(spec: &str) -> bool {
     spec == SP_MODULE
         || spec == SERVER_MODULE
         || spec == WORDPRESS_MODULE
-        || spec == DB_MODULE
         || spec == APP_MODULE
-        || spec == CONTENT_MODULE
+        || spec == COMMERCE_MODULE
+        || spec == ADMIN_MODULE
         || spec == DANGER_MODULE
         || crate::builtins::module(spec).is_some()
 }
@@ -448,23 +453,26 @@ fn load_with_styles(fs: Rc<dyn Fs>, entry: &Path, discover_styles: bool) -> std:
         diagnostics.push(
             Diag::new(
                 Span { file, start: 0, end: 0 },
-                "wp-hooks/ beside spacepress.config.ts is from an earlier layout; its handlers would not register",
+                "wp-hooks/ is gone: declare WordPress hooks with wp.action() and wp.filter()",
             )
-            .help("move it into the SpacePress root: mkdir -p sp && git mv wp-hooks sp/wp-hooks")
+            .help("import `{ wp }` from \"spacepress/server/wp\" and export `wp.filter(...)` or `wp.action(...)` from sp/server.ts")
             .code(diag::Code::Import),
         );
     }
-    let dir = program.root.join(program.layout.wp_hooks());
-    match wp_hook_files(&*fs, &dir) {
-        Ok(files) => {
-            for (hook, order, path) in files {
-                match load_module(&*fs, &path, &mut program, &mut by_path, &mut diagnostics) {
-                    Ok(module) => program.wp_hooks.push(WpHookFile { hook, module, order }),
-                    Err(d) => diagnostics.push(d.phase(diag::Code::Import)),
-                }
-            }
-        }
-        Err(d) => diagnostics.push(d.phase(diag::Code::Import)),
+    let wp_hooks_dir = program.root.join(program.layout.wp_hooks());
+    if fs.is_dir(&wp_hooks_dir) {
+        let file = diag::register_file(&wp_hooks_dir, "");
+        diagnostics.push(
+            Diag::new(
+                Span { file, start: 0, end: 0 },
+                format!(
+                    "{}/ is gone: declare WordPress hooks with wp.action() and wp.filter()",
+                    program.layout.wp_hooks()
+                ),
+            )
+            .help("import `{ wp }` from \"spacepress/server/wp\" and export `wp.filter(\"the_content\", (ctx, content) => ...)` from sp/server.ts, then remove the wp-hooks/ folder")
+            .code(diag::Code::Import),
+        );
     }
     match component_files(&*fs, &sp_dir.join(COMPONENTS_DIR)) {
         Ok(files) => {
@@ -794,43 +802,6 @@ fn load_module(
         });
     }
     normalize_spacefast_modules(&mut body, commonjs.as_mut());
-    // `"spacepress:db"` gives this app's kinds to the module that imports them; re-exporting it would hand
-    // them on under another module's name, which no evaluator path resolves.
-    // Locals bound by `import { x } from "spacepress:db"`: exporting one again is the same re-export.
-    let db_locals: std::collections::HashSet<&str> = body
-        .iter()
-        .filter_map(|s| match s {
-            Stmt::Import { source, specs, .. } if source == DB_MODULE => Some(specs),
-            _ => None,
-        })
-        .flatten()
-        .map(|spec| spec.local.as_str())
-        .collect();
-    for stmt in &body {
-        let reexports = match stmt {
-            Stmt::ExportNames { from: Some(from), .. } | Stmt::ExportAll { from, .. } => from == DB_MODULE,
-            Stmt::ExportNames { names, from: None, .. } => {
-                names.iter().any(|(local, _)| db_locals.contains(local.as_str()))
-            }
-            _ => false,
-        };
-        if let Stmt::ExportNames { span, .. } | Stmt::ExportAll { span, .. } = stmt
-            && reexports
-        {
-            let installed = path
-                .strip_prefix(&program.root)
-                .is_ok_and(|rel| rel.components().any(|c| c.as_os_str() == "node_modules"));
-            diagnostics.push(
-                Diag::new(*span, "\"spacepress/server/db\" can't be re-exported")
-                    .help(if installed {
-                        "a plugin takes the app's kinds as options, e.g. seo({ posts }); it can't import \"spacepress/server/db\""
-                    } else {
-                        "import the kinds where they're used: `import { posts } from \"spacepress/server/db\"`"
-                    })
-                    .code(diag::Code::Import),
-            );
-        }
-    }
     let is_email = email_module(&program.root, path);
     let mut imports: Vec<(String, Span)> = body.iter().filter_map(import_source).collect();
     let first_require = imports.len();
@@ -885,13 +856,13 @@ fn load_module(
                 );
                 continue;
             }
-            if spec == SP_MODULE || spec == DANGER_MODULE {
+            if spec == SP_MODULE || spec == COMMERCE_MODULE || spec == ADMIN_MODULE || spec == DANGER_MODULE {
                 diagnostics.push(
                     Diag::new(
                         span,
                         format!("a \"use client\" component can't import runtime values from \"{spec}\""),
                     )
-                    .help("use `import type { ... } from \"spacepress\"` for shared types, or move server code into an action")
+                    .help("use `import type { ... } from \"spacepress\"` for shared types, or move server code into a query() or mutation()")
                     .code(diag::Code::Import),
                 );
                 continue;
@@ -906,7 +877,7 @@ fn load_module(
                 diagnostics.push(
                     Diag::new(span, format!("a \"use client\" component can't import \"{spec}\""))
                         .help(
-                            "\"use client\" components compile to the WordPress Interactivity API: import React hooks from \"react\", SpacePress hooks from \"spacepress/react\", generated `api` from \"../_generated/api\", and relative modules",
+                            "\"use client\" components compile to the WordPress Interactivity API: import React hooks from \"react\", SpacePress hooks from \"spacepress/react\", generated `api` from \"#sp/api\", and relative modules",
                         )
                         .code(diag::Code::Import),
                 );
@@ -917,7 +888,7 @@ fn load_module(
                 diagnostics.push(
                     Diag::new(span, format!("\"{spec}\" runs in the browser, not on the server"))
                         .help(
-                            "add \"use client\" at the top of a client component, or use \"spacepress/server/db\" and \"spacepress/server\" on the server",
+                            "add \"use client\" at the top of a client component, or use `ctx.db` / \"spacepress/server\" on the server",
                         )
                         .code(diag::Code::Import),
                 );
@@ -947,7 +918,7 @@ fn load_module(
             diagnostics.push(
                 Diag::new(span, format!("\"{spec}\" isn't available"))
                     .help(
-                        "available server modules: \"spacepress/server\", \"spacepress/server/db\", and \"spacepress/server/wp\" (page and content helpers are \"spacepress/app\" and \"spacepress/content\")",
+                        "available server modules: \"spacepress/server\" and \"spacepress/server/wp\" (page helpers are \"spacepress/app\")",
                     )
                     .code(diag::Code::Import),
             );
@@ -1600,12 +1571,16 @@ fn fence(
     )))
 }
 
-/// Crisp migration diagnostics for pre-split SpacePress import specifiers.
+/// Crisp migration diagnostics for removed/moved SpacePress import specifiers.
 fn legacy_specifier_diag(spec: &str) -> Option<(String, String)> {
     match spec {
-        "spacepress:db" => Some((
-            "\"spacepress:db\" moved to \"spacepress/server/db\"".into(),
-            "replace `from \"spacepress:db\"` with `from \"spacepress/server/db\"`".into(),
+        "spacepress:db" | "spacepress/server/db" | "@spacefast/spacepress/server/db" => Some((
+            format!("\"{spec}\" is gone: use `ctx.db` in handlers/pages or `import {{ db }} from \"spacepress/server\"` in server components"),
+            "call `db.<kind>.list(...)` / `db.system.<kind>.list(...)` instead of importing kinds from a virtual module".into(),
+        )),
+        "spacepress/content" | "@spacefast/spacepress/content" => Some((
+            format!("\"{spec}\" is gone: `nav`/`pager` live on hierarchical kinds (`db.<kind>.nav(doc)`) and `headings`/`apiReference` moved to \"spacepress/app\""),
+            "use `db.docs.nav(doc)` / `db.docs.pager(doc)` and `import { headings, apiReference } from \"spacepress/app\"`".into(),
         )),
         "php/wordpress" => Some((
             "\"php/wordpress\" moved to \"spacepress/server/wp\"".into(),
@@ -1631,8 +1606,8 @@ fn normalize_spacefast_modules(body: &mut [Stmt], commonjs: Option<&mut CommonJs
             SPACEFAST_APP_MODULE | "@spacefast/spacepress" => SP_MODULE,
             "@spacefast/spacepress/server" => SERVER_MODULE,
             "@spacefast/spacepress/app" => APP_MODULE,
-            "@spacefast/spacepress/content" => CONTENT_MODULE,
-            "@spacefast/spacepress/server/db" => DB_MODULE,
+            "@spacefast/spacepress/commerce" => COMMERCE_MODULE,
+            "@spacefast/spacepress/admin" => ADMIN_MODULE,
             "@spacefast/spacepress/server/wp" => WORDPRESS_MODULE,
             "@spacefast/spacepress/danger" => DANGER_MODULE,
             _ => continue,

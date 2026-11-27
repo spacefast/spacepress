@@ -295,6 +295,9 @@ impl Compiler<'_, '_> {
                 if self.is_global(obj, "crypto") {
                     return self.web_crypto_call(prop, args, *prop_span, span).map(Some);
                 }
+                if self.is_global(obj, "Response") {
+                    return self.response_static_call(prop, args, *prop_span, span).map(Some);
+                }
                 if self.is_global(obj, "Buffer") {
                     return self.buffer_call(prop, args, *prop_span, span).map(Some);
                 }
@@ -338,11 +341,7 @@ impl Compiler<'_, '_> {
                 );
             }
             "Response" => {
-                return err_help(
-                    span,
-                    "`new Response` isn't available in SpacePress code",
-                    "return a value, or `{ status, headers, body }` from a route",
-                );
+                return self.response_new(args, span).map(Some);
             }
             "FormData" | "Blob" => {
                 return err_help(
@@ -376,6 +375,102 @@ impl Compiler<'_, '_> {
             format!("(new \\SpacePress\\{class}({init}))"),
             Ty::Host(ty),
         )))
+    }
+
+    /// `Response.json(data, init?)`: returns a `Response` carrying JSON body + `content-type: application/json`.
+    fn response_static_call(&mut self, prop: &str, args: &[ArrEl], prop_span: Span, span: Span) -> Result<Out> {
+        if prop != "json" {
+            return err_help(
+                prop_span,
+                format!("`Response.{prop}` isn't available in SpacePress code"),
+                "use `Response.json(data, init?)` or `new Response(body?, init?)`",
+            );
+        }
+        if args.is_empty() || args.len() > 2 {
+            return err_help(
+                span,
+                "`Response.json()` takes data and an optional `{ status, headers }`",
+                "write `Response.json({ ok: true })` or `Response.json({ error: \"...\" }, { status: 400 })`",
+            );
+        }
+        let data_expr = self.arg(args, 0, span, "JSON data")?;
+        let data = self.expr(data_expr)?;
+        let data = self.finish_value(data, data_expr.span)?;
+        let init_php = self.response_init(args.get(1), span)?;
+        Ok(Out::atom(
+            format!("\\SpacePress\\FetchResponse::json({}, {init_php})", data.php),
+            Ty::Host(HostTy::Response),
+        ))
+    }
+
+    /// `new Response(body?, init?)`: builds a `Response` for route handlers.
+    fn response_new(&mut self, args: &[ArrEl], span: Span) -> Result<Out> {
+        if args.len() > 2 {
+            return err_help(
+                span,
+                "`new Response()` takes at most `(body?, init?)`",
+                "write `new Response(\"ok\", { status: 200, headers: { \"content-type\": \"text/plain\" } })`",
+            );
+        }
+        let body_php = match args.first() {
+            None => "''".to_string(),
+            Some(_) => {
+                let e = self.arg(args, 0, span, "body")?;
+                let v = self.expr(e)?;
+                let v = self.finish_value(v, e.span)?;
+                if !assignable(&v.ty, &Ty::union([Ty::Str, Ty::Null, Ty::Undefined])) {
+                    return err_help(
+                        e.span,
+                        format!("`new Response()` body must be a string or null, not {}", v.ty.describe()),
+                        "pass a string (or use `Response.json(data, init?)` for JSON)",
+                    );
+                }
+                format!("({} ?? '')", v.wrapped())
+            }
+        };
+        let init_php = self.response_init(args.get(1), span)?;
+        Ok(Out::atom(
+            format!("\\SpacePress\\FetchResponse::from({body_php}, {init_php})"),
+            Ty::Host(HostTy::Response),
+        ))
+    }
+
+    fn response_init(&mut self, arg: Option<&ArrEl>, span: Span) -> Result<String> {
+        let Some(arg) = arg else {
+            return Ok("null".to_string());
+        };
+        let ArrEl::Item(e) = arg else {
+            return err(span, "spread arguments aren't supported here");
+        };
+        let v = self.expr(e)?;
+        let v = self.finish_value(v, e.span)?;
+        let want = Ty::Obj(
+            [
+                ("status".to_string(), (Ty::Num, true)),
+                ("statusText".to_string(), (Ty::Str, true)),
+                (
+                    "headers".to_string(),
+                    (
+                        Ty::union([
+                            Ty::Map(Box::new(Ty::Str)),
+                            Ty::Host(HostTy::Headers),
+                            Ty::Array(Box::new(Ty::Tuple(vec![Ty::Str, Ty::Str]))),
+                        ]),
+                        true,
+                    ),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        );
+        if !assignable(&v.ty, &Ty::union([want, Ty::Null, Ty::Undefined])) {
+            return err_help(
+                e.span,
+                format!("`Response` init must be `{{ status?, headers? }}`, not {}", v.ty.describe()),
+                "write `{ status: 201, headers: { \"cache-control\": \"no-store\" } }`",
+            );
+        }
+        Ok(v.php)
     }
 
     /// `fetch(url, init?)`, the standard signature, → `Promise<Response>`.

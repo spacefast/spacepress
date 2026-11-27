@@ -27,7 +27,7 @@ use crate::extract::{Extracted, Root, Slot};
 use crate::ir::*;
 use crate::num::php_number;
 use crate::schema::{ColType, Column, HookKind, Owner, RelKind, RouteDependency, Schema};
-use crate::types::{self, Builder, BuilderKind, JSON_TYPES, Ty};
+use crate::types::{self, JSON_TYPES, Ty};
 use crate::value::*;
 use indexmap::IndexMap;
 use std::collections::{HashMap, HashSet};
@@ -736,7 +736,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
     fn hook_writes(&mut self, root: &Root) {
         let Slot::Hook {
             table,
-            kind: HookKind::BeforeCreate | HookKind::BeforeUpdate,
+            kind: hook_kind @ (HookKind::BeforeCreate | HookKind::BeforeUpdate),
         } = &root.slot
         else {
             return;
@@ -747,21 +747,47 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let key = self.schema.collections[table].key.clone();
         let f = &root.closure.func;
         let mut fields = std::collections::BTreeSet::new();
+        let target_key = if *hook_kind == HookKind::BeforeCreate { "data" } else { "patch" };
         if let Some(p) = f.params.first() {
             let columns = &self.schema.collections[table].columns;
-            for path in self.effects.writes_below(p.pat.span()) {
-                match path.as_slice() {
-                    [] => {}
-                    [effects::Step::Field(name), ..] if columns.contains_key(name) => {
-                        fields.insert(name.clone());
-                    }
-                    _ => {
-                        fields.insert("*".to_string());
+            match &p.pat {
+                Pat::Id(..) => {
+                    for path in self.effects.writes_below(p.pat.span()) {
+                        match path.as_slice() {
+                            [] => {}
+                            [effects::Step::Field(k), effects::Step::Field(name), ..]
+                                if k == target_key && columns.contains_key(name) =>
+                            {
+                                fields.insert(name.clone());
+                            }
+                            [effects::Step::Field(k), ..] if k == target_key => {
+                                fields.insert("*".to_string());
+                            }
+                            _ => {}
+                        }
                     }
                 }
-            }
-            if !matches!(p.pat, Pat::Id(..)) {
-                fields.insert("*".to_string());
+                Pat::Obj { props, .. } => {
+                    if let Some((_, prop_pat)) = props.iter().find(|(k, _)| k == target_key) {
+                        for path in self.effects.writes_below(prop_pat.span()) {
+                            match path.as_slice() {
+                                [] => {}
+                                [effects::Step::Field(name), ..] if columns.contains_key(name) => {
+                                    fields.insert(name.clone());
+                                }
+                                _ => {
+                                    fields.insert("*".to_string());
+                                }
+                            }
+                        }
+                        if !matches!(prop_pat, Pat::Id(..)) {
+                            fields.insert("*".to_string());
+                        }
+                    }
+                }
+                _ => {
+                    fields.insert("*".to_string());
+                }
             }
         }
         if let Some(Ty::Fn(_, ret)) = self.helper_types.get(&closure_key(&root.closure)) {
@@ -799,13 +825,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
         let list = calls.join(", ");
         let body = match kind {
             HookKind::BeforeCreate => format!(
-                "function {name}(\\SpacePress\\JsObject $data, $ctx) {{\n\tforeach ([{list}] as $hook) {{\n\t\t$result = $hook($data, $ctx);\n\t\tif ($result instanceof \\SpacePress\\JsObject) {{\n\t\t\t$data = $result;\n\t\t\t$ctx->p['data'] = $result;\n\t\t}}\n\t}}\n\treturn $data;\n}}\n\n"
+                "function {name}(\\SpacePress\\JsObject $ctx) {{\n\tforeach ([{list}] as $hook) {{\n\t\t$result = $hook($ctx);\n\t\tif ($result instanceof \\SpacePress\\JsObject) {{\n\t\t\t$ctx->p['data'] = $result;\n\t\t}}\n\t}}\n\treturn $ctx->p['data'];\n}}\n\n"
             ),
             HookKind::BeforeUpdate => format!(
-                "function {name}(\\SpacePress\\JsObject $data, $existing, $ctx) {{\n\tforeach ([{list}] as $hook) {{\n\t\t$result = $hook($data, $existing, $ctx);\n\t\tif ($result instanceof \\SpacePress\\JsObject) {{\n\t\t\t$data = $result;\n\t\t\t$ctx->p['data'] = $result;\n\t\t}}\n\t}}\n\treturn $data;\n}}\n\n"
+                "function {name}(\\SpacePress\\JsObject $ctx) {{\n\tforeach ([{list}] as $hook) {{\n\t\t$result = $hook($ctx);\n\t\tif ($result instanceof \\SpacePress\\JsObject) {{\n\t\t\t$ctx->p['patch'] = $result;\n\t\t}}\n\t}}\n\treturn $ctx->p['patch'];\n}}\n\n"
             ),
             _ => format!(
-                "function {name}(...$arguments) {{\n\tforeach ([{list}] as $hook) {{\n\t\t$hook(...$arguments);\n\t}}\n}}\n\n"
+                "function {name}(\\SpacePress\\JsObject $ctx) {{\n\tforeach ([{list}] as $hook) {{\n\t\t$hook($ctx);\n\t}}\n}}\n\n"
             ),
         };
         self.output.push_str(&body);
@@ -1375,37 +1401,48 @@ impl<'a, 'p> Compiler<'a, 'p> {
     }
 
     fn root_params(&self, slot: &Slot) -> Vec<Ty> {
-        let ctx = types::hook_ctx();
         match slot {
             Slot::Hook { table, kind } => {
                 let row = types::row(self.schema, table);
                 match kind {
                     HookKind::BeforeCreate => {
                         let data = types::insert(self.schema, table);
-                        vec![data.clone(), types::data_ctx(data)]
+                        vec![types::hook_before_create_ctx(data)]
                     }
                     HookKind::BeforeUpdate => {
-                        let data = types::partial(types::insert(self.schema, table));
-                        vec![data.clone(), row, types::data_ctx(data)]
+                        let patch = types::partial(types::insert(self.schema, table));
+                        vec![types::hook_before_update_ctx(patch, row)]
                     }
-                    HookKind::AfterUpdate => vec![row.clone(), row, ctx],
-                    _ => vec![row, ctx],
+                    HookKind::BeforeDelete | HookKind::BeforeRestore | HookKind::BeforePurge => {
+                        vec![types::hook_before_row_ctx(row)]
+                    }
+                    HookKind::AfterUpdate | HookKind::AfterPublish => {
+                        vec![types::hook_after_ctx(row.clone(), Some(row))]
+                    }
+                    HookKind::AfterCreate | HookKind::AfterDelete | HookKind::AfterRestore | HookKind::AfterPurge => {
+                        vec![types::hook_after_ctx(row, None)]
+                    }
                 }
             }
             Slot::JobHandler { job } => vec![
+                types::job_ctx(),
                 match &self.schema.jobs[job].input_ty {
                     Some(t) => t.clone(),
                     None => types::action_input(&self.schema.jobs[job].input, &types::json_ty),
                 },
-                types::job_ctx(),
             ],
             Slot::FieldAccess { .. } => vec![types::field_access_ctx()],
-            Slot::WpHook { index } => crate::wordpress::hook(&self.schema.wp_hooks[*index].hook)
-                .expect("checked in the pipeline")
-                .params
-                .into_iter()
-                .map(|(_, t)| t)
-                .collect(),
+            Slot::WpHook { index } => {
+                let mut params = vec![types::wp_ctx()];
+                if let Some(hook) = crate::wordpress::hook(&self.schema.wp_hooks[*index].hook) {
+                    params.extend(hook.params.into_iter().map(|(_, t)| t));
+                } else {
+                    for _ in 0..self.schema.wp_hooks[*index].args {
+                        params.push(Ty::Unknown);
+                    }
+                }
+                params
+            }
             // A component's own annotation types its props (see `compile_function`); a page's
             // `metadata` function takes the same props.
             Slot::Component { .. } => vec![],
@@ -1419,15 +1456,23 @@ impl<'a, 'p> Compiler<'a, 'p> {
             Slot::Email { .. } => vec![],
             Slot::AppPage { file } | Slot::AppMetadata { file } => vec![self.app_props(file)],
             Slot::AppGuard { .. } | Slot::AppAccess { .. } => vec![types::access_ctx(Ty::Map(Box::new(Ty::Unknown)))],
-            Slot::AppHandler { .. } => vec![types::route_request(), ctx],
-            Slot::AppStaticParams { .. } => vec![],
-            Slot::ActionHandler { action } => vec![
-                match &self.schema.actions[action].input_ty {
-                    Some(t) => t.clone(),
-                    None => types::action_input(&self.schema.actions[action].input, &types::json_ty),
-                },
-                ctx,
-            ],
+            Slot::AppHandler { .. } => vec![types::route_request(), types::route_ctx()],
+            Slot::AppStaticParams { .. } => vec![types::static_params_ctx()],
+            Slot::ActionHandler { action } => {
+                let act = &self.schema.actions[action];
+                let ctx = if act.query {
+                    types::query_ctx()
+                } else {
+                    types::mutation_ctx()
+                };
+                vec![
+                    ctx,
+                    match &act.input_ty {
+                        Some(t) => t.clone(),
+                        None => types::action_input(&act.input, &types::json_ty),
+                    },
+                ]
+            }
             Slot::Access { owner, op } => {
                 let data = match owner {
                     Owner::Collection(t) if op == "create" => types::partial(types::insert(self.schema, t)),
@@ -2377,9 +2422,6 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         "this async call isn't awaited",
                         "add `await`; SpacePress runs async calls in order",
                     );
-                }
-                if matches!(v.ty, Ty::Builder(_)) {
-                    return err_help(e.span, "this database call never runs", "add `await` in front of it");
                 }
                 self.apply_effects(e.span);
                 let _ = writeln!(out, "{p}{};", v.php.replace('\n', &format!("\n{p}")));
@@ -3754,34 +3796,15 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 span,
                 "class values can only be used with new, instanceof, typeof, or static member access",
             ),
-            Ty::Builder(_) => err_help(span, "this database call never runs", "add `await` in front of it"),
             Ty::Promise(_) => err_help(
                 span,
                 "this async call isn't awaited",
                 "add `await`; SpacePress runs async calls in order",
             ),
-            Ty::KindSystem(_) => err_help(
-                span,
-                "`<kind>.system` can't be stored in a variable",
-                "call it directly: `posts.system.list(...)`",
-            ),
-            Ty::KindRevisions(_, _) => err_help(
-                span,
-                "`<kind>.revisions` can't be stored in a variable",
-                "call it directly: `posts.revisions.list(id)`",
-            ),
-            Ty::Db | Ty::DbQuery | Ty::QueryColl(_) | Ty::DbGlobals | Ty::DbGlobal(_) => {
-                err(span, "`db` can't be stored in a variable; call it directly")
-            }
             Ty::Collection(_) => err_help(
                 span,
-                "collections can't be used as values in hooks",
-                "pass the collection to db.insert/update/delete",
-            ),
-            Ty::FileBucket(_) => err_help(
-                span,
-                "file buckets can't be used as values",
-                "call `.get(id)`, `.readText(id)` or `.readBase64(id)` directly on the bucket",
+                "schema collections aren't runtime values; query through `db.<kind>`",
+                "use `await db.<kind>.list(...)` or `await db.<kind>.create(...)`",
             ),
             _ => Ok(v),
         }
@@ -4508,26 +4531,6 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 Out { ty: t, ..v }
             }
         };
-        let database_receiver = match &out.ty {
-            Ty::Db
-            | Ty::DbQuery
-            | Ty::QueryColl(_)
-            | Ty::KindSystem(_)
-            | Ty::KindRevisions(_, _)
-            | Ty::DbGlobals
-            | Ty::DbGlobal(_) => Some("\\SpacePress\\db()"),
-            Ty::Builder(_) => Some(""),
-            _ => None,
-        };
-        if let Some(expected) = database_receiver
-            && out.php != expected
-        {
-            return err_help(
-                span,
-                "unsupported database receiver expression",
-                "call database operations directly; evaluate side effects in a preceding statement",
-            );
-        }
         if out.ty == Ty::Never {
             self.fx().diverging.insert(span);
         }
@@ -4574,7 +4577,7 @@ impl<'a, 'p> Compiler<'a, 'p> {
             t if t.is_str() => v.wrapped(),
             Ty::Num | Ty::NumLit(_) | Ty::FreshNumLit(_) => format!("\\SpacePress\\Js::numStr({})", v.php),
             Ty::BigInt => format!("(string) ({})", v.php),
-            Ty::Builder(_) | Ty::Promise(_) => return err(span, "this value needs `await` first"),
+            Ty::Promise(_) => return err(span, "this value needs `await` first"),
             _ => format!("\\SpacePress\\Js::str({})", v.php),
         })
     }
@@ -5056,11 +5059,16 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             Value::Builtin(Builtin::Db) => {
                 if !self.fx().db_mode.allows_read() {
-                    return Err(Diag::new(span, "access rules can't query; put that in a hook")
+                    return Err(Diag::new(span, "field access rules can't query the database")
                         .code(crate::diag::Code::AccessQuery)
-                        .help("return a filter instead, e.g. `{ ownerId: ctx.user?.id ?? -1 }`"));
+                        .help("return a boolean from field access rules without querying"));
                 }
-                Ok(Out::atom("\\SpacePress\\db()", Ty::Db))
+                let cap = if self.fx().db_mode == DbMode::ReadOnly {
+                    types::DbCap::SystemReadOnly
+                } else {
+                    types::DbCap::Full
+                };
+                Ok(Out::atom("\\SpacePress\\db()", Ty::Db(cap)))
             }
             Value::Asset(file) => Ok(Out::atom(
                 format!("\\SpacePress\\Assets::url({})", php_str(file)),
@@ -7129,48 +7137,78 @@ impl<'a, 'p> Compiler<'a, 'p> {
             return self.class_member(o, prop, prop_span);
         }
         match &o.ty {
-            Ty::Collection(t) if prop == "system" => {
-                return Ok(Out::atom("\\SpacePress\\db()", Ty::KindSystem(t.clone())));
+            Ty::Db(cap) if prop == "system" => {
+                return Ok(Out::atom("\\SpacePress\\db()", Ty::Db(cap.as_system())));
             }
-            Ty::Collection(t) if prop == "revisions" => {
-                return Ok(Out::atom("\\SpacePress\\db()", Ty::KindRevisions(t.clone(), false)));
-            }
-            Ty::KindSystem(t) if prop == "revisions" => {
-                return Ok(Out::atom("\\SpacePress\\db()", Ty::KindRevisions(t.clone(), true)));
-            }
-            Ty::Db if prop == "query" => return Ok(Out::atom("\\SpacePress\\db()", Ty::DbQuery)),
-            Ty::Db if prop == "globals" => return Ok(Out::atom("\\SpacePress\\db()", Ty::DbGlobals)),
-            Ty::DbGlobals => {
-                return if self.schema.globals.contains_key(prop) {
-                    Ok(Out::atom("\\SpacePress\\db()", Ty::DbGlobal(prop.to_string())))
-                } else {
-                    let mut d = Diag::new(
-                        prop_span,
-                        format!("`db.globals.{prop}` doesn't match a global in `globals`"),
-                    );
-                    if let Some(s) = suggest(prop, self.schema.globals.keys().map(String::as_str)) {
-                        d = d.help(format!("did you mean `{s}`?"));
-                    }
-                    Err(d)
+            Ty::Db(_) if matches!(prop, "query" | "globals" | "insert" | "update" | "delete") => {
+                let help = match prop {
+                    "query" => "use `await db.<kind>.list(...)` or `await db.<kind>.get(...)` directly",
+                    "globals" => "globals are directly on `db`: use `await db.<global>.get()` / `.update(patch)`",
+                    "insert" => "use `await db.<kind>.create(data)`",
+                    "update" => "use `await db.<kind>.update(id, patch)`",
+                    "delete" => "use `await db.<kind>.delete(id)`",
+                    _ => unreachable!(),
                 };
+                return err_help(
+                    prop_span,
+                    format!("`db.{prop}` was removed in the unified `db` API"),
+                    help,
+                );
             }
-            Ty::DbQuery => {
-                return match self.schema.by_key(prop) {
-                    Some(c) => Ok(Out::atom("\\SpacePress\\db()", Ty::QueryColl(c.table.clone()))),
-                    None => {
-                        let mut d = Diag::new(
-                            prop_span,
-                            format!(
-                                "`db.query.{prop}` doesn't match a registered collection, table, or user projection"
-                            ),
-                        );
-                        let keys: Vec<&str> = self.schema.collections.values().map(|c| c.key.as_str()).collect();
-                        if let Some(s) = suggest(prop, keys) {
-                            d = d.help(format!("did you mean `{s}`?"));
-                        }
-                        Err(d)
-                    }
-                };
+            Ty::Db(cap) => {
+                if let Some(c) = self.schema.by_key(prop) {
+                    return Ok(Out::atom("\\SpacePress\\db()", Ty::Kind(c.table.clone(), *cap)));
+                }
+                if self.schema.globals.contains_key(prop) {
+                    return Ok(Out::atom("\\SpacePress\\db()", Ty::DbGlobal(prop.to_string(), *cap)));
+                }
+                let mut d = Diag::new(
+                    prop_span,
+                    format!("`db.{prop}` doesn't match any collection, table, taxonomy, or global"),
+                );
+                let names: Vec<&str> = self
+                    .schema
+                    .collections
+                    .values()
+                    .map(|c| c.key.as_str())
+                    .chain(self.schema.globals.keys().map(String::as_str))
+                    .collect();
+                if let Some(s) = suggest(prop, names) {
+                    d = d.help(format!("did you mean `db.{s}`?"));
+                }
+                return Err(d);
+            }
+            Ty::Kind(t, cap) if prop == "revisions" => {
+                return Ok(Out::atom("\\SpacePress\\db()", Ty::KindRevisions(t.clone(), *cap)));
+            }
+            Ty::Kind(t, _) if prop == "system" => {
+                let key = &self.schema.collections[t].key;
+                return err_help(
+                    prop_span,
+                    format!("`{key}.system` is now `db.system.{key}`"),
+                    format!("write `await db.system.{key}.list(...)`"),
+                );
+            }
+            Ty::Collection(t) => {
+                let key = &self.schema.collections[t].key;
+                return err_help(
+                    prop_span,
+                    format!("query `{key}` through `db.{key}`, not the schema export"),
+                    format!("write `await db.{key}.{prop}(...)`"),
+                );
+            }
+            Ty::Files => {
+                if self.schema.files.contains_key(prop) {
+                    return Ok(Out::atom("null", Ty::FileBucket(prop.to_string())));
+                }
+                let mut d = Diag::new(
+                    prop_span,
+                    format!("`files.{prop}` doesn't match any `files()` bucket"),
+                );
+                if let Some(s) = suggest(prop, self.schema.files.keys().map(String::as_str)) {
+                    d = d.help(format!("did you mean `files.{s}`?"));
+                }
+                return Err(d);
             }
             _ => {}
         }
@@ -8253,9 +8291,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         let v = self.expr(x)?;
         let module = self.fx().module;
-        // SpacePress's own typed async calls (fetch, database builders, typed helpers) block, as in
+        // SpacePress's own typed async calls (fetch, database calls, typed helpers) block, as in
         // TypeScript; any other awaited value from checked JavaScript goes through the job queue.
-        if self.javascript_module(module) && !matches!(v.ty, Ty::Promise(_) | Ty::Builder(_)) {
+        if self.javascript_module(module) && !matches!(v.ty, Ty::Promise(_)) {
             let v = self.finish_value(v, x.span)?;
             self.uses_jobs = true;
             return Ok(Out::atom(
@@ -8269,7 +8307,6 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         Ok(match v.ty {
             Ty::Promise(t) => Out { ty: *t, ..v },
-            Ty::Builder(b) => Out::new(b.php(), b.result(self.schema)),
             // A call into imported JavaScript may return a promise; awaiting it drives the job queue.
             Ty::Dynamic => {
                 self.uses_jobs = true;
@@ -8995,8 +9032,11 @@ impl<'a, 'p> Compiler<'a, 'p> {
         if let Some(name) = self.app_builtin(callee)? {
             return self.app_call(name, args, span);
         }
-        if let Some(name) = self.content_builtin(callee)? {
-            return self.content_call(name, args, span);
+        // `once(key, fn)` destructured from job/cron `ctx`: `const { once } = ctx; await once(...)`.
+        if let ExprKind::Ident(n) = &callee.kind
+            && matches!(self.resolve(n, callee.span), Ok(Resolved::Local(l)) if l.ty == Ty::Once)
+        {
+            return self.once_call(args, span);
         }
         match &callee.kind {
             ExprKind::Member {
@@ -10581,18 +10621,34 @@ impl<'a, 'p> Compiler<'a, 'p> {
         }
         let recv_span = recv_expr.span;
         match recv.ty.clone() {
-            Ty::QueryColl(table) => return self.query_call(&table, m, args, span, m_span),
-            Ty::Collection(table) => return self.kind_call(&table, false, m, args, span, m_span),
-            Ty::KindSystem(table) => return self.kind_call(&table, true, m, args, span, m_span),
-            Ty::KindRevisions(table, system) => {
-                return self.kind_revisions_call(&table, system, m, args, span, m_span);
+            Ty::Kind(table, cap) => return self.kind_call(&table, cap, m, args, span, m_span),
+            Ty::KindRevisions(table, cap) => {
+                return self.kind_revisions_call(&table, cap.is_system(), m, args, span, m_span);
             }
-            Ty::Db => return self.db_call(m, args, span, m_span),
-            Ty::Builder(b) => return self.builder_call(*b, m, args, span, m_span),
-            Ty::DbQuery => return err(m_span, format!("use `db.query.<collection>.{m}(...)`")),
-            Ty::DbGlobals => return err(m_span, format!("use `db.globals.<global>.{m}(...)`")),
-            Ty::DbGlobal(name) => return self.db_global_call(&name, m, args, m_span),
+            Ty::Db(_) => {
+                let help = match m {
+                    "insert" => "use `await db.<kind>.create(data)`",
+                    "update" => "use `await db.<kind>.update(id, patch)`",
+                    "delete" => "use `await db.<kind>.delete(id)`",
+                    _ => "access a collection or global on `db`, e.g. `await db.posts.list()` or `await db.settings.get()`",
+                };
+                return err_help(m_span, format!("`db` has no method `{m}`"), help);
+            }
+            Ty::DbGlobal(name, cap) => return self.db_global_call(&name, cap, m, args, m_span),
+            Ty::Collection(table) => {
+                let key = &self.schema.collections[&table].key;
+                return err_help(
+                    m_span,
+                    format!("query `{key}` through `db.{key}`, not the schema export"),
+                    format!("write `await db.{key}.{m}(...)`"),
+                );
+            }
+            Ty::Mail => return self.mail_call(m, args, span),
+            Ty::Connectors => return self.connectors_call(m, args, span),
             Ty::FileBucket(bucket) => return self.file_bucket_call(&bucket, m, args, span, m_span),
+            Ty::Obj(_) if m == "once" && recv.ty.field("once").is_some_and(|(t, _)| t == Ty::Once) => {
+                return self.once_call(args, span);
+            }
             _ => {}
         }
         if recv.ty == Ty::BigInt {
@@ -11250,115 +11306,63 @@ impl<'a, 'p> Compiler<'a, 'p> {
         php
     }
 
-    fn query_call(&mut self, table: &str, m: &str, args: &[ArrEl], span: Span, m_span: Span) -> Result<Out> {
-        let key = self.schema.collections[table].key.clone();
-        self.uses("read", key, m_span);
-        if !matches!(m, "findMany" | "findFirst") {
-            return err_help(
-                m_span,
-                format!("`db.query.<collection>` has no method `{m}`"),
-                "use findMany or findFirst",
-            );
-        }
-        if args.len() > 1 {
-            return err_help(
-                span,
-                format!("db.query.{table}.{m} accepts at most one options argument"),
-                "pass filters and ordering inside one options object",
-            );
-        }
-        let (opts, row_ty) = match args.first() {
-            None => ("[]".to_string(), types::row(self.schema, table)),
-            Some(ArrEl::Item(o)) => self.query_opts(table, o, m == "findMany")?,
-            Some(ArrEl::Spread(x)) => return err(x.span, "spread arguments aren't supported here"),
-        };
-        let options = args.first().and_then(|arg| match arg {
-            ArrEl::Item(opts) => Some(opts),
-            ArrEl::Spread(_) => None,
-        });
-        let where_ = args.first().and_then(|arg| match arg {
-            ArrEl::Item(opts) => object_prop(opts, "where"),
-            ArrEl::Spread(_) => None,
-        });
-        let exact = where_.is_some_and(|filter| {
-            self.schema.collections[table].columns.iter().any(|(name, col)| {
-                (col.primary_key || col.unique)
-                    && object_prop(filter, name).is_some_and(|expr| {
-                        matches!(expr.kind, ExprKind::Str(_) | ExprKind::Num(_)) || object_prop(expr, "eq").is_some()
-                    })
-            })
-        });
-        let collection = table.to_string();
-        self.route_dep(if exact {
-            RouteDependency::Row { collection }
-        } else {
-            RouteDependency::List { collection }
-        });
-        let (php, ty) = if m == "findMany" {
-            let opts = self.projected_list(table, span, options, opts);
-            (
-                format!("\\SpacePress\\Seam::findMany({}, {opts})", php_str(table)),
-                Ty::Array(Box::new(row_ty)),
-            )
-        } else {
-            (
-                format!("\\SpacePress\\Seam::findFirst({}, {opts})", php_str(table)),
-                row_ty.nullable(),
-            )
-        };
-        Ok(Out::atom(php, Ty::Promise(Box::new(ty))))
-    }
-
-    /// `posts.list(q)`, `paginate`, `get`, `count`, `create`, `update`, `delete` on a `"spacepress:db"`
-    /// kind (spec §3): the visitor's call, access rules and field masks applied; jobs and signed
-    /// webhooks run as the system. `posts.system.*` is the same call, trusted.
+    /// `db.<kind>.list(q)`, `paginate`, `get`, `count`, `create`, `update`, `delete`, `restore`,
+    /// `purge`, plus `nav(current?)` and `pager(current)` on hierarchical kinds.
     fn kind_call(
         &mut self,
         table: &str,
-        system: bool,
+        cap: types::DbCap,
         m: &str,
         args: &[ArrEl],
         span: Span,
         m_span: Span,
     ) -> Result<Out> {
-        const METHODS: [&str; 9] = [
-            "list", "paginate", "get", "count", "create", "update", "delete", "restore", "purge",
+        if m == "nav" {
+            return self.kind_nav(table, args, span);
+        }
+        if m == "pager" {
+            return self.kind_pager(table, args, span);
+        }
+        let system = cap.is_system();
+        const METHODS: [&str; 11] = [
+            "list", "paginate", "get", "count", "create", "update", "delete", "restore", "purge", "nav", "pager",
         ];
         if !METHODS.contains(&m) {
             let mut d = Diag::new(m_span, format!("kinds have no method `{m}`"));
             if let Some(s) = suggest(m, METHODS) {
                 d = d.help(format!("did you mean `{s}`?"));
             } else {
-                d = d.help("use list, paginate, get, count, create, update, delete, restore or purge");
+                d = d.help("use list, paginate, get, count, create, update, delete, restore, purge, nav or pager");
             }
             return Err(d);
         }
         let db_mode = self.fx().db_mode;
         if !db_mode.allows_read() {
-            return Err(Diag::new(span, "access rules can't query; put that in a hook")
+            return Err(Diag::new(span, "field access rules can't query the database")
                 .code(crate::diag::Code::AccessQuery)
-                .help("return a filter instead, e.g. `{ ownerId: ctx.user?.id ?? -1 }`"));
+                .help("return a boolean from field access rules without querying"));
         }
-        if !db_mode.allows_write() {
-            if !matches!(m, "list" | "paginate" | "get" | "count") {
-                return Err(Diag::new(
-                    span,
-                    "access rules can't write to the database; put that in a hook or action",
-                )
+        let is_write = !matches!(m, "list" | "paginate" | "get" | "count");
+        if is_write && (!cap.allows_write() || !db_mode.allows_write()) {
+            let msg = if !db_mode.allows_write() {
+                "access rules can't write to the database; put that in a hook or mutation"
+            } else {
+                "this context has a read-only `db`: writes aren't allowed here"
+            };
+            return Err(Diag::new(span, msg)
                 .code(crate::diag::Code::AccessQuery)
-                .help("use read-only `db.query.<kind>` in access rules, and put writes in a hook or action"));
-            }
-            if !system {
-                let key = &self.schema.collections[table].key;
-                return Err(Diag::new(
-                    span,
-                    "access rules can't call viewer-scoped reads; use `db.query.<kind>` or `<kind>.system` instead",
-                )
-                .code(crate::diag::Code::AccessQuery)
-                .help(format!(
-                    "use `db.query.{key}.findMany(...)` or `{key}.system.{m}(...)` so access rules don't recurse"
-                )));
-            }
+                .help("move writes into a `mutation()`, hook, job, or route handler"));
+        }
+        if !db_mode.allows_write() && !system {
+            let key = &self.schema.collections[table].key;
+            return Err(Diag::new(
+                span,
+                "access rules can't call viewer-scoped reads; use `db` from the access context",
+            )
+            .code(crate::diag::Code::AccessQuery)
+            .help(format!(
+                "destructure `({{ user, db }}) => ...` and call `db.{key}.{m}(...)` so access rules don't recurse"
+            )));
         }
         let key = self.schema.collections[table].key.clone();
         self.uses(
@@ -11462,8 +11466,31 @@ impl<'a, 'p> Compiler<'a, 'p> {
             }
             "get" => {
                 let target = plain[0];
-                let selector = if let ExprKind::Object(_) = &target.kind {
-                    format!("['where' => {}]", self.filter(table, target, true)?)
+                let selector = if let ExprKind::Object(props) = &target.kind {
+                    // Hierarchical kinds support `{ path: string[] | string }` to resolve a slug path via `parent`.
+                    let path_val = if self.schema.collections[table].hierarchical && props.len() == 1 {
+                        match &props[0] {
+                            Prop::KV(PropKey::Static(key), value) if key == "path" => Some(value),
+                            _ => None,
+                        }
+                    } else {
+                        None
+                    };
+                    if let Some(pv) = path_val {
+                        let v = self.expr(pv)?;
+                        let v = self.finish_value(v, pv.span)?;
+                        let want = Ty::union([Ty::Str, Ty::Array(Box::new(Ty::Str))]);
+                        if !assignable(&v.ty, &want) {
+                            return err_help(
+                                pv.span,
+                                format!("`{key}.get({{ path }})` needs a string or string[], not {}", v.ty.describe()),
+                                "pass `params.path` from a `[...path]` route or a path string like \"guides/getting-started\"",
+                            );
+                        }
+                        format!("['path' => {}]", v.php)
+                    } else {
+                        format!("['where' => {}]", self.filter(table, target, true)?)
+                    }
                 } else {
                     format!("['id' => {}]", id(self, target)?)
                 };
@@ -12312,16 +12339,25 @@ impl<'a, 'p> Compiler<'a, 'p> {
         Ok(Out::atom(php, Ty::Promise(Box::new(ty))))
     }
 
-    fn db_global_call(&mut self, name: &str, m: &str, args: &[ArrEl], m_span: Span) -> Result<Out> {
-        if m == "update" && !self.fx().db_mode.allows_write() {
-            return Err(Diag::new(
-                m_span,
-                "access rules can't write to the database; put that in a hook or action",
-            )
-            .code(crate::diag::Code::AccessQuery)
-            .help(format!(
-                "read globals with `db.globals.{name}.get()` in access rules, and put updates in a hook or action"
-            )));
+    fn db_global_call(
+        &mut self,
+        name: &str,
+        cap: types::DbCap,
+        m: &str,
+        args: &[ArrEl],
+        m_span: Span,
+    ) -> Result<Out> {
+        if m == "update" && (!cap.allows_write() || !self.fx().db_mode.allows_write()) {
+            let msg = if !self.fx().db_mode.allows_write() {
+                "access rules can't write to the database; put that in a hook or mutation"
+            } else {
+                "this context has a read-only `db`: globals can't be updated here"
+            };
+            return Err(Diag::new(m_span, msg)
+                .code(crate::diag::Code::AccessQuery)
+                .help(format!(
+                    "read globals with `await db.{name}.get()`, and move updates into a `mutation()`, hook, job, or route"
+                )));
         }
         self.uses(
             if m == "update" { "write" } else { "read" },
@@ -12337,12 +12373,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 fields: self.schema.globals[name].fields.keys().cloned().collect(),
             });
         } else {
-            self.route_opaque(format!("db.globals.{name}.{m}"));
+            self.route_opaque(format!("db.{name}.{m}"));
         }
+        let trusted = if cap.is_system() { "true" } else { "false" };
         // Typed like collection rows: `json<T>()` fields read and write as T.
         let row = types::columns_row(&self.schema.globals[name].fields, &types::json_ty);
         let php = match (m, args) {
-            ("get", []) => format!("\\SpacePress\\Seam::globalGet({})", php_str(name)),
+            ("get", []) => format!("\\SpacePress\\Seam::globalGet({}, {trusted})", php_str(name)),
             ("update", [ArrEl::Item(patch)]) => {
                 let v = self.expr(patch)?;
                 let v = self.finish_value(v, patch.span)?;
@@ -12371,129 +12408,19 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         ),
                     );
                 }
-                format!("\\SpacePress\\Seam::globalUpdate({}, {})", php_str(name), v.php)
+                format!("\\SpacePress\\Seam::globalUpdate({}, {}, {trusted})", php_str(name), v.php)
             }
             ("get", _) => return err(m_span, "`get()` takes no arguments"),
             ("update", _) => return err(m_span, "`update()` takes one patch object"),
             _ => {
                 return err_help(
                     m_span,
-                    format!("`db.globals.{name}` has no method `{m}`"),
+                    format!("`db.{name}` has no method `{m}`"),
                     "use get() or update(patch)",
                 );
             }
         };
         Ok(Out::new(php, Ty::Promise(Box::new(row))))
-    }
-
-    fn db_call(&mut self, m: &str, args: &[ArrEl], span: Span, m_span: Span) -> Result<Out> {
-        let kind = match m {
-            "insert" => BuilderKind::Insert,
-            "update" => BuilderKind::Update,
-            "delete" => BuilderKind::Delete,
-            "query" => {
-                return err(
-                    m_span,
-                    "`db.query` isn't a function: use `db.query.<collection>.findMany(...)`",
-                );
-            }
-            other => {
-                return err_help(
-                    m_span,
-                    format!("`db` has no method `{other}`"),
-                    "use db.query, db.insert, db.update, or db.delete",
-                );
-            }
-        };
-        self.route_opaque(format!("db.{m}"));
-        if !self.fx().db_mode.allows_write() {
-            return Err(Diag::new(
-                span,
-                "access rules can't write to the database; put that in a hook or action",
-            )
-            .code(crate::diag::Code::AccessQuery)
-            .help("use read-only `db.query.<kind>` in access rules, and put writes in a hook or action"));
-        }
-        crate::builtins::check("db", m, args.len(), crate::builtins::Phase::Emitter, span)?;
-        let t = self.arg(args, 0, span, "a collection")?;
-        let v = self.expr(t)?;
-        let Ty::Collection(table) = v.ty else {
-            return err(t.span, format!("db.{m}() needs a collection, not {}", v.ty.describe()));
-        };
-        if kind == BuilderKind::Delete {
-            let key = self.schema.collections[&table].key.clone();
-            self.uses("delete", key, t.span);
-        }
-        self.writes(
-            m_span,
-            match kind {
-                BuilderKind::Insert => "inserts a row",
-                BuilderKind::Update => "updates rows",
-                BuilderKind::Delete => "deletes rows",
-            },
-        );
-        if v.php != php_str(&table) {
-            return err_help(
-                t.span,
-                "unsupported database collection expression",
-                "pass a static collection reference; evaluate side effects in a preceding statement",
-            );
-        }
-        Ok(Out::atom(
-            "",
-            Ty::Builder(Box::new(Builder {
-                kind,
-                table,
-                values: None,
-                set: None,
-                filter: None,
-                returning: false,
-            })),
-        ))
-    }
-
-    fn builder_call(&mut self, mut b: Builder, m: &str, args: &[ArrEl], span: Span, m_span: Span) -> Result<Out> {
-        crate::builtins::check("db.builder", m, args.len(), crate::builtins::Phase::Emitter, span)?;
-        match (b.kind.clone(), m) {
-            (BuilderKind::Insert, "values") if b.values.is_none() => {
-                let x = self.arg(args, 0, span, "values")?;
-                b.values = Some(self.write_values(&b.table, x, true)?);
-            }
-            (BuilderKind::Update, "set") if b.set.is_none() => {
-                let x = self.arg(args, 0, span, "the changes")?;
-                b.set = Some(self.write_values(&b.table, x, false)?);
-            }
-            (BuilderKind::Update | BuilderKind::Delete, "where") if b.filter.is_none() => {
-                let key = self.schema.collections[&b.table].key.clone();
-                self.uses("read", key, m_span);
-                if b.kind == BuilderKind::Update && b.set.is_none() {
-                    return err_help(
-                        span,
-                        "unsupported update builder order",
-                        "call set(...) before where(...) so argument effects retain their order",
-                    );
-                }
-                let x = self.arg(args, 0, span, "a filter")?;
-                b.filter = Some(self.filter(&b.table, x, false)?);
-            }
-            (_, "returning") if !b.returning => b.returning = true,
-            (kind, other) => {
-                let valid = match kind {
-                    BuilderKind::Insert => "values(...), returning()",
-                    BuilderKind::Update => "set(...), where(...), returning()",
-                    BuilderKind::Delete => "where(...), returning()",
-                };
-                return err_help(
-                    m_span,
-                    format!("`{other}` isn't valid here"),
-                    format!("this call takes {valid}"),
-                );
-            }
-        }
-        if b.kind == BuilderKind::Insert && b.values.is_none() && m == "returning" {
-            return err(span, "call values(...) before returning()");
-        }
-        Ok(Out::atom("", Ty::Builder(Box::new(b))))
     }
 
     /// Insert values / update patch: literal objects are checked field by field.
@@ -13106,15 +13033,15 @@ fn truthiness_part(t: &Ty, truthy: bool) -> Ty {
         | Ty::Error
         | Ty::Html
         | Ty::Collection(_)
-        | Ty::Db
-        | Ty::DbQuery
-        | Ty::QueryColl(_)
-        | Ty::KindSystem(_)
+        | Ty::Db(_)
+        | Ty::Kind(_, _)
         | Ty::KindRevisions(_, _)
-        | Ty::DbGlobals
-        | Ty::DbGlobal(_)
-        | Ty::FileBucket(_)
-        | Ty::Builder(_) => {
+        | Ty::DbGlobal(_, _)
+        | Ty::Mail
+        | Ty::Connectors
+        | Ty::Once
+        | Ty::Files
+        | Ty::FileBucket(_) => {
             if truthy {
                 t.clone()
             } else {
@@ -13391,7 +13318,7 @@ fn awaited_element(t: &Ty) -> Option<Ty> {
             .map(awaited_element)
             .collect::<Option<Vec<_>>>()
             .map(Ty::union),
-        Ty::Dynamic | Ty::Unknown | Ty::Builder(_) => None,
+        Ty::Dynamic | Ty::Unknown => None,
         // PromiseResolve adopts an object with a callable (or possibly callable) `then`, so a
         // thenable element binds its settled value in JavaScript; only the job queue can settle it.
         Ty::Obj(_) | Ty::Map(_) if thenable(t) => None,
@@ -13461,15 +13388,15 @@ fn widen_fresh_literals(t: &Ty) -> Ty {
         | Ty::Error
         | Ty::Html
         | Ty::Collection(_)
-        | Ty::Db
-        | Ty::DbQuery
-        | Ty::QueryColl(_)
-        | Ty::KindSystem(_)
+        | Ty::Db(_)
+        | Ty::Kind(_, _)
         | Ty::KindRevisions(_, _)
-        | Ty::DbGlobals
-        | Ty::DbGlobal(_)
-        | Ty::FileBucket(_)
-        | Ty::Builder(_) => t.clone(),
+        | Ty::DbGlobal(_, _)
+        | Ty::Mail
+        | Ty::Connectors
+        | Ty::Once
+        | Ty::Files
+        | Ty::FileBucket(_) => t.clone(),
     }
 }
 
@@ -13559,6 +13486,9 @@ pub fn assignable(a: &Ty, b: &Ty) -> bool {
         (Ty::MapOf(ka, va), Ty::MapOf(kb, vb)) => same_type(ka, kb) && same_type(va, vb),
         (Ty::SetOf(a), Ty::SetOf(b)) => same_type(a, b),
         (Ty::Iter(a), Ty::Iter(b)) => assignable(a, b),
+        (Ty::Db(a), Ty::Db(b)) => a.assignable_to(*b),
+        (Ty::Kind(ta, ca), Ty::Kind(tb, cb)) => ta == tb && ca.assignable_to(*cb),
+        (Ty::DbGlobal(ga, ca), Ty::DbGlobal(gb, cb)) => ga == gb && ca.assignable_to(*cb),
         (Ty::Fn(pa, ra), Ty::Fn(pb, rb)) => {
             pa.len() <= pb.len() && pa.iter().zip(pb).all(|(x, y)| assignable(y, x)) && assignable(ra, rb)
         }

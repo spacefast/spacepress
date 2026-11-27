@@ -43,6 +43,7 @@ fn registry(value: &Value) -> Option<&'static str> {
         Value::Screen(_) => "screens",
         Value::Widget(_) => "widgets",
         Value::Dashboard(_) => "dashboards",
+        Value::WpHook(_) => "wpHooks",
         _ => return None,
     })
 }
@@ -59,6 +60,7 @@ fn same(a: &Value, b: &Value) -> bool {
         | (Value::Screen(a), Value::Screen(b))
         | (Value::Widget(a), Value::Widget(b))
         | (Value::Dashboard(a), Value::Dashboard(b)) => Rc::ptr_eq(a, b),
+        (Value::WpHook(a), Value::WpHook(b)) => Rc::ptr_eq(a, b),
         _ => false,
     }
 }
@@ -70,6 +72,7 @@ fn span_of(value: &Value) -> Span {
         Value::Global(g) => g.span,
         Value::FileBucket(b) => b.span,
         Value::Action(a) | Value::Job(a) | Value::Screen(a) | Value::Widget(a) | Value::Dashboard(a) => a.span,
+        Value::WpHook(h) => h.span,
         _ => Span::NONE,
     }
 }
@@ -217,6 +220,7 @@ fn noun(value: &Value) -> &'static str {
         Value::Screen(_) => "an admin screen",
         Value::Widget(_) => "an admin widget",
         Value::Dashboard(_) => "an admin dashboard",
+        Value::WpHook(_) => "a WordPress hook",
         _ => "a job",
     }
 }
@@ -235,6 +239,7 @@ fn builder(value: &Value) -> &'static str {
         Value::Screen(_) => "adminScreen",
         Value::Widget(_) => "adminWidget",
         Value::Dashboard(_) => "adminDashboard",
+        Value::WpHook(h) => if h.filter { "wp.filter" } else { "wp.action" },
         _ => "job",
     }
 }
@@ -243,7 +248,7 @@ fn builder(value: &Value) -> &'static str {
 /// `sp/` to `config`'s registries in place, so the spans the evaluator recorded still locate errors.
 pub(super) fn register(program: &Program, ev: &mut Evaluator<'_>, config: &Value) -> Result<()> {
     let Value::Object(cfg) = config else {
-        return ev.bind_db(&IndexMap::new());
+        return Ok(());
     };
     for key in cfg.borrow().keys() {
         if let Some(d) = removed_key(ev, program, config, key) {
@@ -362,30 +367,6 @@ pub(super) fn register(program: &Program, ev: &mut Evaluator<'_>, config: &Value
         };
         let Value::Object(map) = &entries else { unreachable!() };
         map.borrow_mut().insert(name, value);
-    }
-    // `"spacepress:db"` resolves to every registered kind, by its registry key.
-    let mut kinds = IndexMap::new();
-    for registry in [
-        "collections",
-        "tables",
-        "users",
-        "taxonomies",
-        "products",
-        "productCategories",
-        "productTags",
-        "orders",
-    ] {
-        if let Some(Value::Object(entries)) = cfg.borrow().get(registry) {
-            for (name, value) in entries.borrow().iter() {
-                kinds.insert(name.clone(), value.clone());
-            }
-        }
-    }
-    ev.bind_db(&kinds)?;
-    // `sp/wp-hooks/` modules declare no kinds, so they run once every kind is registered: their
-    // `"spacepress:db"` imports bind as each module evaluates.
-    for file in &program.wp_hooks {
-        ev.run_module(file.module).map_err(|d| d.phase(Code::Evaluation))?;
     }
     Ok(())
 }

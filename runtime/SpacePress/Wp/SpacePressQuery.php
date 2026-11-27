@@ -15,146 +15,154 @@ use SpacePress\Viewer;
  * or sort on a field hidden from the viewer is the same 403, a relation holds only rows the viewer
  * may read. Core keeps its own pagination, `_fields`, `_embed` and the response shape.
  */
-final class SpacePressQuery
-{
-    /**
-     * The ids `where`/`orderBy`/`search` select, in order, or null when the request has none of them.
-     * $searched is set when SpacePress's search ran: the caller then drops core's own search from the
-     * query ({@see coreArgs()}). The request itself is left alone, so core's `Link` headers keep it.
-     *
-     * @return ?list<int>
-     */
-    public static function keys(string $collection, \WP_REST_Request $request, Viewer $viewer, bool $search = true, ?bool &$searched = null): ?array
-    {
-        $searched = false;
-        $given = self::given($request, ['where', 'orderBy']);
-        $locale = self::locale($collection, $request);
-        $db = Plugin::instance()?->db() ?? throw new \LogicException('No SpacePress app');
-        $search = $search ? self::search($collection, $request) : null;
-        if ($given === [] && $search === null && $locale === null) {
-            return null;
-        }
-        $opts = App::listOptions($given);
-        unset($opts['limit']);
-        if ($search !== null) {
-            $opts += $search;
-            $searched = true;
-        }
-        $pk = $db->schema()->collection($collection)['primaryKey'];
-        $rows = $db->findMany($collection, $opts + ['columns' => [$pk => true]] + ($locale ?? self::allLocales($collection)), $viewer);
+final class SpacePressQuery {
 
-        return array_map(static fn (array $r): int => (int) $r[$pk], $rows);
-    }
+	/**
+	 * The ids `where`/`orderBy`/`search` select, in order, or null when the request has none of them.
+	 * $searched is set when SpacePress's search ran: the caller then drops core's own search from the
+	 * query ({@see coreArgs()}). The request itself is left alone, so core's `Link` headers keep it.
+	 *
+	 * @return ?list<int>
+	 */
+	public static function keys( string $collection, \WP_REST_Request $request, Viewer $viewer, bool $search = true, ?bool &$searched = null ): ?array {
+		$searched = false;
+		$given    = self::given( $request, array( 'where', 'orderBy' ) );
+		$locale   = self::locale( $collection, $request );
+		$db       = Plugin::instance()?->db() ?? throw new \LogicException( 'No SpacePress app' );
+		$search   = $search ? self::search( $collection, $request ) : null;
+		if ( array() === $given && null === $search && null === $locale ) {
+			return null;
+		}
+		$opts = App::listOptions( $given );
+		unset( $opts['limit'] );
+		if ( null !== $search ) {
+			$opts    += $search;
+			$searched = true;
+		}
+		$pk   = $db->schema()->collection( $collection )['primaryKey'];
+		$rows = $db->findMany( $collection, $opts + array( 'columns' => array( $pk => true ) ) + ( $locale ?? self::all_locales( $collection ) ), $viewer );
 
-    /**
-     * Core's WP_Query args once SpacePress's search selected the rows: SpacePress's search replaces core's (title,
-     * content and excerpt only), and `orderby=relevance` needs core's own term, so it becomes core's
-     * date order over the rows SpacePress matched.
-     */
-    public static function coreArgs(array $args): array
-    {
-        unset($args['s'], $args['search_columns'], $args['exact'], $args['sentence']);
-        if (($args['orderby'] ?? null) === 'relevance') {
-            $args['orderby'] = 'date';
-        }
+		return array_map( static fn ( array $r ): int => (int) $r[ $pk ], $rows );
+	}
 
-        return $args;
-    }
+	/**
+	 * Core's WP_Query args once SpacePress's search selected the rows: SpacePress's search replaces core's (title,
+	 * content and excerpt only), and `orderby=relevance` needs core's own term, so it becomes core's
+	 * date order over the rows SpacePress matched.
+	 */
+	public static function coreArgs( array $args ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
+		unset( $args['s'], $args['search_columns'], $args['exact'], $args['sentence'] );
+		if ( ( $args['orderby'] ?? null ) === 'relevance' ) {
+			$args['orderby'] = 'date';
+		}
 
-    /**
-     * `with`: each item of a core response gets its relations under `with`, as First rows. A refusal
-     * (an unknown relation, a link through a hidden field) answers instead of the items.
-     */
-    public static function attach(string $collection, \WP_REST_Request $request, Viewer $viewer, mixed $response): mixed
-    {
-        $given = self::given($request, ['with']);
-        if ($given === [] || !$response instanceof \WP_REST_Response || !is_array($data = $response->get_data())) {
-            return $response;
-        }
-        $single = !array_is_list($data);
-        $items = $single ? [$data] : $data;
-        $ids = array_values(array_filter(array_map(static fn ($i) => is_array($i) ? (int) ($i['id'] ?? 0) : 0, $items)));
-        $db = Plugin::instance()?->db() ?? throw new \LogicException('No SpacePress app');
-        $pk = $db->schema()->collection($collection)['primaryKey'];
-        try {
-            $with = App::listOptions($given)['with'];
-            // A media field in `with` is a column (populated in place); relations ride along anyway.
-            $columns = [$pk => true] + array_fill_keys(array_keys(array_intersect_key($with, $db->schema()->collection($collection)['columns'])), true);
-            // The parents are the items core answered (any locale); a `many` relation follows the
-            // requested locale, as the pipeline resolves it per parent (Locale\Read).
-            $locale = self::locale($collection, $request);
-            $rows = $db->findMany($collection, ['where' => [$pk => ['in' => $ids]], 'with' => $with, 'columns' => $columns]
-                + ($locale !== null && ($locale['locale'] ?? null) !== '*' && \SpacePress\Locale\Module::localized($collection) ? ['locale' => '*'] : self::allLocales($collection)), $viewer);
-        } catch (\SpacePress\HttpError $e) {
-            return CoreAccess::error($e);
-        }
-        $byId = [];
-        foreach ($rows as $row) {
-            $byId[(int) $row[$pk]] = PostMeta::values($collection, $row, array_map('strval', array_keys($with)));
-        }
-        foreach ($items as &$item) {
-            if (is_array($item) && isset($byId[(int) ($item['id'] ?? 0)])) {
-                $item['with'] = (object) $byId[(int) $item['id']];
-            }
-        }
-        unset($item);
-        $response->set_data($single ? $items[0] : $items);
+		return $args;
+	}
 
-        return $response;
-    }
+	/**
+	 * `with`: each item of a core response gets its relations under `with`, as First rows. A refusal
+	 * (an unknown relation, a link through a hidden field) answers instead of the items.
+	 */
+	public static function attach( string $collection, \WP_REST_Request $request, Viewer $viewer, mixed $response ): mixed {
+		$given = self::given( $request, array( 'with' ) );
+		if ( array() === $given || ! $response instanceof \WP_REST_Response || ! is_array( $data = $response->get_data() ) ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
+			return $response;
+		}
+		$single = ! array_is_list( $data );
+		$items  = $single ? array( $data ) : $data;
+		$ids    = array_values( array_filter( array_map( static fn ( $i ) => is_array( $i ) ? (int) ( $i['id'] ?? 0 ) : 0, $items ) ) );
+		$db     = Plugin::instance()?->db() ?? throw new \LogicException( 'No SpacePress app' );
+		$pk     = $db->schema()->collection( $collection )['primaryKey'];
+		try {
+			$with = App::listOptions( $given )['with'];
+			// A media field in `with` is a column (populated in place); relations ride along anyway.
+			$columns = array( $pk => true ) + array_fill_keys( array_keys( array_intersect_key( $with, $db->schema()->collection( $collection )['columns'] ) ), true );
+			// The parents are the items core answered (any locale); a `many` relation follows the
+			// requested locale, as the pipeline resolves it per parent (Locale\Read).
+			$locale = self::locale( $collection, $request );
+			$rows   = $db->findMany(
+				$collection,
+				array(
+					'where'   => array( $pk => array( 'in' => $ids ) ),
+					'with'    => $with,
+					'columns' => $columns,
+				)
+				+ ( null !== $locale && ( $locale['locale'] ?? null ) !== '*' && \SpacePress\Locale\Module::localized( $collection ) ? array( 'locale' => '*' ) : self::all_locales( $collection ) ),
+				$viewer
+			);
+		} catch ( \SpacePress\HttpError $e ) {
+			return CoreAccess::error( $e );
+		}
+		$by_id = array();
+		foreach ( $rows as $row ) {
+			$by_id[ (int) $row[ $pk ] ] = PostMeta::values( $collection, $row, array_map( 'strval', array_keys( $with ) ) );
+		}
+		foreach ( $items as &$item ) {
+			if ( is_array( $item ) && isset( $by_id[ (int) ( $item['id'] ?? 0 ) ] ) ) {
+				$item['with'] = (object) $by_id[ (int) $item['id'] ];
+			}
+		}
+		unset( $item );
+		$response->set_data( $single ? $items[0] : $items );
 
-    /**
-     * `search`: every word in a searchable field the viewer may read (spec §2.6), through the search
-     * index ({@see \SpacePress\Search\Index}). `search_columns` narrows it to core's title, content and
-     * excerpt columns, each meaning the kind's own title or content field; on the users route, `name`
-     * is the member's name (`id`, `username`, `slug` and `email` aren't searchable fields).
-     *
-     * @return ?array{search: string, searchFields?: list<string>}
-     */
-    private static function search(string $collection, \WP_REST_Request $request): ?array
-    {
-        $term = $request['search'];
-        if (!is_string($term) || $term === '') {
-            return null;
-        }
-        $spec = Plugin::instance()?->schema->collection($collection) ?? throw new \LogicException('No SpacePress app');
-        $columns = (array) ($request['search_columns'] ?? []);
-        if ($columns === []) {
-            return ['search' => $term];
-        }
-        $core = $collection === (Plugin::instance()?->schema->auth()['collection'] ?? null)
-            ? ['name' => 'name']
-            : ['post_title' => $spec['title'] ?? null, 'post_content' => $spec['content'] ?? null, 'post_excerpt' => $spec['excerpt'] ?? $spec['content'] ?? null];
+		return $response;
+	}
 
-        return ['search' => $term, 'searchFields' => array_values(array_unique(array_filter(array_map(static fn ($c) => $core[$c] ?? null, $columns))))];
-    }
+	/**
+	 * `search`: every word in a searchable field the viewer may read (spec §2.6), through the search
+	 * index ({@see \SpacePress\Search\Index}). `search_columns` narrows it to core's title, content and
+	 * excerpt columns, each meaning the kind's own title or content field; on the users route, `name`
+	 * is the member's name (`id`, `username`, `slug` and `email` aren't searchable fields).
+	 *
+	 * @return ?array{search: string, searchFields?: list<string>}
+	 */
+	private static function search( string $collection, \WP_REST_Request $request ): ?array {
+		$term = $request['search'];
+		if ( ! is_string( $term ) || '' === $term ) {
+			return null;
+		}
+		$spec    = Plugin::instance()?->schema->collection( $collection ) ?? throw new \LogicException( 'No SpacePress app' );
+		$columns = (array) ( $request['search_columns'] ?? array() );
+		if ( array() === $columns ) {
+			return array( 'search' => $term );
+		}
+		$core = $collection === ( Plugin::instance()?->schema->auth()['collection'] ?? null ) // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
+			? array( 'name' => 'name' )
+			: array(
+				'post_title'   => $spec['title'] ?? null,
+				'post_content' => $spec['content'] ?? null,
+				'post_excerpt' => $spec['excerpt'] ?? $spec['content'] ?? null,
+			);
 
-    /** @return array<string, mixed> the named query params the request supplied */
-    private static function given(\WP_REST_Request $request, array $names): array
-    {
-        $query = $request->get_query_params();
+		return array(
+			'search'       => $term,
+			'searchFields' => array_values( array_unique( array_filter( array_map( static fn ( $c ) => $core[ $c ] ?? null, $columns ) ) ) ),
+		);
+	}
 
-        return array_intersect_key($query, array_flip($names));
-    }
+	/** @return array<string, mixed> the named query params the request supplied */
+	private static function given( \WP_REST_Request $request, array $names ): array {
+		$query = $request->get_query_params();
 
-    /**
-     * SpacePress's `locale` argument (`fr`, or `*`): the rows of that locale, else each group's fallback, as
-     * SpacePress's read pipeline picks them. Without it a core list holds every language (Polylang's `lang`
-     * narrows it). An item read takes it too: the group member in that locale.
-     */
-    public static function locale(string $collection, \WP_REST_Request $request): ?array
-    {
-        $locale = $request->get_query_params()['locale'] ?? null;
-        if ($locale === null && Facade::dispatching() && \SpacePress\Locale\Module::localized($collection)) {
-            return []; // SpacePress's own default for the API: the default locale's rows, with fallback
-        }
+		return array_intersect_key( $query, array_flip( $names ) );
+	}
 
-        return $locale === null ? null : ['locale' => $locale];
-    }
+	/**
+	 * SpacePress's `locale` argument (`fr`, or `*`): the rows of that locale, else each group's fallback, as
+	 * SpacePress's read pipeline picks them. Without it a core list holds every language (Polylang's `lang`
+	 * narrows it). An item read takes it too: the group member in that locale.
+	 */
+	public static function locale( string $collection, \WP_REST_Request $request ): ?array {
+		$locale = $request->get_query_params()['locale'] ?? null;
+		if ( null === $locale && Facade::dispatching() && \SpacePress\Locale\Module::localized( $collection ) ) {
+			return array(); // SpacePress's own default for the API: the default locale's rows, with fallback
+		}
 
-    /** A core list holds every language (Polylang's `lang` narrows it), not only the default locale. */
-    private static function allLocales(string $collection): array
-    {
-        return \SpacePress\Locale\Module::localized($collection) ? ['locale' => '*'] : [];
-    }
+		return null === $locale ? null : array( 'locale' => $locale );
+	}
+
+	/** A core list holds every language (Polylang's `lang` narrows it), not only the default locale. */
+	private static function all_locales( string $collection ): array {
+		return \SpacePress\Locale\Module::localized( $collection ) ? array( 'locale' => '*' ) : array();
+	}
 }

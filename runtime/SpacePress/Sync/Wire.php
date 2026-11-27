@@ -16,312 +16,335 @@ use function SpacePress\db;
  * `body` is the content column, as Markdown for `md` collections whose content is
  * richText and verbatim otherwise. Reference columns travel as the target row's uid.
  */
-final class Wire
-{
-    /**
-     * The columns a record's `fields` carries, in schema order. A localized collection's derived
-     * `translations` (locale → id, §7.3) travels too, as locale → uid; it is read-only on push.
-     *
-     * @return list<string>
-     */
-    public static function fieldNames(array $spec): array
-    {
-        $names = [];
-        foreach ($spec['columns'] as $name => $col) {
-            $name = (string) $name;
-            if ($name === $spec['primaryKey'] || $name === ($spec['content'] ?? null) || $name === 'uid'
-                || ($col['readOnly'] ?? false) || isset($col['onUpdate']) || ($col['hidden'] ?? false) || (($col['derived'] ?? false) && !self::isTranslations($spec, $name))) {
-                continue;
-            }
-            $names[] = $name;
-        }
+final class Wire {
 
-        return $names;
-    }
+	/**
+	 * The columns a record's `fields` carries, in schema order. A localized collection's derived
+	 * `translations` (locale → id, §7.3) travels too, as locale → uid; it is read-only on push.
+	 *
+	 * @return list<string>
+	 */
+	public static function fieldNames( array $spec ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
+		$names = array();
+		foreach ( $spec['columns'] as $name => $col ) {
+			$name = (string) $name;
+			if ( $name === $spec['primaryKey'] || $name === ( $spec['content'] ?? null ) || 'uid' === $name // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
+				|| ( $col['readOnly'] ?? false ) || isset( $col['onUpdate'] ) || ( $col['hidden'] ?? false ) || ( ( $col['derived'] ?? false ) && ! self::is_translations( $spec, $name ) ) ) {
+				continue;
+			}
+			$names[] = $name;
+		}
 
-    private static function isTranslations(array $spec, string $name): bool
-    {
-        return $name === 'translations' && ($spec['localized'] ?? false) && ($spec['columns'][$name]['system'] ?? false);
-    }
+		return $names;
+	}
 
-    /**
-     * Encode rows (as the viewer may read them) into records. A row whose body can't be written in the
-     * collection's format comes back as `refused` instead of a record; it is never dropped.
-     *
-     * @param list<array> $rows
-     * @return list<array{uid: string, record?: array, digest?: string, refused?: string, message?: string}>
-     */
-    public static function encode(string $collection, array $rows): array
-    {
-        $spec = db()->schema()->collection($collection);
-        $names = self::fieldNames($spec);
-        $uids = self::targetUids($collection, $spec, $rows);
-        $out = [];
-        foreach ($rows as $row) {
-            $fields = [];
-            foreach ($names as $name) {
-                if (!array_key_exists($name, $row)) {
-                    continue; // hidden from this viewer by field access
-                }
-                $ref = $spec['columns'][$name]['references'] ?? null;
-                $value = $row[$name];
-                $fields[$name] = match (true) {
-                    self::isTranslations($spec, $name) && is_array($value) => array_map(static fn ($id) => $uids[$name][self::key($id)] ?? null, $value),
-                    $ref !== null && ($spec['columns'][$name]['type'] ?? '') === 'refList' => array_map(static fn ($id) => $uids[$name][self::key($id)] ?? null, is_array($value) ? $value : []),
-                    $ref === null || $value === null => $value,
-                    default => $uids[$name][self::key($value)] ?? null,
-                };
-            }
-            // Content the viewer can't read (field access) has no `body` key: absent means "leave it", so
-            // pushing the pulled record back can't clear it, and the digest is of what the viewer sees.
-            $content = $spec['content'] ?? null;
-            if ($content !== null && !array_key_exists($content, $row)) {
-                $record = self::record($row['uid'], $fields, null, false);
-                $out[] = ['uid' => $row['uid'], 'record' => $record, 'digest' => Canon::digest($record)];
-                continue;
-            }
-            try {
-                $body = self::bodyOut($spec, $row);
-            } catch (HttpError $e) {
-                if ($e->errorCode !== 'not_representable') {
-                    throw $e;
-                }
-                $out[] = ['uid' => $row['uid'], 'refused' => 'not_representable', 'message' => "{$collection} {$row[$spec['primaryKey']]}: " . $e->getMessage()];
-                continue;
-            }
-            $record = self::record($row['uid'], $fields, $body);
-            $out[] = ['uid' => $row['uid'], 'record' => $record, 'digest' => Canon::digest($record)];
-        }
+	private static function is_translations( array $spec, string $name ): bool {
+		return 'translations' === $name && ( $spec['localized'] ?? false ) && ( $spec['columns'][ $name ]['system'] ?? false );
+	}
 
-        return $out;
-    }
+	/**
+	 * Encode rows (as the viewer may read them) into records. A row whose body can't be written in the
+	 * collection's format comes back as `refused` instead of a record; it is never dropped.
+	 *
+	 * @param list<array> $rows
+	 * @return list<array{uid: string, record?: array, digest?: string, refused?: string, message?: string}>
+	 */
+	public static function encode( string $collection, array $rows ): array {
+		$spec  = db()->schema()->collection( $collection );
+		$names = self::fieldNames( $spec );
+		$uids  = self::target_uids( $collection, $spec, $rows );
+		$out   = array();
+		foreach ( $rows as $row ) {
+			$fields = array();
+			foreach ( $names as $name ) {
+				if ( ! array_key_exists( $name, $row ) ) {
+					continue; // hidden from this viewer by field access
+				}
+				$ref             = $spec['columns'][ $name ]['references'] ?? null;
+				$value           = $row[ $name ];
+				$fields[ $name ] = match ( true ) {
+					self::is_translations( $spec, $name ) && is_array( $value ) => array_map( static fn ( $id ) => $uids[ $name ][ self::key( $id ) ] ?? null, $value ),
+					null !== $ref && ( $spec['columns'][ $name ]['type'] ?? '' ) === 'refList' => array_map( static fn ( $id ) => $uids[ $name ][ self::key( $id ) ] ?? null, is_array( $value ) ? $value : array() ),
+					null === $ref || null === $value => $value,
+					default => $uids[ $name ][ self::key( $value ) ] ?? null,
+				};
+			}
+			// Content the viewer can't read (field access) has no `body` key: absent means "leave it", so
+			// pushing the pulled record back can't clear it, and the digest is of what the viewer sees.
+			$content = $spec['content'] ?? null;
+			if ( null !== $content && ! array_key_exists( $content, $row ) ) {
+				$record = self::record( $row['uid'], $fields, null, false );
+				$out[]  = array(
+					'uid'    => $row['uid'],
+					'record' => $record,
+					'digest' => Canon::digest( $record ),
+				);
+				continue;
+			}
+			try {
+				$body = self::body_out( $spec, $row );
+			} catch ( HttpError $e ) {
+				if ( 'not_representable' !== $e->errorCode ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+					throw $e;
+				}
+				$out[] = array(
+					'uid'     => $row['uid'],
+					'refused' => 'not_representable',
+					'message' => "{$collection} {$row[$spec['primaryKey']]}: " . $e->getMessage(),
+				);
+				continue;
+			}
+			$record = self::record( $row['uid'], $fields, $body );
+			$out[]  = array(
+				'uid'    => $row['uid'],
+				'record' => $record,
+				'digest' => Canon::digest( $record ),
+			);
+		}
 
-    /**
-     * A record in its one spelling. PHP decodes `{}` as an empty array; `fields` is always an object.
-     * An empty body is null: WordPress can't store a null post_content, and a file has no other empty.
-     */
-    public static function record(string $uid, mixed $fields, mixed $body, bool $hasBody = true): array
-    {
-        $record = ['uid' => $uid, 'fields' => $fields === [] ? new \stdClass() : $fields];
+		return $out;
+	}
 
-        return $hasBody ? $record + ['body' => $body === '' ? null : $body] : $record;
-    }
+	/**
+	 * A record in its one spelling. PHP decodes `{}` as an empty array; `fields` is always an object.
+	 * An empty body is null: WordPress can't store a null post_content, and a file has no other empty.
+	 */
+	public static function record( string $uid, mixed $fields, mixed $body, bool $hasBody = true ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		$record = array(
+			'uid'    => $uid,
+			'fields' => array() === $fields ? new \stdClass() : $fields,
+		);
 
-    /**
-     * A record as a write: the column values it sets (references resolved to ids, body converted to the
-     * stored form). Only the keys present in `fields` are set. With $missing, an unresolvable reference
-     * is collected there (its value null) instead of thrown, so the caller can authorize first.
-     *
-     * @param ?list<HttpError> $missing
-     */
-    /**
-     * @param ?array $current the stored row being updated: a body that reads back as the same text is
-     *        left out of the write, so its stored blocks (and any field rule guarding them) are untouched
-     */
-    public static function decode(string $collection, array|\SpacePress\JsObject $record, bool $create = false, ?array &$missing = null, ?array $current = null, ?\SpacePress\Viewer $viewer = null): array
-    {
-        $spec = db()->schema()->collection($collection);
-        $record = \SpacePress\Seam::sync($collection, ['record' => $record])['record'];
-        $fields = $record['fields'] ?? [];
-        $fields = \SpacePress\Seam::container($fields); // `fields: {}`; nested json() values keep theirs
-        if (!is_array($fields) || ($fields !== [] && array_is_list($fields))) {
-            throw HttpError::invalidInput('fields must be an object', '/fields');
-        }
-        $allowed = array_flip(self::fieldNames($spec));
-        // A reference the stored row holds to a row a pull can't name (one in WordPress's trash) reads
-        // as null; pushing that null back leaves the reference as it is, so a restore finds it intact.
-        $named = $current === null ? [] : self::targetUids($collection, $spec, [$current]);
-        $data = [];
-        foreach ($fields as $name => $value) {
-            $name = (string) $name;
-            if (!isset($allowed[$name])) {
-                throw HttpError::invalidInput("Unknown or generated field '$name'", '/fields' . HttpError::seg($name));
-            }
-            if (self::isTranslations($spec, $name)) {
-                // Derived, so never written. A new row joins the group of the first peer that already
-                // exists (lane H's translationOf); a peer pushed later links itself the same way.
-                if ($create && ($peer = self::firstPeer($collection, $spec, $value, $record['uid'] ?? null, $viewer)) !== null) {
-                    $data['translationOf'] = $peer;
-                }
-                continue;
-            }
-            $ref = $spec['columns'][$name]['references'] ?? null;
-            if ($ref !== null && ($spec['columns'][$name]['type'] ?? '') !== 'refList' && $value === null && ($current[$name] ?? null) !== null && !isset($named[$name][self::key($current[$name])])) {
-                continue;
-            }
-            try {
-                if ($ref !== null && ($spec['columns'][$name]['type'] ?? '') === 'refList') {
-                    $list = \SpacePress\Seam::container($value);
-                    if (!is_array($list) || !array_is_list($list)) { throw HttpError::invalidInput('Term references must be a list of UIDs', '/fields/' . $name); }
-                    // Null placeholders stand for links this pull could not name. Keep those
-                    // identities from the stored list; their positions may move when named links change.
-                    $unnamed = array_values(array_filter($current[$name] ?? [], static fn ($id) => !isset($named[$name][self::key($id)])));
-                    $data[$name] = [];
-                    foreach ($list as $uid) {
-                        if ($uid === null && $unnamed !== []) { $data[$name][] = array_shift($unnamed); }
-                        else { $data[$name][] = self::resolve($ref, $name, $uid, $viewer); }
-                    }
-                } else { $data[$name] = $ref === null || $value === null ? $value : self::resolve($ref, $name, $value, $viewer); }
-            } catch (HttpError $e) {
-                if ($missing === null || !in_array($e->errorCode, ['sync_missing_reference', 'reference_violation'], true)) {
-                    throw $e;
-                }
-                $missing[] = $e;
-                $data[$name] = null;
-            }
-        }
-        $content = $spec['content'] ?? null;
-        if ($content !== null && array_key_exists('body', $record)) {
-            $body = $record['body'];
-            if ($body !== null && !is_string($body)) {
-                throw HttpError::invalidInput('body must be a string or null', '/body');
-            }
-            $same = $current !== null && array_key_exists($content, $current)
-                && ($body === '' ? null : $body) === self::bodyOrNull($spec, $current);
-            if (!$same) {
-                $data[$content] = $body === null ? null : self::bodyIn($spec, $body);
-            }
-        }
+		return $hasBody ? $record + array( 'body' => '' === $body ? null : $body ) : $record; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+	}
 
-        // Authorization preflights and the pipeline see plain arrays outside json() values.
-        foreach ($data as $name => $v) {
-            if (isset($spec['columns'][$name])) {
-                $data[$name] = \SpacePress\Seam::toPhp($v, $spec['columns'][$name]);
-            }
-        }
+	/**
+	 * A record as a write: the column values it sets (references resolved to ids, body converted to the
+	 * stored form). Only the keys present in `fields` are set. With $missing, an unresolvable reference
+	 * is collected there (its value null) instead of thrown, so the caller can authorize first.
+	 *
+	 * @param ?list<HttpError> $missing
+	 */
+	/**
+	 * @param ?array $current the stored row being updated: a body that reads back as the same text is
+	 *        left out of the write, so its stored blocks (and any field rule guarding them) are untouched
+	 */
+	public static function decode( string $collection, array|\SpacePress\JsObject $record, bool $create = false, ?array &$missing = null, ?array $current = null, ?\SpacePress\Viewer $viewer = null ): array {
+		$spec   = db()->schema()->collection( $collection );
+		$record = \SpacePress\Seam::sync( $collection, array( 'record' => $record ) )['record'];
+		$fields = $record['fields'] ?? array();
+		$fields = \SpacePress\Seam::container( $fields ); // `fields: {}`; nested json() values keep theirs
+		if ( ! is_array( $fields ) || ( array() !== $fields && array_is_list( $fields ) ) ) {
+			throw HttpError::invalidInput( 'fields must be an object', '/fields' );
+		}
+		$allowed = array_flip( self::fieldNames( $spec ) );
+		// A reference the stored row holds to a row a pull can't name (one in WordPress's trash) reads
+		// as null; pushing that null back leaves the reference as it is, so a restore finds it intact.
+		$named = null === $current ? array() : self::target_uids( $collection, $spec, array( $current ) );
+		$data  = array();
+		foreach ( $fields as $name => $value ) {
+			$name = (string) $name;
+			if ( ! isset( $allowed[ $name ] ) ) {
+				throw HttpError::invalidInput( "Unknown or generated field '$name'", '/fields' . HttpError::seg( $name ) );
+			}
+			if ( self::is_translations( $spec, $name ) ) {
+				// Derived, so never written. A new row joins the group of the first peer that already
+				// exists (lane H's translationOf); a peer pushed later links itself the same way.
+				if ( $create && ( $peer = self::first_peer( $collection, $spec, $value, $record['uid'] ?? null, $viewer ) ) !== null ) { // phpcs:ignore Generic.CodeAnalysis.AssignmentInCondition.Found, Squiz.PHP.DisallowMultipleAssignments.FoundInControlStructure -- Keep the assignment and its test together.
+					$data['translationOf'] = $peer;
+				}
+				continue;
+			}
+			$ref = $spec['columns'][ $name ]['references'] ?? null;
+			if ( null !== $ref && ( $spec['columns'][ $name ]['type'] ?? '' ) !== 'refList' && null === $value && ( $current[ $name ] ?? null ) !== null && ! isset( $named[ $name ][ self::key( $current[ $name ] ) ] ) ) {
+				continue;
+			}
+			try {
+				if ( null !== $ref && ( $spec['columns'][ $name ]['type'] ?? '' ) === 'refList' ) {
+					$list = \SpacePress\Seam::container( $value );
+					if ( ! is_array( $list ) || ! array_is_list( $list ) ) {
+						throw HttpError::invalidInput( 'Term references must be a list of UIDs', '/fields/' . $name ); }
+					// Null placeholders stand for links this pull could not name. Keep those
+					// identities from the stored list; their positions may move when named links change.
+					$unnamed       = array_values( array_filter( $current[ $name ] ?? array(), static fn ( $id ) => ! isset( $named[ $name ][ self::key( $id ) ] ) ) );
+					$data[ $name ] = array();
+					foreach ( $list as $uid ) {
+						if ( null === $uid && array() !== $unnamed ) {
+							$data[ $name ][] = array_shift( $unnamed ); } else {
+							$data[ $name ][] = self::resolve( $ref, $name, $uid, $viewer ); }
+					}
+				} else {
+					$data[ $name ] = null === $ref || null === $value ? $value : self::resolve( $ref, $name, $value, $viewer ); }
+			} catch ( HttpError $e ) {
+				if ( null === $missing || ! in_array( $e->errorCode, array( 'sync_missing_reference', 'reference_violation' ), true ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+					throw $e;
+				}
+				$missing[]     = $e;
+				$data[ $name ] = null;
+			}
+		}
+		$content = $spec['content'] ?? null;
+		if ( null !== $content && array_key_exists( 'body', $record ) ) {
+			$body = $record['body'];
+			if ( null !== $body && ! is_string( $body ) ) {
+				throw HttpError::invalidInput( 'body must be a string or null', '/body' );
+			}
+			$same = null !== $current && array_key_exists( $content, $current )
+				&& ( '' === $body ? null : $body ) === self::body_or_null( $spec, $current );
+			if ( ! $same ) {
+				$data[ $content ] = null === $body ? null : self::body_in( $spec, $body );
+			}
+		}
 
-        return $data;
-    }
+		// Authorization preflights and the pipeline see plain arrays outside json() values.
+		foreach ( $data as $name => $v ) {
+			if ( isset( $spec['columns'][ $name ] ) ) {
+				$data[ $name ] = \SpacePress\Seam::toPhp( $v, $spec['columns'][ $name ] );
+			}
+		}
 
-    private static function firstPeer(string $collection, array $spec, mixed $translations, mixed $self, ?\SpacePress\Viewer $viewer): int|string|null
-    {
-        $translations = \SpacePress\Seam::container($translations);
-        if (!is_array($translations)) {
-            throw HttpError::invalidInput('translations must map locales to uids', '/fields/translations');
-        }
-        foreach ($translations as $uid) {
-            if ($uid === $self || !Uid::valid($uid)) {
-                continue;
-            }
-            try {
-                return self::resolve(['collection' => $collection, 'column' => $spec['primaryKey']], 'translations', $uid, $viewer);
-            } catch (HttpError $e) {
-                if (!in_array($e->errorCode, ['sync_missing_reference', 'reference_violation'], true)) {
-                    throw $e;
-                }
-                // Hidden and absent peers both wait for a later visible translation to join them.
-            }
-        }
+		return $data;
+	}
 
-        return null;
-    }
+	private static function first_peer( string $collection, array $spec, mixed $translations, mixed $self, ?\SpacePress\Viewer $viewer ): int|string|null { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.selfFound -- Preserve the existing PHP parameter name.
+		$translations = \SpacePress\Seam::container( $translations );
+		if ( ! is_array( $translations ) ) {
+			throw HttpError::invalidInput( 'translations must map locales to uids', '/fields/translations' );
+		}
+		foreach ( $translations as $uid ) {
+			if ( $uid === $self || ! Uid::valid( $uid ) ) {
+				continue;
+			}
+			try {
+				return self::resolve(
+					array(
+						'collection' => $collection,
+						'column'     => $spec['primaryKey'],
+					),
+					'translations',
+					$uid,
+					$viewer
+				);
+			} catch ( HttpError $e ) {
+				if ( ! in_array( $e->errorCode, array( 'sync_missing_reference', 'reference_violation' ), true ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+					throw $e;
+				}
+				// Hidden and absent peers both wait for a later visible translation to join them.
+			}
+		}
 
-    private static function markdown(array $spec): bool
-    {
-        $content = $spec['content'] ?? null;
+		return null;
+	}
 
-        return ($spec['sync']['format'] ?? null) === 'md' && $content !== null && ($spec['columns'][$content]['type'] ?? null) === 'richText';
-    }
+	private static function markdown( array $spec ): bool {
+		$content = $spec['content'] ?? null;
 
-    private static function bodyOut(array $spec, array $row): ?string
-    {
-        $content = $spec['content'] ?? null;
-        if ($content === null || !array_key_exists($content, $row) || $row[$content] === null || $row[$content] === '') {
-            return null;
-        }
-        $body = self::markdown($spec) ? Markdown::fromBlocks((string) $row[$content]) : (string) $row[$content];
+		return ( $spec['sync']['format'] ?? null ) === 'md' && null !== $content && ( $spec['columns'][ $content ]['type'] ?? null ) === 'richText';
+	}
 
-        return $body === '' ? null : $body;
-    }
+	private static function body_out( array $spec, array $row ): ?string {
+		$content = $spec['content'] ?? null;
+		if ( null === $content || ! array_key_exists( $content, $row ) || null === $row[ $content ] || '' === $row[ $content ] ) {
+			return null;
+		}
+		$body = self::markdown( $spec ) ? Markdown::fromBlocks( (string) $row[ $content ] ) : (string) $row[ $content ];
 
-    /** The stored body as the wire spells it, or null when it can't be written in this format. */
-    private static function bodyOrNull(array $spec, array $row): ?string
-    {
-        try {
-            return self::bodyOut($spec, $row);
-        } catch (HttpError) {
-            return null;
-        }
-    }
+		return '' === $body ? null : $body;
+	}
 
-    private static function bodyIn(array $spec, string $body): string
-    {
-        if (!self::markdown($spec)) { return $body; }
-        $blocks = Markdown::toBlocks($body);
-        // A Markdown sync record must be readable again before any write or hook runs.
-        // Native page.md blocks use toBlocks directly; nonrepresentable sync content uses *.html.
-        Markdown::fromBlocks($blocks);
-        return $blocks;
-    }
+	/** The stored body as the wire spells it, or null when it can't be written in this format. */
+	private static function body_or_null( array $spec, array $row ): ?string {
+		try {
+			return self::body_out( $spec, $row );
+		} catch ( HttpError ) {
+			return null;
+		}
+	}
 
-    /** uid of each referenced row, per reference column; rows without one get one now. */
-    private static function targetUids(string $collection, array $spec, array $rows): array
-    {
-        $out = [];
-        foreach ($spec['columns'] as $name => $col) {
-            $name = (string) $name;
-            $ref = $col['references'] ?? null;
-            if (self::isTranslations($spec, $name)) {
-                $ref = ['collection' => $collection, 'column' => $spec['primaryKey']];
-                $values = [];
-                foreach ($rows as $row) {
-                    array_push($values, ...array_values(is_array($row[$name] ?? null) ? $row[$name] : []));
-                }
-                $values = array_values(array_unique($values, SORT_REGULAR));
-            } elseif ($ref !== null && ($col['type'] ?? '') === 'refList') {
-                $values = []; foreach ($rows as $row) { array_push($values, ...(is_array($row[$name] ?? null) ? $row[$name] : [])); } $values = array_values(array_unique($values));
-            } elseif ($ref === null) {
-                continue;
-            } else {
-                $values = array_values(array_unique(array_filter(array_column($rows, $name), static fn ($v) => $v !== null), SORT_REGULAR));
-            }
-            if ($values === []) {
-                continue;
-            }
-            $targets = Module::find($ref['collection'], ['where' => [$ref['column'] => ['in' => $values]]]);
-            foreach (Module::ensureUids($ref['collection'], $targets) as $target) {
-                $out[$name][self::key($target[$ref['column']])] = $target['uid'];
-            }
-        }
+	private static function body_in( array $spec, string $body ): string {
+		if ( ! self::markdown( $spec ) ) {
+			return $body; }
+		$blocks = Markdown::toBlocks( $body );
+		// A Markdown sync record must be readable again before any write or hook runs.
+		// Native page.md blocks use toBlocks directly; nonrepresentable sync content uses *.html.
+		Markdown::fromBlocks( $blocks );
+		return $blocks;
+	}
 
-        return $out;
-    }
+	/** uid of each referenced row, per reference column; rows without one get one now. */
+	private static function target_uids( string $collection, array $spec, array $rows ): array {
+		$out = array();
+		foreach ( $spec['columns'] as $name => $col ) {
+			$name = (string) $name;
+			$ref  = $col['references'] ?? null;
+			if ( self::is_translations( $spec, $name ) ) {
+				$ref    = array(
+					'collection' => $collection,
+					'column'     => $spec['primaryKey'],
+				);
+				$values = array();
+				foreach ( $rows as $row ) {
+					array_push( $values, ...array_values( is_array( $row[ $name ] ?? null ) ? $row[ $name ] : array() ) );
+				}
+				$values = array_values( array_unique( $values, SORT_REGULAR ) );
+			} elseif ( null !== $ref && ( $col['type'] ?? '' ) === 'refList' ) {
+				$values = array();
+				foreach ( $rows as $row ) {
+					array_push( $values, ...( is_array( $row[ $name ] ?? null ) ? $row[ $name ] : array() ) );
+				} $values = array_values( array_unique( $values ) );
+			} elseif ( null === $ref ) {
+				continue;
+			} else {
+				$values = array_values( array_unique( array_filter( array_column( $rows, $name ), static fn ( $v ) => null !== $v ), SORT_REGULAR ) );
+			}
+			if ( array() === $values ) {
+				continue;
+			}
+			$targets = Module::find( $ref['collection'], array( 'where' => array( $ref['column'] => array( 'in' => $values ) ) ) );
+			foreach ( Module::ensureUids( $ref['collection'], $targets ) as $target ) {
+				$out[ $name ][ self::key( $target[ $ref['column'] ] ) ] = $target['uid'];
+			}
+		}
 
-    private static function resolve(array $ref, string $name, mixed $uid, ?\SpacePress\Viewer $viewer): int|string
-    {
-        $pointer = '/fields' . HttpError::seg($name);
-        if (!Uid::valid($uid)) {
-            throw HttpError::invalidInput("$name must be the uid of a {$ref['collection']} row", $pointer);
-        }
-        $spec = db()->schema()->collection($ref['collection']);
-        $denied = new HttpError(409, 'reference_violation', "No referenced {$ref['collection']} row for $name", HttpError::seg($name));
-        if ($viewer !== null && \SpacePress\FieldAccess::mayHide($spec['columns'][$ref['column']], $viewer)) {
-            throw $denied; // no hidden value may reach input rules or validators
-        }
-        $opts = ['where' => ['uid' => $uid], 'limit' => 1];
-        if ($viewer !== null) {
-            if ($spec['localized'] ?? false) {
-                $opts['locale'] = '*';
-            }
-            try {
-                $target = db()->findFirst($ref['collection'], $opts, $viewer) ?? throw $denied;
-            } catch (HttpError) {
-                throw $denied;
-            }
-        } else {
-            $target = Module::find($ref['collection'], $opts)[0] ?? null;
-        }
-        $target ??= throw new HttpError(422, 'sync_missing_reference', "No {$ref['collection']} row has uid $uid; sync {$ref['collection']} first", $pointer);
-        if ($viewer !== null && (!isset($target[$ref['column']])
-            || (!is_int($target[$ref['column']]) && !is_string($target[$ref['column']])))) {
-            throw $denied;
-        }
+		return $out;
+	}
 
-        return $target[$ref['column']];
-    }
+	private static function resolve( array $ref, string $name, mixed $uid, ?\SpacePress\Viewer $viewer ): int|string {
+		$pointer = '/fields' . HttpError::seg( $name );
+		if ( ! Uid::valid( $uid ) ) {
+			throw HttpError::invalidInput( "$name must be the uid of a {$ref['collection']} row", $pointer );
+		}
+		$spec   = db()->schema()->collection( $ref['collection'] );
+		$denied = new HttpError( 409, 'reference_violation', "No referenced {$ref['collection']} row for $name", HttpError::seg( $name ) );
+		if ( null !== $viewer && \SpacePress\FieldAccess::mayHide( $spec['columns'][ $ref['column'] ], $viewer ) ) {
+			throw $denied; // no hidden value may reach input rules or validators
+		}
+		$opts = array(
+			'where' => array( 'uid' => $uid ),
+			'limit' => 1,
+		);
+		if ( null !== $viewer ) {
+			if ( $spec['localized'] ?? false ) {
+				$opts['locale'] = '*';
+			}
+			try {
+				$target = db()->findFirst( $ref['collection'], $opts, $viewer ) ?? throw $denied;
+			} catch ( HttpError ) {
+				throw $denied;
+			}
+		} else {
+			$target = Module::find( $ref['collection'], $opts )[0] ?? null;
+		}
+		$target ??= throw new HttpError( 422, 'sync_missing_reference', "No {$ref['collection']} row has uid $uid; sync {$ref['collection']} first", $pointer );
+		if ( null !== $viewer && ( ! isset( $target[ $ref['column'] ] )
+			|| ( ! is_int( $target[ $ref['column'] ] ) && ! is_string( $target[ $ref['column'] ] ) ) ) ) {
+			throw $denied;
+		}
 
-    private static function key(mixed $v): string
-    {
-        return is_string($v) ? 's' . $v : 'n' . $v;
-    }
+		return $target[ $ref['column'] ];
+	}
+
+	private static function key( mixed $v ): string {
+		return is_string( $v ) ? 's' . $v : 'n' . $v;
+	}
 }

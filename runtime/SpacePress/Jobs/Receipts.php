@@ -16,108 +16,134 @@ use function SpacePress\db;
  * creates and `idempotent: true` actions. A receipt is written in the caller's transaction, so a
  * rollback forgets it and the next attempt runs again.
  */
-final class Receipts
-{
-    public const MAX_KEY = 64;
+final class Receipts {
 
-    /** Fingerprint of the operation input that once() calls are made for (§6.1: same key + different input → 409). */
-    private static string $fingerprint = '';
+	public const MAX_KEY = 64;
 
-    /**
-     * once() is bound to the input of the operation it runs in: an action or create body
-     * (aroundOperation) or a job's input (Runner). Other contexts (update/delete hooks, wp-admin saves,
-     * CLI) bind to the key alone, so their keys must name what they guard (e.g. include the row id).
-     */
-    /** Run $fn with once() bound to this input: the action/create body, or the job's input. */
-    public static function withFingerprint(string $hash, callable $fn): mixed
-    {
-        $previous = self::$fingerprint;
-        self::$fingerprint = $hash;
-        try {
-            return $fn();
-        } finally {
-            self::$fingerprint = $previous;
-        }
-    }
+	/** Fingerprint of the operation input that once() calls are made for (§6.1: same key + different input → 409). */
+	private static string $fingerprint = '';
 
-    /** `once(key, fn)`: scope 'fn', keyed per calling user, bound to the current operation's input. */
-    public static function once(string $scope, mixed $key, \Closure $fn): mixed
-    {
-        if (!is_string($key)) {
-            throw new \SpacePress\JsError('once key must be a string', 'TypeError');
-        }
-        $stored = self::remember($scope, self::key($key, ''), (int) (db()->actor()['id'] ?? 0), self::$fingerprint ?: hash('sha256', ''),
-            static fn (): array => ['data' => $fn()], snapshot: static fn (array $result): array => Js::clone($result));
+	/**
+	 * once() is bound to the input of the operation it runs in: an action or create body
+	 * (aroundOperation) or a job's input (Runner). Other contexts (update/delete hooks, wp-admin saves,
+	 * CLI) bind to the key alone, so their keys must name what they guard (e.g. include the row id).
+	 */
+	/** Run $fn with once() bound to this input: the action/create body, or the job's input. */
+	public static function withFingerprint( string $hash, callable $fn ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP method name. Preserve the existing PHP parameter name.
+		$previous          = self::$fingerprint;
+		self::$fingerprint = $hash;
+		try {
+			return $fn();
+		} finally {
+			self::$fingerprint = $previous;
+		}
+	}
 
-        return $stored['data'] ?? null;
-    }
+	/** `once(key, fn)`: scope 'fn', keyed per calling user, bound to the current operation's input. */
+	public static function once( string $scope, mixed $key, \Closure $fn ): mixed { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP parameter name.
+		if ( ! is_string( $key ) ) {
+			throw new \SpacePress\JsError( 'once key must be a string', 'TypeError' );
+		}
+		$stored = self::remember(
+			$scope,
+			self::key( $key, '' ),
+			(int) ( db()->actor()['id'] ?? 0 ),
+			self::$fingerprint ?: hash( 'sha256', '' ), // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
+			static fn (): array => array( 'data' => $fn() ),
+			snapshot: static fn ( array $result ): array => Js::clone( $result )
+		);
 
-    /** Extensions::aroundOperation: creates always, actions when `idempotent: true`. */
-    public static function around(string $scope, array $spec, string $rawBody, array $headers, ?Viewer $viewer, callable $next): Response
-    {
-        $key = $headers['idempotency-key'] ?? null;
-        $next = static fn (): Response => self::withFingerprint(hash('sha256', $rawBody), $next);
-        if ($key === null || (str_starts_with($scope, 'action:') && !($spec['idempotent'] ?? false))) {
-            return $next();
-        }
-        $replayed = false;
-        $stored = self::remember($scope, self::key($key, '/Idempotency-Key'), (int) ($viewer?->user['id'] ?? 0), hash('sha256', $rawBody),
-            static function () use ($next): array {
-                $response = $next();
+		return $stored['data'] ?? null;
+	}
 
-                return ['status' => $response->status, 'data' => $response->data];
-            }, $replayed, static function (array $result) use ($scope): array {
-                if (str_starts_with($scope, 'action:')) {
-                    $result['data'] = Js::jsonTree($result['data']);
-                }
-                return $result;
-            });
-        $response = Response::json($stored['data'] ?? null, (int) ($stored['status'] ?? 200));
+	/** Extensions::aroundOperation: creates always, actions when `idempotent: true`. */
+	public static function around( string $scope, array $spec, string $rawBody, array $headers, ?Viewer $viewer, callable $next ): Response { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		$key  = $headers['idempotency-key'] ?? null;
+		$next = static fn (): Response => self::withFingerprint( hash( 'sha256', $rawBody ), $next ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		if ( null === $key || ( str_starts_with( $scope, 'action:' ) && ! ( $spec['idempotent'] ?? false ) ) ) {
+			return $next();
+		}
+		$replayed = false;
+		$stored   = self::remember(
+			$scope,
+			self::key( $key, '/Idempotency-Key' ),
+			(int) ( $viewer?->user['id'] ?? 0 ),
+			hash( 'sha256', $rawBody ), // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+			static function () use ( $next ): array {
+				$response = $next();
 
-        return $replayed ? $response->withHeaders(['Idempotent-Replayed' => 'true']) : $response;
-    }
+				return array(
+					'status' => $response->status,
+					'data'   => $response->data,
+				);
+			},
+			$replayed,
+			static function ( array $result ) use ( $scope ): array {
+				if ( str_starts_with( $scope, 'action:' ) ) {
+					$result['data'] = Js::jsonTree( $result['data'] );
+				}
+				return $result;
+			}
+		);
+		$response = Response::json( $stored['data'] ?? null, (int) ( $stored['status'] ?? 200 ) );
 
-    private static function key(string $key, string $pointer): string
-    {
-        if ($key === '' || mb_strlen($key, 'UTF-8') > self::MAX_KEY) {
-            throw new HttpError(400, 'invalid_idempotency_key', 'Idempotency keys are 1 to ' . self::MAX_KEY . ' characters', $pointer === '' ? null : $pointer);
-        }
+		return $replayed ? $response->withHeaders( array( 'Idempotent-Replayed' => 'true' ) ) : $response;
+	}
 
-        return $key;
-    }
+	private static function key( string $key, string $pointer ): string {
+		if ( '' === $key || mb_strlen( $key, 'UTF-8' ) > self::MAX_KEY ) {
+			throw new HttpError( 400, 'invalid_idempotency_key', 'Idempotency keys are 1 to ' . self::MAX_KEY . ' characters', '' === $pointer ? null : $pointer );
+		}
 
-    /** @param callable(): array $run @return array the stored result */
-    private static function remember(string $scope, string $key, int $userId, string $hash, callable $run, bool &$replayed = false, ?callable $snapshot = null): array
-    {
-        return db()->transaction(static function () use ($scope, $key, $userId, $hash, $run, &$replayed, $snapshot): array {
-            $where = 'WHERE "scope" = ? AND "key" = ? AND "userId" = ?';
-            // Claim first: the primary key decides a race (the loser waits, then is ignored), and no
-            // locking read ever runs on an absent key, so two first uses can't deadlock on gap locks.
-            [$scopeBytes, $keyBytes] = [Storage::bytes($scope), Storage::bytes($key)];
-            Storage::run(Storage::insertIgnore() . ' INTO {receipts} ("scope", "key", "userId", "inputHash", "state", "createdAt") VALUES (?, ?, ?, ?, \'started\', ?)',
-                [$scopeBytes, $keyBytes, $userId, $hash, Js::iso(Js::now())]);
-            $existing = Storage::changes() === 1 ? null
-                : Storage::run("SELECT \"inputHash\", \"state\", \"result\" FROM {receipts} $where" . Storage::forShare(), [$scopeBytes, $keyBytes, $userId])[0] ?? null;
-            if ($existing !== null) {
-                if (!hash_equals((string) $existing['inputHash'], $hash)) {
-                    throw new HttpError(409, 'idempotency_mismatch', 'This idempotency key was used with a different request');
-                }
-                if ($existing['state'] !== 'done') {
-                    throw new HttpError(409, 'outcome_unknown', 'A request with this idempotency key started but has no recorded outcome');
-                }
-                $replayed = true;
-                $result = unserialize((string) $existing['result'], ['allowed_classes' => [
-                    \stdClass::class, \SpacePress\RegExp::class, \SpacePress\JsObject::class, \SpacePress\JsArray::class, \SpacePress\JsError::class,
-                    \SpacePress\JsSet::class, \SpacePress\JsMap::class, \SpacePress\JsDate::class,
-                ]]);
+		return $key;
+	}
 
-                return is_array($result) ? $result : [];
-            }
-            $result = $run();
-            // serialize() keeps empty objects and lists apart, so a replay is byte-identical.
-            Storage::run("UPDATE {receipts} SET \"state\" = 'done', \"result\" = ? $where", [serialize($snapshot === null ? $result : $snapshot($result)), $scopeBytes, $keyBytes, $userId]);
+	/** @param callable(): array $run @return array the stored result */
+	private static function remember( string $scope, string $key, int $user_id, string $hash, callable $run, bool &$replayed = false, ?callable $snapshot = null ): array {
+		return db()->transaction(
+			static function () use ( $scope, $key, $user_id, $hash, $run, &$replayed, $snapshot ): array {
+				$where = 'WHERE "scope" = ? AND "key" = ? AND "userId" = ?';
+				// Claim first: the primary key decides a race (the loser waits, then is ignored), and no
+				// locking read ever runs on an absent key, so two first uses can't deadlock on gap locks.
+				[$scope_bytes, $key_bytes] = array( Storage::bytes( $scope ), Storage::bytes( $key ) );
+				Storage::run(
+					Storage::insertIgnore() . ' INTO {receipts} ("scope", "key", "userId", "inputHash", "state", "createdAt") VALUES (?, ?, ?, ?, \'started\', ?)',
+					array( $scope_bytes, $key_bytes, $user_id, $hash, Js::iso( Js::now() ) )
+				);
+				$existing = Storage::changes() === 1 ? null
+				: Storage::run( "SELECT \"inputHash\", \"state\", \"result\" FROM {receipts} $where" . Storage::forShare(), array( $scope_bytes, $key_bytes, $user_id ) )[0] ?? null;
+				if ( null !== $existing ) {
+					if ( ! hash_equals( (string) $existing['inputHash'], $hash ) ) {
+						throw new HttpError( 409, 'idempotency_mismatch', 'This idempotency key was used with a different request' );
+					}
+					if ( 'done' !== $existing['state'] ) {
+						throw new HttpError( 409, 'outcome_unknown', 'A request with this idempotency key started but has no recorded outcome' );
+					}
+					$replayed = true;
+					$result   = unserialize(
+						(string) $existing['result'],
+						array(
+							'allowed_classes' => array(
+								\stdClass::class,
+								\SpacePress\RegExp::class,
+								\SpacePress\JsObject::class,
+								\SpacePress\JsArray::class,
+								\SpacePress\JsError::class,
+								\SpacePress\JsSet::class,
+								\SpacePress\JsMap::class,
+								\SpacePress\JsDate::class,
+							),
+						)
+					);
 
-            return $result;
-        });
-    }
+					return is_array( $result ) ? $result : array();
+				}
+				$result = $run();
+				// serialize() keeps empty objects and lists apart, so a replay is byte-identical.
+				Storage::run( "UPDATE {receipts} SET \"state\" = 'done', \"result\" = ? $where", array( serialize( null === $snapshot ? $result : $snapshot( $result ) ), $scope_bytes, $key_bytes, $user_id ) );
+
+				return $result;
+			}
+		);
+	}
 }

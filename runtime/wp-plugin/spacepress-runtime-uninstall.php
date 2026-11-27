@@ -8,20 +8,20 @@
  * belong to the apps' content. A reinstalled runtime re-checks its tables on the first request.
  */
 declare(strict_types=1);
-defined('WP_UNINSTALL_PLUGIN') || exit;
+defined( 'WP_UNINSTALL_PLUGIN' ) || exit;
 
-foreach (['sp_runtime_tables', 'sp_jobs_prepared', 'sp_runtime_secret', 'sp_runtime_private_ok', 'sp_runtime_private_checked'] as $option) {
-    delete_option($option);
+foreach ( array( 'sp_runtime_tables', 'sp_jobs_prepared', 'sp_runtime_secret', 'sp_runtime_private_ok', 'sp_runtime_private_checked' ) as $option ) {
+	delete_option( $option );
 }
 // Through Action Scheduler's API when it is active, else directly in its tables (kept on deactivation).
-if (function_exists('as_unschedule_all_actions')) {
-    as_unschedule_all_actions('sp_jobs_maintain', [], 'spacepress');
-    as_unschedule_all_actions('spacepress.prune-guests', [], 'spacepress');
+if ( function_exists( 'as_unschedule_all_actions' ) ) {
+	as_unschedule_all_actions( 'sp_jobs_maintain', array(), 'spacepress' );
+	as_unschedule_all_actions( 'spacepress.prune-guests', array(), 'spacepress' );
 } else {
-    global $wpdb;
-    $actions = $wpdb->prefix . 'actionscheduler_actions';
-    $groups = $wpdb->prefix . 'actionscheduler_groups';
-    if ($wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $wpdb->esc_like($actions))) === $actions) {
-        $wpdb->query($wpdb->prepare("UPDATE `$actions` a JOIN `$groups` g ON g.group_id = a.group_id SET a.status = 'canceled' WHERE a.status = 'pending' AND g.slug = %s AND a.hook IN (%s, %s)", 'spacepress', 'sp_jobs_maintain', 'spacepress.prune-guests'));
-    }
+	global $wpdb;
+	$actions = $wpdb->prefix . 'actionscheduler_actions';
+	$groups  = $wpdb->prefix . 'actionscheduler_groups';
+	if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->esc_like( $actions ) ) ) === $actions ) {
+		$wpdb->query( $wpdb->prepare( "UPDATE `$actions` a JOIN `$groups` g ON g.group_id = a.group_id SET a.status = 'canceled' WHERE a.status = 'pending' AND g.slug = %s AND a.hook IN (%s, %s)", 'spacepress', 'sp_jobs_maintain', 'spacepress.prune-guests' ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- The identifiers are scheduler tables and the values are bound.
+	}
 }

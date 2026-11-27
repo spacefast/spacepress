@@ -1477,7 +1477,7 @@
       "sha256": "6b2ed658865217720089991adc470b7980cae731a1404efb870ae2f320a17f8c",
       "path": "lib/api/view-config.php",
       "adaptation": "SpacePress integration or pinned WordPress compatibility; review adapter patch",
-      "adaptedSha256": "bba55b80786bc876fe86574df01a51ddbd73050a522350c6f13048dbff1277d1",
+      "adaptedSha256": "421d5675b672381e8fca03ac1eacf196610920fde844d586b0a02ce77f5b604e",
       "normalizedSha256": "617efee838c4b7835ec2b9145e076439c75b83c92141d91582c75ed22dea6b0c",
       "retainedSourcePath": "upstream-metadata/adapter-originals/lib/api/view-config.php"
     },
@@ -1495,7 +1495,7 @@
       "sha256": "5f847d298bf0f63c44038b7865623b3b860d99ee145edd2fa865e975b0016a55",
       "path": "lib/classic-route.php",
       "adaptation": "SpacePress integration: renamed to the classic route (/classic/<slug>); review adapter patch",
-      "adaptedSha256": "7cce9010b6478c8f1301010be86ff7fa85fad06f130f9852984da0f3131657c0",
+      "adaptedSha256": "1fba5bb94f4e2b0f782681e91509e5ffbed182a1c0308bc1a470248680889bb0",
       "normalizedSha256": "27d81348a2c9482202a514f3dc2f34080b0bce722575b1a94d7ba49fef110630",
       "retainedSourcePath": "upstream-metadata/adapter-originals/lib/legacy-route.php"
     },
@@ -1504,7 +1504,7 @@
       "sha256": "8a781c03a3f83c87ffb87ac714e77df6a44ab75b57eca45558b3b838ada2b8dd",
       "path": "lib/load-libs.php",
       "adaptation": "SpacePress registration APIs, screens, build integration and on-demand REST controllers",
-      "adaptedSha256": "52124f57c0a28495cea15a9b6146683d84f24673b1996c271e67fff2151d1789",
+      "adaptedSha256": "8c6fd7539fed59276ae395ba7ac8ef630fbba393275dd8667c5efefc7f564ebe",
       "normalizedSha256": "3ad86290c58390db19e9af3b4adf7c2f9c9bfb9c3767d044c9adf6c817a37029",
       "retainedSourcePath": "upstream-metadata/adapter-originals/lib/load-libs.php"
     },
@@ -1522,7 +1522,7 @@
       "sha256": "4ee77e2840097e35aaf3e71552ec27f95995df31fca41766e9fadf05cc155c84",
       "path": "lib/pages/admin.php",
       "adaptation": "SpacePress admin boot and native collection transport, including taxonomy REST field names",
-      "adaptedSha256": "3f5e6eb01936f870b229c7baa93553133349cdf1d604eb85818495e5209848df",
+      "adaptedSha256": "165cdfa44d0df0f1663e7726c80bc7189917cbd2ca44f1d8eac4c34cbd185311",
       "normalizedSha256": "a52a5f84bd89933a49bbfcac90a69d8fee37d8a47c3eb2f23ca073e3aa09c81f",
       "retainedSourcePath": "upstream-metadata/adapter-originals/lib/pages/admin.php"
     },
@@ -1549,7 +1549,7 @@
       "sha256": "cf84e32ea8b0638c5bcf20939e8a9b8424b4928135163006a6a9969369f9c109",
       "path": "lib/rest-api/class-spacepress-admin-rest-editor-controller.php",
       "adaptation": "SpacePress integration or pinned WordPress compatibility; review adapter patch; register routes from the bootstrap",
-      "adaptedSha256": "651723b3433bba6373c3c0aeb633aae6743d5549800238943893d0397be50fa4",
+      "adaptedSha256": "0cc625c6bc61047abb4c2862a41a152fa27121b643f8e4a122b54e6ef02c5c40",
       "normalizedSha256": "0356076671cf07dbf4a5c23a3c86bf9bf336fc1d1f66fefc4f946885a5e8d4d4",
       "retainedSourcePath": "upstream-metadata/adapter-originals/lib/rest-api/class-next-admin-rest-editor-controller.php"
     },
@@ -1603,7 +1603,7 @@
       "sha256": "cb1483902ded483282220dd2d9b66dd06ac2cf550f48fe8b2944c84bebf31b67",
       "path": "lib/rest-api/core-rest-api-overrides.php",
       "adaptation": "SpacePress integration or pinned WordPress compatibility; review adapter patch; restrict private user filters to list_users capability",
-      "adaptedSha256": "dc8be02c08e90c54060e82ae8296c6ddea6f51528c12c622c457573104881c83",
+      "adaptedSha256": "68cbed50bc2ed00ea7436a36f3a8a53559d2f5b13496a6d8f50c5f002f36fb08",
       "normalizedSha256": "772c79dab996b8aaee96f268c2c53dd8bdeb8915dfee5f69c18a5b2cac0c3372",
       "retainedSourcePath": "upstream-metadata/adapter-originals/lib/rest-api/core-rest-api-overrides.php"
     },

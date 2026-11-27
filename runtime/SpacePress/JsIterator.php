@@ -3,32 +3,41 @@ declare(strict_types=1);
 namespace SpacePress;
 
 /** A built-in iterator (Map/Set `keys()`, `values()`, `entries()`), backed by a live PHP Generator. */
-final class JsIterator
-{
-    private bool $started = false;
+final class JsIterator {
 
-    public function __construct(private readonly \Generator $source, public readonly string $tag) {}
+	private bool $started = false;
 
-    /** Remaining values; the iterator is consumed, as in JavaScript. */
-    public function rest(): \Generator
-    {
-        while (true) {
-            $step = $this->step();
-            if ($step === null) { return; }
-            yield $step[0];
-        }
-    }
+	public function __construct( private readonly \Generator $source, public readonly string $tag ) {}
 
-    /** @return array{0: mixed}|null */
-    private function step(): ?array
-    {
-        if ($this->started) { $this->source->next(); } else { $this->started = true; }
-        return $this->source->valid() ? [$this->source->current()] : null;
-    }
+	/** Remaining values; the iterator is consumed, as in JavaScript. */
+	public function rest(): \Generator {
+		while ( true ) {
+			$step = $this->step();
+			if ( null === $step ) {
+				return; }
+			yield $step[0];
+		}
+	}
 
-    public function next(): JsObject
-    {
-        $step = $this->step();
-        return new JsObject($step === null ? ['value' => JsUndefined::Value, 'done' => true] : ['value' => $step[0], 'done' => false]);
-    }
+	/** @return array{0: mixed}|null */
+	private function step(): ?array {
+		if ( $this->started ) {
+			$this->source->next();
+		} else {
+			$this->started = true; }
+		return $this->source->valid() ? array( $this->source->current() ) : null;
+	}
+
+	public function next(): JsObject {
+		$step = $this->step();
+		return new JsObject(
+			null === $step ? array(
+				'value' => JsUndefined::Value,
+				'done'  => true,
+			) : array(
+				'value' => $step[0],
+				'done'  => false,
+			)
+		);
+	}
 }

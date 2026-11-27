@@ -10,35 +10,50 @@ use SpacePress\Vendor\WordPress\Merge\Merge\MergeConflict;
 use SpacePress\Vendor\WordPress\Merge\MergeStrategy;
 
 /** Three-way body merge by line on the bundled php-toolkit, so the CLI and the runtime share one merger. */
-final class Merge
-{
-    /** @return array{merged: ?string, conflicts: list<array{ours: string, theirs: string, line: int}>} */
-    public static function bodies(string $base, string $ours, string $theirs): array
-    {
-        if ($ours === $theirs || $theirs === $base) {
-            return ['merged' => $ours, 'conflicts' => []];
-        }
-        if ($ours === $base) {
-            return ['merged' => $theirs, 'conflicts' => []];
-        }
-        $result = (new MergeStrategy(new LineDiffer(), new LineMerger()))->merge($base, $ours, $theirs);
-        if (!$result->has_conflicts()) {
-            // LineDiffer terminates every split line, so the merge gains one trailing newline.
-            $merged = $result->get_merged_content();
+final class Merge {
 
-            return ['merged' => str_ends_with($merged, "\n") ? substr($merged, 0, -1) : $merged, 'conflicts' => []];
-        }
-        $conflicts = [];
-        $line = 1;
-        foreach ((new \ReflectionProperty($result, 'results'))->getValue($result) as $part) {
-            if ($part instanceof MergeConflict) {
-                $conflicts[] = ['ours' => $part->ours, 'theirs' => $part->theirs, 'line' => $line];
-                $line += substr_count($part->ours, "\n");
-            } else {
-                $line += substr_count((string) $part, "\n");
-            }
-        }
+	/** @return array{merged: ?string, conflicts: list<array{ours: string, theirs: string, line: int}>} */
+	public static function bodies( string $base, string $ours, string $theirs ): array {
+		if ( $ours === $theirs || $theirs === $base ) {
+			return array(
+				'merged'    => $ours,
+				'conflicts' => array(),
+			);
+		}
+		if ( $ours === $base ) {
+			return array(
+				'merged'    => $theirs,
+				'conflicts' => array(),
+			);
+		}
+		$result = ( new MergeStrategy( new LineDiffer(), new LineMerger() ) )->merge( $base, $ours, $theirs );
+		if ( ! $result->has_conflicts() ) {
+			// LineDiffer terminates every split line, so the merge gains one trailing newline.
+			$merged = $result->get_merged_content();
 
-        return ['merged' => null, 'conflicts' => $conflicts];
-    }
+			return array(
+				'merged'    => str_ends_with( $merged, "\n" ) ? substr( $merged, 0, -1 ) : $merged,
+				'conflicts' => array(),
+			);
+		}
+		$conflicts = array();
+		$line      = 1;
+		foreach ( ( new \ReflectionProperty( $result, 'results' ) )->getValue( $result ) as $part ) {
+			if ( $part instanceof MergeConflict ) {
+				$conflicts[] = array(
+					'ours'   => $part->ours,
+					'theirs' => $part->theirs,
+					'line'   => $line,
+				);
+				$line       += substr_count( $part->ours, "\n" );
+			} else {
+				$line += substr_count( (string) $part, "\n" );
+			}
+		}
+
+		return array(
+			'merged'    => null,
+			'conflicts' => $conflicts,
+		);
+	}
 }

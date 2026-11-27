@@ -22,169 +22,212 @@ use function SpacePress\db;
  *   recorded for purges, and `noindex`. Each distinct query would otherwise be a cached URL that
  *   lists the kind, and enough of them would turn every write to it into a whole-host purge.
  */
-final class SearchView
-{
-    /** The query parameter. */
-    public const PARAM = 'q';
-    /** The page parameter, the same one `<Pagination>` uses. */
-    public const PAGE = 'page';
-    /** Rows per page (one kind) and per kind (site-wide), unless `perPage` says otherwise. */
-    public const PER_PAGE = 10;
+final class SearchView {
 
-    private static bool $searched = false;
+	/** The query parameter. */
+	public const PARAM = 'q';
+	/** The page parameter, the same one `<Pagination>` uses. */
+	public const PAGE = 'page';
+	/** Rows per page (one kind) and per kind (site-wide), unless `perPage` says otherwise. */
+	public const PER_PAGE = 10;
 
-    /** Whether this render ran a search: its response is the visitor's alone. */
-    public static function marked(): bool
-    {
-        return self::$searched;
-    }
+	private static bool $searched = false;
 
-    /** The search form. */
-    public static function form(?string $action, mixed $label, mixed $placeholder, mixed $class): Html
-    {
-        $label = is_string($label) && $label !== '' ? $label : __('Search');
-        $q = self::query();
-        $id = 'spacepress-search-q';
+	/** Whether this render ran a search: its response is the visitor's alone. */
+	public static function marked(): bool {
+		return self::$searched;
+	}
 
-        return Html::element('form', ['role' => 'search', 'method' => 'get', 'action' => $action ?? self::here(), 'className' => trim('spacepress-search ' . (is_string($class) ? $class : ''))],
-            Html::element('label', ['htmlFor' => $id], $label),
-            Html::element('input', ['type' => 'search', 'id' => $id, 'name' => self::PARAM, 'value' => $q ?? '', 'maxLength' => Index::MAX_QUERY, 'placeholder' => is_string($placeholder) ? $placeholder : null]),
-            Html::element('button', ['type' => 'submit'], $label),
-        );
-    }
+	/** The search form. */
+	public static function form( ?string $action, mixed $label, mixed $placeholder, mixed $class ): Html { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.classFound -- Preserve the existing PHP parameter name.
+		$label = is_string( $label ) && '' !== $label ? $label : __( 'Search' );
+		$q     = self::query();
+		$id    = 'spacepress-search-q';
 
-    /**
-     * The results of `q` on `$kind` (or every searchable kind with a URL, with no kind), as the
-     * visitor reads them. An empty `q` renders nothing. `$kind` is a registered collection known at
-     * build time; the site-wide search's `kind=` narrows to one kind (one the search doesn't cover
-     * gives no results, as the API does).
-     */
-    public static function results(?string $kind, mixed $q, mixed $page, mixed $perPage, mixed $class): Html
-    {
-        $q = is_string($q) ? trim($q) : '';
-        if ($q === '') {
-            return Html::raw('');
-        }
-        self::$searched = true;
-        $class = trim('spacepress-search-results ' . (is_string($class) ? $class : ''));
-        if (mb_strlen($q, 'UTF-8') > Index::MAX_QUERY) {
-            return Html::element('section', ['className' => $class], Html::element('p', ['className' => 'spacepress-search-too-long'], sprintf(__('Searches are at most %d characters.'), Index::MAX_QUERY)));
-        }
-        $perPage = is_int($perPage) || is_float($perPage) ? max(1, min(50, (int) $perPage)) : self::PER_PAGE;
-        $viewer = \SpacePress\Wp\CoreAccess::viewer();
-        if ($viewer === null) {
-            return Html::raw('');
-        }
-        $narrow = $kind === null ? ($_GET['kind'] ?? null) : null;
-        if ($kind !== null || is_string($narrow)) {
-            $one = $kind ?? (string) $narrow;
-            $covered = $kind !== null || (in_array($one, self::kinds(), true));
-            $page = is_int($page) || is_float($page) ? max(1, (int) $page) : max(1, (int) ($_GET[self::PAGE] ?? 1));
-            [$rows, $total] = $covered ? self::read($one, $q, $perPage, ($page - 1) * $perPage, $viewer) : [[], 0];
-            $pages = (int) ceil($total / $perPage);
+		return Html::element(
+			'form',
+			array(
+				'role'      => 'search',
+				'method'    => 'get',
+				'action'    => $action ?? self::here(),
+				'className' => trim( 'spacepress-search ' . ( is_string( $class ) ? $class : '' ) ),
+			),
+			Html::element( 'label', array( 'htmlFor' => $id ), $label ),
+			Html::element(
+				'input',
+				array(
+					'type'        => 'search',
+					'id'          => $id,
+					'name'        => self::PARAM,
+					'value'       => $q ?? '',
+					'maxLength'   => Index::MAX_QUERY,
+					'placeholder' => is_string( $placeholder ) ? $placeholder : null,
+				)
+			),
+			Html::element( 'button', array( 'type' => 'submit' ), $label ),
+		);
+	}
 
-            return Html::element('section', ['className' => $class, 'aria-label' => __('Search results')],
-                Html::element('p', ['className' => 'spacepress-search-count', 'role' => 'status'], $total === 0 ? __('No results.') : sprintf(_n('%d result', '%d results', $total), $total)),
-                self::list($one, $rows),
-                Pagination::render($page, $pages, self::PAGE, null, null),
-            );
-        }
-        $groups = [];
-        $found = 0;
-        foreach (self::kinds() as $one) {
-            [$rows, $total] = self::read($one, $q, $perPage, 0, $viewer);
-            if ($total === 0) {
-                continue;
-            }
-            $found += $total;
-            $more = $total > count($rows)
-                ? Html::element('p', ['className' => 'spacepress-search-more'], Markup::link(['href' => self::narrowed($one)], sprintf(__('All %1$d in %2$s'), $total, self::label($one))))
-                : null;
-            $groups[] = Html::element('section', ['className' => 'spacepress-search-group'], Html::element('h2', [], self::label($one)), self::list($one, $rows), $more);
-        }
+	/**
+	 * The results of `q` on `$kind` (or every searchable kind with a URL, with no kind), as the
+	 * visitor reads them. An empty `q` renders nothing. `$kind` is a registered collection known at
+	 * build time; the site-wide search's `kind=` narrows to one kind (one the search doesn't cover
+	 * gives no results, as the API does).
+	 */
+	public static function results( ?string $kind, mixed $q, mixed $page, mixed $perPage, mixed $class ): Html { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase, Universal.NamingConventions.NoReservedKeywordParameterNames.classFound -- Preserve the existing PHP variable name. Preserve the existing PHP parameter name.
+		$q = is_string( $q ) ? trim( $q ) : '';
+		if ( '' === $q ) {
+			return Html::raw( '' );
+		}
+		self::$searched = true;
+		$class          = trim( 'spacepress-search-results ' . ( is_string( $class ) ? $class : '' ) );
+		if ( mb_strlen( $q, 'UTF-8' ) > Index::MAX_QUERY ) {
+			/* translators: %d: Maximum search length in characters. */
+			return Html::element( 'section', array( 'className' => $class ), Html::element( 'p', array( 'className' => 'spacepress-search-too-long' ), sprintf( __( 'Searches are at most %d characters.' ), Index::MAX_QUERY ) ) );
+		}
+		$perPage = is_int( $perPage ) || is_float( $perPage ) ? max( 1, min( 50, (int) $perPage ) ) : self::PER_PAGE; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		$viewer  = \SpacePress\Wp\CoreAccess::viewer();
+		if ( null === $viewer ) {
+			return Html::raw( '' );
+		}
+		$narrow = null === $kind ? ( $_GET['kind'] ?? null ) : null;
+		if ( null !== $kind || is_string( $narrow ) ) {
+			$one            = $kind ?? (string) $narrow;
+			$covered        = null !== $kind || ( in_array( $one, self::kinds(), true ) );
+			$page           = is_int( $page ) || is_float( $page ) ? max( 1, (int) $page ) : max( 1, (int) ( $_GET[ self::PAGE ] ?? 1 ) );
+			[$rows, $total] = $covered ? self::read( $one, $q, $perPage, ( $page - 1 ) * $perPage, $viewer ) : array( array(), 0 ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+			$pages          = (int) ceil( $total / $perPage ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 
-        return Html::element('section', ['className' => $class, 'aria-label' => __('Search results')],
-            Html::element('p', ['className' => 'spacepress-search-count', 'role' => 'status'], $found === 0 ? __('No results.') : sprintf(_n('%d result', '%d results', $found), $found)),
-            ...$groups,
-        );
-    }
+			return Html::element(
+				'section',
+				array(
+					'className'  => $class,
+					'aria-label' => __( 'Search results' ),
+				),
+				Html::element(
+					'p',
+					array(
+						'className' => 'spacepress-search-count',
+						'role'      => 'status',
+					),
+					/* translators: %d: Number of search results. */
+					0 === $total ? __( 'No results.' ) : sprintf( _n( '%d result', '%d results', $total ), $total )
+				),
+				self::list( $one, $rows ),
+				Pagination::render( $page, $pages, self::PAGE, null, null ),
+			);
+		}
+		$groups = array();
+		$found  = 0;
+		foreach ( self::kinds() as $one ) {
+			[$rows, $total] = self::read( $one, $q, $perPage, 0, $viewer ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+			if ( 0 === $total ) {
+				continue;
+			}
+			$found += $total;
+			$more   = $total > count( $rows )
+				/* translators: %1$d: Number of results. %2$s: Name of the result category. */
+				? Html::element( 'p', array( 'className' => 'spacepress-search-more' ), Markup::link( array( 'href' => self::narrowed( $one ) ), sprintf( __( 'All %1$d in %2$s' ), $total, self::label( $one ) ) ) )
+				: null;
+			$groups[] = Html::element( 'section', array( 'className' => 'spacepress-search-group' ), Html::element( 'h2', array(), self::label( $one ) ), self::list( $one, $rows ), $more );
+		}
 
-    /**
-     * The kinds a site-wide search covers: those the index covers (searchable fields, an API list)
-     * that also have a URL to link a result to.
-     *
-     * @return list<string>
-     */
-    private static function kinds(): array
-    {
-        $urls = db()->schema()->collections();
+		return Html::element(
+			'section',
+			array(
+				'className'  => $class,
+				'aria-label' => __( 'Search results' ),
+			),
+			Html::element(
+				'p',
+				array(
+					'className' => 'spacepress-search-count',
+					'role'      => 'status',
+				),
+				/* translators: %d: Number of results in this category. */
+				0 === $found ? __( 'No results.' ) : sprintf( _n( '%d result', '%d results', $found ), $found )
+			),
+			...$groups,
+		);
+	}
 
-        return array_values(array_filter(Index::kinds(), static fn (string $k): bool => isset($urls[$k]['url']) && is_string($urls[$k]['url'])));
-    }
+	/**
+	 * The kinds a site-wide search covers: those the index covers (searchable fields, an API list)
+	 * that also have a URL to link a result to.
+	 *
+	 * @return list<string>
+	 */
+	private static function kinds(): array {
+		$urls = db()->schema()->collections();
 
-    /** @return array{list<array<string, mixed>>, int} the page of rows and how many match */
-    private static function read(string $kind, string $q, int $limit, int $offset, \SpacePress\Viewer $viewer): array
-    {
-        $locale = \SpacePress\Locale\Module::localized($kind) ? ['locale' => '*'] : [];
-        try {
-            $rows = db()->findMany($kind, ['search' => $q, 'limit' => $limit, 'offset' => $offset] + $locale, $viewer);
-            $total = db()->count($kind, null, $viewer, ['search' => $q] + $locale);
-        } catch (\SpacePress\HttpError $e) {
-            if (in_array($e->status, [401, 403], true)) {
-                return [[], 0]; // a kind the visitor may not read is left out, as the API does
-            }
-            throw $e;
-        }
+		return array_values( array_filter( Index::kinds(), static fn ( string $k ): bool => isset( $urls[ $k ]['url'] ) && is_string( $urls[ $k ]['url'] ) ) );
+	}
 
-        return [$rows, $total];
-    }
+	/** @return array{list<array<string, mixed>>, int} the page of rows and how many match */
+	private static function read( string $kind, string $q, int $limit, int $offset, \SpacePress\Viewer $viewer ): array {
+		$locale = \SpacePress\Locale\Module::localized( $kind ) ? array( 'locale' => '*' ) : array();
+		try {
+			$rows  = db()->findMany(
+				$kind,
+				array(
+					'search' => $q,
+					'limit'  => $limit,
+					'offset' => $offset,
+				) + $locale,
+				$viewer
+			);
+			$total = db()->count( $kind, null, $viewer, array( 'search' => $q ) + $locale );
+		} catch ( \SpacePress\HttpError $e ) {
+			if ( in_array( $e->status, array( 401, 403 ), true ) ) {
+				return array( array(), 0 ); // a kind the visitor may not read is left out, as the API does
+			}
+			throw $e;
+		}
 
-    /** @param list<array<string, mixed>> $rows */
-    private static function list(string $kind, array $rows): ?Html
-    {
-        if ($rows === []) {
-            return null;
-        }
-        $spec = db()->schema()->collection($kind);
-        $pk = $spec['primaryKey'] ?? 'id';
-        $title = $spec['title'] ?? null;
-        $items = [];
-        foreach ($rows as $row) {
-            $id = (int) ($row[$pk] ?? 0);
-            $text = is_string($title) && is_scalar($row[$title] ?? null) ? (string) $row[$title] : (string) get_the_title($id);
-            $link = get_permalink($id);
-            $items[] = Html::element('li', ['className' => 'spacepress-search-result'], is_string($link) ? Html::element('a', ['href' => $link], $text) : $text);
-        }
+		return array( $rows, $total );
+	}
 
-        return Html::element('ol', [], ...$items);
-    }
+	/** @param list<array<string, mixed>> $rows */
+	private static function list( string $kind, array $rows ): ?Html {
+		if ( array() === $rows ) {
+			return null;
+		}
+		$spec  = db()->schema()->collection( $kind );
+		$pk    = $spec['primaryKey'] ?? 'id';
+		$title = $spec['title'] ?? null;
+		$items = array();
+		foreach ( $rows as $row ) {
+			$id      = (int) ( $row[ $pk ] ?? 0 );
+			$text    = is_string( $title ) && is_scalar( $row[ $title ] ?? null ) ? (string) $row[ $title ] : (string) get_the_title( $id );
+			$link    = get_permalink( $id );
+			$items[] = Html::element( 'li', array( 'className' => 'spacepress-search-result' ), is_string( $link ) ? Html::element( 'a', array( 'href' => $link ), $text ) : $text );
+		}
 
-    private static function label(string $kind): string
-    {
-        $spec = db()->schema()->collection($kind);
+		return Html::element( 'ol', array(), ...$items );
+	}
 
-        return (string) ($spec['label'] ?? $spec['wp']['labels']['name'] ?? $kind);
-    }
+	private static function label( string $kind ): string {
+		$spec = db()->schema()->collection( $kind );
 
-    /** The trimmed `q` of this request, or null. */
-    private static function query(): ?string
-    {
-        $q = $_GET[self::PARAM] ?? null;
+		return (string) ( $spec['label'] ?? $spec['wp']['labels']['name'] ?? $kind );
+	}
 
-        return is_string($q) && trim($q) !== '' ? trim($q) : null;
-    }
+	/** The trimmed `q` of this request, or null. */
+	private static function query(): ?string {
+		$q = $_GET[ self::PARAM ] ?? null;
 
-    /** This page's path, for a form with no action. */
-    private static function here(): string
-    {
-        return (string) (wp_parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH) ?? '/');
-    }
+		return is_string( $q ) && trim( $q ) !== '' ? trim( $q ) : null;
+	}
 
-    /** This page with `q` kept, `kind` set and no page number. */
-    private static function narrowed(string $kind): string
-    {
-        $q = self::query() ?? '';
+	/** This page's path, for a form with no action. */
+	private static function here(): string {
+		return (string) ( wp_parse_url( (string) ( $_SERVER['REQUEST_URI'] ?? '/' ), PHP_URL_PATH ) ?? '/' );
+	}
 
-        return self::here() . '?' . self::PARAM . '=' . rawurlencode($q) . '&kind=' . rawurlencode($kind);
-    }
+	/** This page with `q` kept, `kind` set and no page number. */
+	private static function narrowed( string $kind ): string {
+		$q = self::query() ?? '';
+
+		return self::here() . '?' . self::PARAM . '=' . rawurlencode( $q ) . '&kind=' . rawurlencode( $kind );
+	}
 }

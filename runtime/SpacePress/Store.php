@@ -33,86 +33,86 @@ namespace SpacePress;
  */
 
 /** Storage for collections, globals and revisions. Implemented by the Wp\*Store classes. */
-interface Store
-{
-    /** Open a transaction (or join one). Any Throwable rolls back everything written inside. */
-    public function transaction(callable $fn): mixed;
+interface Store {
 
-    /** Run after the outermost commit (immediately without a transaction); discarded on rollback. */
-    public function afterCommit(callable $fn): void;
+	/** Open a transaction (or join one). Any Throwable rolls back everything written inside. */
+	public function transaction( callable $fn ): mixed; // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP parameter name.
 
-    /** @param list<string> $statements idempotent DDL; MySQL replaces {prefix}. Never inside a request transaction. */
-    public function applySystemStatements(array $statements): void;
+	/** Run after the outermost commit (immediately without a transaction); discarded on rollback. */
+	public function afterCommit( callable $fn ): void; // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, Universal.NamingConventions.NoReservedKeywordParameterNames.fnFound -- Preserve the existing PHP method name. Preserve the existing PHP parameter name.
 
-    /**
-     * Raw rows matching a compiled query. $q is produced by Sql::select() against $this->dialect()
-     * and $this->source($collection): ['sql' => string, 'params' => list<scalar>]. Rows come back as
-     * assoc arrays keyed by column name, values in STORAGE form (§3.4; strings/ints/null); Db decodes
-     * them with Schema::decodeRow. Every column of the collection is present in every row.
-     *
-     * @param array{sql: string, params: list<int|float|string|null>} $q
-     * @return list<array<string, mixed>>
-     */
-    public function select(string $collection, array $q): array;
+	/** @param list<string> $statements idempotent DDL; MySQL replaces {prefix}. Never inside a request transaction. */
+	public function applySystemStatements( array $statements ): void; // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 
-    /** Insert one encoded row ($values keyed by column, storage form). Returns the primary key value. */
-    public function insert(string $collection, array $values): int|string;
+	/**
+	 * Raw rows matching a compiled query. $q is produced by Sql::select() against $this->dialect()
+	 * and $this->source($collection): ['sql' => string, 'params' => list<scalar>]. Rows come back as
+	 * assoc arrays keyed by column name, values in STORAGE form (§3.4; strings/ints/null); Db decodes
+	 * them with Schema::decodeRow. Every column of the collection is present in every row.
+	 *
+	 * @param array{sql: string, params: list<int|float|string|null>} $q
+	 * @return list<array<string, mixed>>
+	 */
+	public function select( string $collection, array $q ): array;
 
-    /** Update one row by primary key with encoded values. */
-    public function update(string $collection, int|string $pk, array $values): void;
+	/** Insert one encoded row ($values keyed by column, storage form). Returns the primary key value. */
+	public function insert( string $collection, array $values ): int|string;
 
-    /** Delete one row by primary key. */
-    public function delete(string $collection, int|string $pk): void;
+	/** Update one row by primary key with encoded values. */
+	public function update( string $collection, int|string $pk, array $values ): void;
 
-    /** The SQL dialect filters compile to for this store. */
-    public function dialect(): Dialect;
+	/** Delete one row by primary key. */
+	public function delete( string $collection, int|string $pk ): void;
 
-    /**
-     * How Sql reads this collection: the base table, its primary-key expression, and one ColumnRef per
-     * column. WpTableStore returns a plain table where every ColumnRef is `<alias>.<col>`;
-     * WpPostStore returns wp_posts with core columns as expressions and meta columns as joins (§3.5.1).
-     * System tables ('__sp_revisions', '__sp_tokens', '__sp_globals', '__sp_media') are plain.
-     */
-    public function source(string $collection): Source;
+	/** The SQL dialect filters compile to for this store. */
+	public function dialect(): Dialect;
 
-    /**
-     * Storage-native visibility for this viewer, applied before pagination and relation matching.
-     * For SELECT, a store may return an equivalent predicate without checking whether any rows
-     * are restricted. Other callers use an empty list as proof that the scope is unrestricted.
-     *
-     * @return list<array|SqlPredicate>
-     */
-    public function readGuards(string $collection, Viewer $viewer, bool $forSelect = false): array;
+	/**
+	 * How Sql reads this collection: the base table, its primary-key expression, and one ColumnRef per
+	 * column. WpTableStore returns a plain table where every ColumnRef is `<alias>.<col>`;
+	 * WpPostStore returns wp_posts with core columns as expressions and meta columns as joins (§3.5.1).
+	 * System tables ('__sp_revisions', '__sp_tokens', '__sp_globals', '__sp_media') are plain.
+	 */
+	public function source( string $collection ): Source;
 
-    /**
-     * True when the storage itself already shows $viewer every value of this unique column, whatever
-     * the collection's read rule filters out. A unique write on it then answers as it would to a
-     * trusted caller (taken: 409). False everywhere else: the write is refused before any lookup.
-     */
-    public function showsUnique(string $collection, string $column, Viewer $viewer): bool;
+	/**
+	 * Storage-native visibility for this viewer, applied before pagination and relation matching.
+	 * For SELECT, a store may return an equivalent predicate without checking whether any rows
+	 * are restricted. Other callers use an empty list as proof that the scope is unrestricted.
+	 *
+	 * @return list<array|SqlPredicate>
+	 */
+	public function readGuards( string $collection, Viewer $viewer, bool $forSelect = false ): array; // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP method name. Preserve the existing PHP variable name.
 
-    /** Encoded values keyed by field, null if never written. */
-    public function globalRead(string $name): ?array;
+	/**
+	 * True when the storage itself already shows $viewer every value of this unique column, whatever
+	 * the collection's read rule filters out. A unique write on it then answers as it would to a
+	 * trusted caller (taken: 409). False everywhere else: the write is refused before any lookup.
+	 */
+	public function showsUnique( string $collection, string $column, Viewer $viewer ): bool; // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 
-    public function globalWrite(string $name, array $values): void;
+	/** Encoded values keyed by field, null if never written. */
+	public function globalRead( string $name ): ?array; // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 
-    /** @return list<array{id: int, version?: int, op?: string, at: string, userId: ?int, schemaMigration?: ?string, changed?: ?list<string>, row: array}> newest first */
-    public function revisions(string $collection, int|string $pk): array;
+	public function globalWrite( string $name, array $values ): void; // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 
-    /** @param array{op?: string, schemaMigration?: ?string, changed?: ?list<string>, allocatedKey?: bool} $meta */
-    public function revisionWrite(string $collection, int|string $pk, array $encodedRow, ?int $userId, array $meta = []): void;
+	/** @return list<array{id: int, version?: int, op?: string, at: string, userId: ?int, schemaMigration?: ?string, changed?: ?list<string>, row: array}> newest first */
+	public function revisions( string $collection, int|string $pk ): array;
 
-    /** @return ?array{id: int, version?: int, op?: string, at: string, userId: ?int, schemaMigration?: ?string, changed?: ?list<string>, row: array} */
-    public function revision(string $collection, int|string $pk, int $revisionId, bool $byVersion = false): ?array;
+	/** @param array{op?: string, schemaMigration?: ?string, changed?: ?list<string>, allocatedKey?: bool} $meta */
+	public function revisionWrite( string $collection, int|string $pk, array $encodedRow, ?int $userId, array $meta = array() ): void; // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP method name. Preserve the existing PHP variable name.
 
-    /**
-     * Scheduled publishing. WpTable: UPDATE ... SET status='published' WHERE status='scheduled'
-     * AND publishedAt <= $nowIso; returns pks. WpPost: no-op (WP cron does it). Fires no hooks, writes no revision.
-     *
-     * @return list<int|string>
-     */
-    public function promoteDue(string $collection, string $nowIso): array;
+	/** @return ?array{id: int, version?: int, op?: string, at: string, userId: ?int, schemaMigration?: ?string, changed?: ?list<string>, row: array} */
+	public function revision( string $collection, int|string $pk, int $revisionId, bool $byVersion = false ): ?array; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 
-    /** Map a driver exception to a HttpError (unique_violation with pointer when the column is known, reference_violation) or rethrow. */
-    public function mapError(\Throwable $e): \Throwable;
+	/**
+	 * Scheduled publishing. WpTable: UPDATE ... SET status='published' WHERE status='scheduled'
+	 * AND publishedAt <= $nowIso; returns pks. WpPost: no-op (WP cron does it). Fires no hooks, writes no revision.
+	 *
+	 * @return list<int|string>
+	 */
+	public function promoteDue( string $collection, string $nowIso ): array; // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP method name. Preserve the existing PHP variable name.
+
+	/** Map a driver exception to a HttpError (unique_violation with pointer when the column is known, reference_violation) or rethrow. */
+	public function mapError( \Throwable $e ): \Throwable; // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 }

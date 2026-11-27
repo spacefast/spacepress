@@ -80,60 +80,74 @@ function sp_admin_get_boot_context() {
 	$plugin = class_exists( '\\SpacePress\\Wp\\Runtime' ) ? \SpacePress\Wp\Runtime::plugin() : null;
 	return apply_filters(
 		'sp_admin_boot_context',
-		array_merge( sp_admin_get_dashboard_context(), array(
-			'logout_url'               => html_entity_decode( wp_logout_url() ),
-			'dashboard_widget_types'   => sp_admin_get_dashboard_widgets(),
-			'dashboard_default_layout' => apply_filters( 'sp_admin_dashboard_widgets', array() ),
-			'declarative_widgets'      => function_exists( 'sp_admin_get_declarative_widgets' ) ? sp_admin_get_declarative_widgets() : array(),
-			'dashboards'               => function_exists( 'sp_admin_get_dashboards' ) ? sp_admin_get_dashboards() : array(),
-			'managed'                  => class_exists( '\\SpacePress\\Wp\\Runtime' ) && \SpacePress\Wp\Runtime::managed(),
-			'sealed'                   => $plugin !== null && $plugin->schema->sealed() !== null,
-			'has_store'                => $plugin !== null && $plugin->schema->commerce() !== null,
-			'identity_active'          => class_exists( '\\SpacePress\\Identity\\Plugin' ),
-			// Where this admin is mounted and where wp-admin is: a WordPress installed below the
-			// origin root (`/blog/`) routes and frames correctly only if the app learns both here.
-			'mount_url'                => sp_admin_url( '/' ),
-			'admin_url'                => admin_url(),
-		) )
+		array_merge(
+			sp_admin_get_dashboard_context(),
+			array(
+				'logout_url'               => html_entity_decode( wp_logout_url() ),
+				'dashboard_widget_types'   => sp_admin_get_dashboard_widgets(),
+				'dashboard_default_layout' => apply_filters( 'sp_admin_dashboard_widgets', array() ),
+				'declarative_widgets'      => function_exists( 'sp_admin_get_declarative_widgets' ) ? sp_admin_get_declarative_widgets() : array(),
+				'dashboards'               => function_exists( 'sp_admin_get_dashboards' ) ? sp_admin_get_dashboards() : array(),
+				'managed'                  => class_exists( '\\SpacePress\\Wp\\Runtime' ) && \SpacePress\Wp\Runtime::managed(),
+				'sealed'                   => null !== $plugin && $plugin->schema->sealed() !== null,
+				'has_store'                => null !== $plugin && $plugin->schema->commerce() !== null,
+				'identity_active'          => class_exists( '\\SpacePress\\Identity\\Plugin' ),
+				// Where this admin is mounted and where wp-admin is: a WordPress installed below the
+				// origin root (`/blog/`) routes and frames correctly only if the app learns both here.
+				'mount_url'                => sp_admin_url( '/' ),
+				'admin_url'                => admin_url(),
+			)
+		)
 	);
 }
 
 // Transport comes from registered native types, independently of editor preferences.
 $sp_admin_native = array();
 foreach ( \SpacePress\Wp\Runtime::plugin()->schema->collections() as $name => $collection ) {
-    $type = isset( $collection['wp']['postType'] ) ? get_post_type_object( $collection['wp']['postType'] ) : null;
-    if ( $type && $type->show_in_rest ) {
-        $terms = array();
-        $rest_terms = true;
-        foreach ( $collection['columns'] as $column => $def ) {
-            if ( ! \SpacePress\Wp\PostMeta::terms( $def ) ) {
-                continue;
-            }
-            $target = \SpacePress\Wp\Runtime::plugin()->schema->collection( $def['references']['collection'] );
-            $taxonomy = get_taxonomy( $target['wp']['taxonomy'] );
-            if ( $taxonomy && $taxonomy->show_in_rest ) {
-                $terms[ $column ] = $taxonomy->rest_base ?: $taxonomy->name;
-            } else {
-                // Keep this collection on SpacePress's form/API: core REST cannot
-                // represent every assignment, and terms are never post meta.
-                $rest_terms = false;
-                break;
-            }
-        }
-        if ( ! $rest_terms ) {
-            continue;
-        }
-        $sp_admin_native[ $name ] = array( 'postType' => $type->name, 'terms' => $terms, 'path' => '/' . ( $type->rest_namespace ?: 'wp/v2' ) . '/' . ( $type->rest_base ?: $type->name ) );
-    }
+	$type = isset( $collection['wp']['postType'] ) ? get_post_type_object( $collection['wp']['postType'] ) : null;
+	if ( $type && $type->show_in_rest ) {
+		$terms      = array();
+		$rest_terms = true;
+		foreach ( $collection['columns'] as $column => $def ) {
+			if ( ! \SpacePress\Wp\PostMeta::terms( $def ) ) {
+				continue;
+			}
+			$target   = \SpacePress\Wp\Runtime::plugin()->schema->collection( $def['references']['collection'] );
+			$taxonomy = get_taxonomy( $target['wp']['taxonomy'] );
+			if ( $taxonomy && $taxonomy->show_in_rest ) {
+				$terms[ $column ] = $taxonomy->rest_base ?: $taxonomy->name; // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
+			} else {
+				// Keep this collection on SpacePress's form/API: core REST cannot
+				// represent every assignment, and terms are never post meta.
+				$rest_terms = false;
+				break;
+			}
+		}
+		if ( ! $rest_terms ) {
+			continue;
+		}
+		$sp_admin_native[ $name ] = array(
+			'postType' => $type->name,
+			'terms'    => $terms,
+			'path'     => '/' . ( $type->rest_namespace ?: 'wp/v2' ) . '/' . ( $type->rest_base ?: $type->name ), // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
+		);
+	}
 }
-wp_add_inline_script( 'wp-api-fetch', 'window.spAdmin = ' . wp_json_encode( array(
-    'native' => $sp_admin_native,
-    'readable' => sp_admin_navigation(),
-    'role' => \SpacePress\Wp\CoreAccess::viewer()->user['role'] ?? 'subscriber',
-    'mount' => sp_admin_url(),
-    // SpacePress's API (/wp-json/spacepress/v1): the admin's own reads and writes go through it, as every client's do.
-    'api' => \SpacePress\Wp\Facade::url(),
-), JSON_HEX_TAG | JSON_UNESCAPED_SLASHES ) . ';', 'after' );
+wp_add_inline_script(
+	'wp-api-fetch',
+	'window.spAdmin = ' . wp_json_encode(
+		array(
+			'native'   => $sp_admin_native,
+			'readable' => sp_admin_navigation(),
+			'role'     => \SpacePress\Wp\CoreAccess::viewer()->user['role'] ?? 'subscriber',
+			'mount'    => sp_admin_url(),
+			// SpacePress's API (/wp-json/spacepress/v1): the admin's own reads and writes go through it, as every client's do.
+			'api'      => \SpacePress\Wp\Facade::url(),
+		),
+		JSON_HEX_TAG | JSON_UNESCAPED_SLASHES
+	) . ';',
+	'after'
+);
 
 // Preload endpoints used by `getEntityRecord` (entity configs) and by the root route loader.
 $sp_admin_preload_paths = array(
@@ -207,11 +221,14 @@ foreach ( sp_admin_get_admin_routes() as $route ) {
 
 // Native widgets are lazy script modules and need entries in the import map.
 foreach ( sp_admin_get_dashboard_widgets() as $widget ) {
-    foreach ( array( 'render_module', 'widget_module' ) as $key ) {
-        if ( ! empty( $widget[$key] ) ) {
-            $boot_dependencies[] = array( 'import' => 'dynamic', 'id' => $widget[$key] );
-        }
-    }
+	foreach ( array( 'render_module', 'widget_module' ) as $key ) {
+		if ( ! empty( $widget[ $key ] ) ) {
+			$boot_dependencies[] = array(
+				'import' => 'dynamic',
+				'id'     => $widget[ $key ],
+			);
+		}
+	}
 }
 
 // Add all registered init modules as dependencies.

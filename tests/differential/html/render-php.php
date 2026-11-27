@@ -11,15 +11,15 @@ declare(strict_types=1);
 require $runtime . '/sp/bootstrap.php';
 $schema = require $root . '/sp/app/schema.php';
 require_once $root . '/sp/app/functions.php';
-$out = [];
-foreach (json_decode((string) file_get_contents($casesFile), true, 512, JSON_THROW_ON_ERROR) as $index => $case) {
-    try {
-        $fn = '\\SpacePressApp\\' . $schema['components'][$case['component']];
-        // JSON_FORCE_OBJECT would also turn arrays inside the props into objects; `(object)` keeps them.
-        $props = \SpacePress\Js::jsonParse(json_encode((object) $case['props'], JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION));
-        $out[(string) $index] = ['html' => \SpacePress\Html::child(\SpacePress\Html::component($fn(...), $props))];
-    } catch (\Throwable $e) {
-        $out[(string) $index] = ['error' => $e->getMessage()];
-    }
+$out = array();
+foreach ( json_decode( (string) file_get_contents( $casesFile ), true, 512, JSON_THROW_ON_ERROR ) as $index => $case ) {
+	try {
+		$fn = '\\SpacePressApp\\' . $schema['components'][ $case['component'] ];
+		// JSON_FORCE_OBJECT would also turn arrays inside the props into objects; `(object)` keeps them.
+		$props                  = \SpacePress\Js::jsonParse( json_encode( (object) $case['props'], JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION ) );
+		$out[ (string) $index ] = array( 'html' => \SpacePress\Html::child( \SpacePress\Html::component( $fn( ... ), $props ) ) );
+	} catch ( \Throwable $e ) {
+		$out[ (string) $index ] = array( 'error' => $e->getMessage() );
+	}
 }
-echo json_encode($out, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_FORCE_OBJECT), "\n";
+echo json_encode( $out, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_FORCE_OBJECT ), "\n";

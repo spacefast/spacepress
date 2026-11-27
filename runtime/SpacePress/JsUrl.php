@@ -8,58 +8,61 @@ use SpacePress\Vendor\Rowbot\URL\URL as WhatwgUrl;
  * WHATWG `URL`, backed by the bundled rowbot/url (MIT), which implements the URL Standard parser.
  * See docs/decisions/2026-11-07-stdlib-objects.md. Parse failures are JavaScript TypeErrors.
  */
-final class JsUrl implements \Stringable
-{
-    public const PROPERTIES = ['href', 'origin', 'protocol', 'username', 'password', 'host', 'hostname', 'port', 'pathname', 'search', 'hash'];
-    public const WRITABLE = ['href', 'protocol', 'username', 'password', 'host', 'hostname', 'port', 'pathname', 'search', 'hash'];
+final class JsUrl implements \Stringable {
 
-    private ?JsUrlSearchParams $params = null;
+	public const PROPERTIES = array( 'href', 'origin', 'protocol', 'username', 'password', 'host', 'hostname', 'port', 'pathname', 'search', 'hash' );
+	public const WRITABLE   = array( 'href', 'protocol', 'username', 'password', 'host', 'hostname', 'port', 'pathname', 'search', 'hash' );
 
-    private function __construct(private readonly WhatwgUrl $url) {}
+	private ?JsUrlSearchParams $params = null;
 
-    public static function construct(mixed $url, mixed $base = JsUndefined::Value): self
-    {
-        try {
-            return new self(new WhatwgUrl(self::text($url), $base === JsUndefined::Value ? null : self::text($base)));
-        } catch (\SpacePress\Vendor\Rowbot\URL\Exception\TypeError $e) {
-            throw new JsError($e->getMessage(), 'TypeError');
-        }
-    }
+	private function __construct( private readonly WhatwgUrl $url ) {}
 
-    public static function parse(mixed $url, mixed $base = JsUndefined::Value): self|null
-    {
-        try { return self::construct($url, $base); } catch (JsError) { return null; }
-    }
+	public static function construct( mixed $url, mixed $base = JsUndefined::Value ): self {
+		try {
+			return new self( new WhatwgUrl( self::text( $url ), JsUndefined::Value === $base ? null : self::text( $base ) ) );
+		} catch ( \SpacePress\Vendor\Rowbot\URL\Exception\TypeError $e ) {
+			throw new JsError( $e->getMessage(), 'TypeError' );
+		}
+	}
 
-    public static function canParse(mixed $url, mixed $base = JsUndefined::Value): bool
-    {
-        return WhatwgUrl::canParse(self::text($url), $base === JsUndefined::Value ? null : self::text($base));
-    }
+	public static function parse( mixed $url, mixed $base = JsUndefined::Value ): self|null {
+		try {
+			return self::construct( $url, $base );
+		} catch ( JsError ) {
+			return null; }
+	}
 
-    public function get(string $name): string|JsUrlSearchParams
-    {
-        if ($name === 'searchParams') { return $this->params ??= JsUrlSearchParams::of($this->url->searchParams); }
-        if (!in_array($name, self::PROPERTIES, true)) { throw new JsError('Unsupported URL property ' . $name, 'TypeError'); }
-        return $this->url->$name;
-    }
+	public static function canParse( mixed $url, mixed $base = JsUndefined::Value ): bool {
+		return WhatwgUrl::canParse( self::text( $url ), JsUndefined::Value === $base ? null : self::text( $base ) );
+	}
 
-    public function set(string $name, mixed $value): void
-    {
-        if (!in_array($name, self::WRITABLE, true)) { throw new JsError('Cannot assign to URL property ' . $name, 'TypeError'); }
-        try {
-            $this->url->$name = self::text($value);
-        } catch (\SpacePress\Vendor\Rowbot\URL\Exception\TypeError $e) {
-            throw new JsError($e->getMessage(), 'TypeError');
-        }
-    }
+	public function get( string $name ): string|JsUrlSearchParams {
+		if ( 'searchParams' === $name ) {
+			return $this->params ??= JsUrlSearchParams::of( $this->url->searchParams ); }
+		if ( ! in_array( $name, self::PROPERTIES, true ) ) {
+			throw new JsError( 'Unsupported URL property ' . $name, 'TypeError' ); }
+		return $this->url->$name;
+	}
 
-    public function toString(): string { return $this->url->href; }
-    public function toJSON(): string { return $this->url->href; }
-    public function __toString(): string { return $this->url->href; }
+	public function set( string $name, mixed $value ): void {
+		if ( ! in_array( $name, self::WRITABLE, true ) ) {
+			throw new JsError( 'Cannot assign to URL property ' . $name, 'TypeError' ); }
+		try {
+			$this->url->$name = self::text( $value );
+		} catch ( \SpacePress\Vendor\Rowbot\URL\Exception\TypeError $e ) {
+			throw new JsError( $e->getMessage(), 'TypeError' );
+		}
+	}
 
-    /** USVString conversion: a JavaScript value to text, lone surrogates already replaced by PHP's UTF-8. */
-    private static function text(mixed $value): string
-    {
-        return $value instanceof self ? $value->url->href : Js::str($value);
-    }
+	public function toString(): string {
+		return $this->url->href; }
+	public function toJSON(): string {
+		return $this->url->href; }
+	public function __toString(): string {
+		return $this->url->href; }
+
+	/** USVString conversion: a JavaScript value to text, lone surrogates already replaced by PHP's UTF-8. */
+	private static function text( mixed $value ): string {
+		return $value instanceof self ? $value->url->href : Js::str( $value );
+	}
 }

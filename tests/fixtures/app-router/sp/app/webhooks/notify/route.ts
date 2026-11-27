@@ -6,6 +6,6 @@ import { db } from "spacepress/server";
 export const signature = { secret: env("APPROUTER_HOOK_SECRET"), header: "x-hook-signature", scheme: "hmac-sha256" };
 
 export async function POST(req: RouteRequest) {
-  const all = await db.query.notes.findMany({ orderBy: { id: "asc" } });
-  return { status: 202, body: `${req.body}:${all.length}` };
+  const all = await db.notes.list({ orderBy: { id: "asc" } });
+  return new Response(`${req.body}:${all.length}`, { status: 202 });
 }

@@ -1,11 +1,11 @@
-import { entries } from "spacepress/server/db";
+import { db } from "spacepress/server";
 import { useFormState } from "spacepress/app";
 import { close } from "../../server";
 
 // A form whose button the server renders disabled once the poll is closed: the swap must keep it so.
 export default async function Poll() {
   const closed = useFormState(close);
-  const all = await entries.list({ where: { name: "closed" }, limit: 1 });
+  const all = await db.entries.list({ where: { name: "closed" }, limit: 1 });
   const isClosed = all.length > 0;
   return (
     <main>

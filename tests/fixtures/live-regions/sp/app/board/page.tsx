@@ -1,9 +1,9 @@
-import { signatures } from "spacepress/server/db";
+import { db } from "spacepress/server";
 import { Live } from "spacepress/app";
 import { Counter } from "../../components/Counter";
 
 export default async function Board() {
-  const all = await signatures.list({ orderBy: { id: "asc" } });
+  const all = await db.signatures.list({ orderBy: { id: "asc" } });
   return (
     <main>
       <Live id="board">

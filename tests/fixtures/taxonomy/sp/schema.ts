@@ -1,26 +1,25 @@
-import { collection, media, ref, select, taxonomy, terms, text } from "spacepress";
+import { collection, taxonomy, f } from "spacepress";
 
-export const authors = collection({ title: text() });
+export const authors = collection({ title: f.text() });
 
 export const posts = collection(
-  { title: text(), labels: terms(() => tags).reverse("labelled") },
-  { url: "/notes/:topics.slug/:slug" },
+  { title: f.text(), labels: f.terms(() => tags).reverse("labelled") },
 );
 
 export const pages = collection(
-  { title: text(), secret: text().optional() },
+  { title: f.text(), secret: f.text().optional() },
   { access: { read: "editor", create: "author", update: "author" } },
 );
 
 export const topics = taxonomy(
   {
-    color: text().optional(),
-    icon: media().optional(),
-    owner: ref(authors).optional(),
-    shades: select(["light", "dark"]).many().optional(),
-    note: text().optional().access({ read: "editor" }),
+    color: f.text().optional(),
+    icon: f.media().optional(),
+    owner: f.ref(authors).optional(),
+    shades: f.select(["light", "dark"]).many().optional(),
+    note: f.text().optional().access({ read: "editor" }),
   },
-  { hierarchical: true, url: "/topics/:path", on: [posts, pages], access: { create: "author" } },
+  { hierarchical: true, on: [posts, pages], access: { create: "author" } },
 );
 
-export const tags = taxonomy({}, { url: "/tags/:slug" });
+export const tags = taxonomy({});

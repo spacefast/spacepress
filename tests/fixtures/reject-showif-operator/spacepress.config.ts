@@ -1,4 +1,4 @@
-import { collection, text, email, integer, boolean, richText, slug, group, repeater, json, media, file, files, job, env, global, defineConfig, table } from "spacepress";
-import { once, db } from "spacepress/server";
-export const notes = table({ x: text().showIf({ x: { gt: "a" } }).optional() });
+import { collection, files, job, env, global, defineConfig, table, f } from "spacepress";
+import { db } from "spacepress/server";
+export const notes = table({ x: f.text().showIf({ x: { gt: "a" } }).optional() });
 export default defineConfig({});

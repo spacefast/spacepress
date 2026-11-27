@@ -1,3 +1,3 @@
-import { collection, defineConfig, text, table } from "spacepress";
-export const notes = table({ x: text().access({ read: async () => true }).optional() });
+import { collection, defineConfig, table, f } from "spacepress";
+export const notes = table({ x: f.text().access({ read: async () => true }).optional() });
 export default defineConfig({});

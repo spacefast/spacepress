@@ -1,7 +1,7 @@
-import { collection, defineConfig, global, text, table } from "spacepress";
+import { collection, defineConfig, global, table, f } from "spacepress";
 
-export const notes = table({ body: text().optional() });
+export const notes = table({ body: f.text().optional() });
 
-export const settings = global({ secret: text().access({ read: "editor" }).optional() });
+export const settings = global({ secret: f.text().access({ read: "editor" }).optional() });
 
 export default defineConfig({});

@@ -1,3 +1,3 @@
-import { collection, text, defineConfig } from "spacepress";
-export const notes = collection({ body: text().optional() });
+import { collection, defineConfig, f } from "spacepress";
+export const notes = collection({ body: f.text().optional() });
 export default defineConfig({});

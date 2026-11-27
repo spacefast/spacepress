@@ -1,4 +1,4 @@
-import { entries } from "spacepress/server/db";
+import { db } from "spacepress/server";
 import { Live, useFormState } from "spacepress/app";
 import { rename } from "../../server";
 
@@ -6,8 +6,8 @@ import { rename } from "../../server";
 // on the row that posted, and after a success each row shows the stored name.
 export default async function Rows() {
   const renamed = useFormState(rename);
-  const all = await entries.list({ orderBy: { id: "asc" }, limit: 3 });
-  const total = await entries.count();
+  const all = await db.entries.list({ orderBy: { id: "asc" }, limit: 3 });
+  const total = await db.entries.count();
   return (
     <main>
       <Live id="count"><p className="count">{total} rows</p></Live>

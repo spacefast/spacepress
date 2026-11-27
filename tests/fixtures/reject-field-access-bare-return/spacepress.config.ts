@@ -1,3 +1,3 @@
-import { collection, text, defineConfig, table } from "spacepress";
-export const notes = table({ secret: text().access({ read: () => { return; } }).optional() });
+import { collection, defineConfig, table, f } from "spacepress";
+export const notes = table({ secret: f.text().access({ read: () => { return; } }).optional() });
 export default defineConfig({});

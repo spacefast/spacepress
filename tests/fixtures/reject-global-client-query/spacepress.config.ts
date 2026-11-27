@@ -1,3 +1,3 @@
-import { defineConfig, global, text } from "spacepress";
-export const query = global({ label: text().optional() });
+import { defineConfig, global, f } from "spacepress";
+export const query = global({ label: f.text().optional() });
 export default defineConfig({ name: "probe" });

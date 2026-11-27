@@ -314,9 +314,9 @@ fn a_site_changes_its_schema_the_project_pulls_it_and_the_next_build_contains_it
     std::fs::create_dir_all(project.join("sp/server")).unwrap();
     std::fs::write(
         project.join("sp/server/headlines.ts"),
-        "import { query } from \"spacepress\";\nimport { articles } from \"spacepress/server/db\";\n\n\
-         export const headlines = query({ access: \"anyone\" }, async () => {\n  \
-         const rows = await articles.list({ limit: 5 });\n  return rows.map((row) => row.subtitle ?? row.title);\n});\n",
+        "import { query } from \"spacepress\";\n\n\
+         export const headlines = query({ access: \"anyone\" }, async ({ db }) => {\n  \
+         const rows = await db.articles.list({ limit: 5 });\n  return rows.map((row) => row.subtitle ?? row.title);\n});\n",
     )
     .unwrap();
     let out = build(&project);
@@ -446,8 +446,8 @@ fn a_site_changes_its_schema_the_project_pulls_it_and_the_next_build_contains_it
     std::fs::write(
         stale.join("sp/schema.ts"),
         std::fs::read_to_string(stale.join("sp/schema.ts")).unwrap().replace(
-            "rating: integer().optional(),",
-            "rating: integer().optional(),\n  subtitle: integer().optional(),",
+            "rating: f.integer().optional(),",
+            "rating: f.integer().optional(),\n  subtitle: f.integer().optional(),",
         ),
     )
     .unwrap();
@@ -479,8 +479,8 @@ fn a_site_changes_its_schema_the_project_pulls_it_and_the_next_build_contains_it
     std::fs::write(
         project.join("sp/schema.ts"),
         std::fs::read_to_string(project.join("sp/schema.ts")).unwrap().replace(
-            "rating: integer().optional(),",
-            "rating: integer().optional(),\n  mood: integer().optional(),",
+            "rating: f.integer().optional(),",
+            "rating: f.integer().optional(),\n  mood: f.integer().optional(),",
         ),
     )
     .unwrap();

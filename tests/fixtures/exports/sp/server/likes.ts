@@ -1,11 +1,8 @@
-// The file name is free: `like` registers under its export name. The kind comes from "spacepress/server/db",
-// which also works when the kind's module runs after this one.
+// The file name is free: `like` registers under its export name.
 import { mutation } from "spacepress";
-import { db } from "spacepress/server";
-import { notes } from "spacepress/server/db";
-export const like = mutation({ access: "anyone" }, async ({ id }: { id: number }) => {
-  const row = await db.query.notes.findFirst({ where: { id } });
+export const like = mutation({ access: "anyone" }, async ({ db }, { id }: { id: number }) => {
+  const row = await db.system.notes.get(id);
   const likes = (row?.likes ?? 0) + 1;
-  await db.update(notes).set({ likes }).where({ id });
+  await db.system.notes.update(id, { likes });
   return likes;
 });

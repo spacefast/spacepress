@@ -1,7 +1,5 @@
-import { collection, text, defineConfig } from "spacepress";
-import { db } from "spacepress/server";
-export const posts = collection({ title: text() }, {
-  access: { read: async () => { await db.insert(posts).values({ title: "x" }); return true; } },
+import { collection, defineConfig, f } from "spacepress";
+export const posts = collection({ title: f.text() }, {
+  access: { read: async ({ db }) => { await db.posts.create({ title: "x" }); return true; } },
 });
 export default defineConfig({});
-

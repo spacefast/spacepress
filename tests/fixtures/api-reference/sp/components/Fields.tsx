@@ -1,5 +1,4 @@
-import { Html } from "spacepress/app";
-import type { ApiField } from "spacepress/content";
+import { Html, type ApiField } from "spacepress/app";
 
 export function Fields({ fields }: { fields: ApiField[] }) {
   return (

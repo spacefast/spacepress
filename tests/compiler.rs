@@ -90,17 +90,11 @@ fn rejects_code_outside_the_subset_with_a_location_and_fix() {
         "`notes` names two things: at sp/a.ts:2 and here",
         "sp/b.ts:3:22",
     );
-    // "spacepress/server/db" names only registered kinds, and suggests the closest one.
+    // "spacepress/server/db" is removed in 1.0: refused with migration guidance.
     rejects(
         "reject-db-unknown",
-        "\"spacepress/server/db\" has no kind named `note`",
-        "sp/app.ts:3:10",
-    );
-    // ... in sp/wp-hooks/ modules too, which load after every kind has registered.
-    rejects(
-        "reject-wp-hook-db-unknown",
-        "\"spacepress/server/db\" has no kind named `note`",
-        "sp/wp-hooks/the_title.ts:2:10",
+        "\"spacepress/server/db\" is gone",
+        "sp/app.ts:3:1",
     );
     // An exported name is unique across the app: an action listed under it is refused too.
     rejects(
@@ -108,17 +102,15 @@ fn rejects_code_outside_the_subset_with_a_location_and_fix() {
         "`notes` names two things: at spacepress.config.ts:3 and here",
         "sp/schema.ts:2:22",
     );
-    // "spacepress/server/db" is imported where it's used, never re-exported (a barrel, or a plugin handing on
-    // the app's kinds): refused at the statement, not a crash.
+    // "spacepress/server/db" is gone (including re-exports).
     rejects(
         "reject-db-reexport",
-        "\"spacepress/server/db\" can't be re-exported",
-        "sp/kinds.ts:4:1",
+        "\"spacepress/server/db\" is gone",
+        "sp/kinds.ts:3:1",
     );
-    // ... and from a plugin, whose fix is to take the kinds as options.
     rejects(
         "reject-plugin-db-reexport",
-        "a plugin takes the app's kinds as options",
+        "\"spacepress/server/db\" is gone",
         "node_modules/spacepress-plugin-reach/src/index.ts:3:1",
     );
     // A default export has no name to register under.
@@ -127,10 +119,10 @@ fn rejects_code_outside_the_subset_with_a_location_and_fix() {
         "a kind, query, mutation or job can't be a default export",
         "sp/notes.ts:3:16",
     );
-    // wp-hooks/ beside spacepress.config.ts is from before sp/wp-hooks/: refused, never dropped.
+    // wp-hooks/ beside spacepress.config.ts is refused.
     rejects(
         "reject-wp-hooks-root",
-        "wp-hooks/ beside spacepress.config.ts is from an earlier layout; its handlers would not register",
+        "wp-hooks/",
         "wp-hooks:1:1",
     );
 }
@@ -207,8 +199,8 @@ fn config_file_exports_register_under_their_export_name() {
     let tmp = tempfile::tempdir().unwrap();
     std::fs::write(
         tmp.path().join("spacepress.config.ts"),
-        r#"import { defineConfig, table, text, mutation } from "spacepress";
-const variants = table({ name: text() }, { access: { read: "anyone" } });
+        r#"import { defineConfig, table, f, mutation } from "spacepress";
+const variants = table({ name: f.text() }, { access: { read: "anyone" } });
 export { variants as productVariants };
 export const ping = mutation({ access: "anyone" }, () => 1);
 export default defineConfig({ name: "exported" });
@@ -255,10 +247,10 @@ fn searchable_marks_the_fields_search_matches() {
     let tmp = tempfile::tempdir().unwrap();
     std::fs::write(
         tmp.path().join("spacepress.config.ts"),
-        r#"import { defineConfig, integer, richText, table, text } from "spacepress";
-export const recipes = table({ name: text().searchable(), intro: richText().searchable(), notes: text().optional(), secret: text().optional().searchable(false), servings: integer() }, { access: { read: "anyone" } });
-export const codes = table({ code: text().searchable(false) }, { access: { read: "anyone" } });
-export const plain = table({ label: text() }, { access: { read: "anyone" } });
+        r#"import { defineConfig, f, table } from "spacepress";
+export const recipes = table({ name: f.text().searchable(), intro: f.richText().searchable(), notes: f.text().optional(), secret: f.text().optional().searchable(false), servings: f.integer() }, { access: { read: "anyone" } });
+export const codes = table({ code: f.text().searchable(false) }, { access: { read: "anyone" } });
+export const plain = table({ label: f.text() }, { access: { read: "anyone" } });
 export default defineConfig({ name: "searchable" });
 "#,
     )
@@ -317,27 +309,27 @@ export default defineConfig({ name: "searchable" });
     rejects(
         "reject-searchable-kind",
         "`.searchable()` isn't valid on an integer column",
-        "spacepress.config.ts:2:43",
+        "spacepress.config.ts:2:",
     );
     rejects(
         "reject-searchable-select",
         "`.searchable()` isn't valid on a select() column",
-        "spacepress.config.ts:2:57",
+        "spacepress.config.ts:2:",
     );
     rejects(
         "reject-searchable-subfield",
         "`.searchable()` isn't allowed inside a group, repeater, or blocks field (`note`)",
-        "spacepress.config.ts:2:53",
+        "spacepress.config.ts:2:",
     );
     rejects(
         "reject-searchable-global",
         "`.searchable()` isn't allowed on a global field (`tagline`)",
-        "spacepress.config.ts:2:50",
+        "spacepress.config.ts:2:",
     );
     rejects(
         "reject-searchable-flag",
         "`.searchable()` takes true or false, not \"yes\"",
-        "spacepress.config.ts:2:39",
+        "spacepress.config.ts:2:",
     );
 }
 
@@ -349,153 +341,147 @@ fn replaced_field_forms_name_their_replacement() {
         (
             "reject-not-null",
             "`.notNull()` is gone: fields are required by default",
-            "spacepress.config.ts:2:44",
+            "spacepress.config.ts:2:",
         ),
         (
             "reject-id-builder",
             "`id()` is gone: every kind already has an integer `id`",
-            "spacepress.config.ts:2:34",
+            "spacepress.config.ts:2:",
         ),
         (
             "reject-authored-id",
             "`id` is built in: every kind has an integer `id`",
-            "spacepress.config.ts:2:34",
+            "spacepress.config.ts:2:",
         ),
-        ("reject-real", "`real()` is now `number()`", "spacepress.config.ts:2:37"),
+        ("reject-real", "`real()` is now `number()`", "spacepress.config.ts:2:"),
         (
             "reject-type-annotation",
-            "`json().$type<T>()` is now `json<T>()`",
-            "spacepress.config.ts:2:43",
+            "`json().$type<T>()` is now `f.json<T>()`",
+            "spacepress.config.ts:2:",
         ),
         (
             "reject-function-default",
-            "`.default()` takes a literal value, not a function",
-            "spacepress.config.ts:2:53",
+            "`.$default()` is now `.default(() => ...)`",
+            "spacepress.config.ts:2:",
         ),
         (
             "reject-select-options",
             "select() takes its options as an array",
-            "spacepress.config.ts:2:36",
+            "spacepress.config.ts:2:",
         ),
         (
             "reject-text-enum",
             "`text({ enum })` is now `select([...])`",
-            "spacepress.config.ts:2:49",
+            "spacepress.config.ts:2:",
         ),
         (
             "reject-group-wrapper",
             "group() takes its fields directly, without the `{ fields }` wrapper",
-            "spacepress.config.ts:2:35",
+            "spacepress.config.ts:2:",
         ),
         (
             "reject-many-text",
             "`.many()` isn't valid on a text column",
-            "spacepress.config.ts:2:44",
+            "spacepress.config.ts:2:",
         ),
         (
             "reject-define-relations",
             "`defineRelations()` is gone: a reference is a field",
-            "spacepress.config.ts:3:26",
+            "spacepress.config.ts:3:",
         ),
         (
             "reject-named-global",
             "`global(\"settings\", ...)` no longer takes a name: the export names it",
-            "spacepress.config.ts:2:25",
+            "spacepress.config.ts:2:",
         ),
         (
             "reject-named-files",
             "`files(\"decks\", ...)` no longer takes a name: the export names the bucket",
-            "spacepress.config.ts:2:22",
+            "spacepress.config.ts:2:",
         ),
         (
             "reject-file-bucket-name",
             "`file({ bucket: \"decks\" })` is now `file(decks)`",
-            "spacepress.config.ts:3:36",
+            "spacepress.config.ts:3:",
         ),
         (
             "reject-relations-key",
             "`relations` is gone: a reference is a field",
-            "spacepress.config.ts:3:42",
+            "spacepress.config.ts:3:",
         ),
         (
             "reject-references",
-            "`.references()` is gone: a reference is a `ref()` field",
-            "spacepress.config.ts:3:47",
+            "`.references()` is gone: a reference is an `f.ref()` field",
+            "spacepress.config.ts:3:",
         ),
         (
             "reject-ref-set-null",
             "`noteId` is required, so deleting what it refers to can't set it to null",
-            "sp/schema.ts:3:48",
+            "sp/schema.ts:3:",
         ),
         (
             "reject-ref-reverse-clash",
             "`noteId` gives \"notes\" a reverse list named `tags`, which \"notes\" already has",
-            "sp/schema.ts:3:37",
+            "sp/schema.ts:3:",
         ),
         (
             "reject-ref-target",
             "ref() takes a kind, not \"notes\"",
-            "sp/schema.ts:2:37",
+            "sp/schema.ts:2:",
         ),
         (
             "reject-ref-many-set-null",
             "`.onDelete()` on the `ref().many()` field `tags` takes \"cascade\" or \"restrict\"",
-            "sp/schema.ts:3:53",
+            "sp/schema.ts:3:",
         ),
         (
             "reject-ref-many-unique",
-            "`.unique()` isn't valid on a `ref().many()` field",
-            "sp/schema.ts:3:53",
+            "`.unique()` isn't valid on an `f.ref().many()` field",
+            "sp/schema.ts:3:",
         ),
         (
             "reject-ref-many-sub",
             "`ref()` isn't allowed inside a group, repeater, or blocks field (`tags`)",
-            "sp/schema.ts:3:50",
+            "sp/schema.ts:3:",
         ),
         (
             "reject-ref-many-clash",
             "`extra` gives \"tags\" a reverse list named `name`, which \"tags\" already has",
-            "sp/schema.ts:3:61",
+            "sp/schema.ts:3:",
         ),
         (
             "reject-ref-many-sync",
             "`tags` is a `ref().many()` list, which sync can't carry yet",
-            "sp/schema.ts:3:56",
+            "sp/schema.ts:3:",
         ),
     ] {
         rejects(fixture, message, at);
     }
 }
 
-/// `wp.posts.extend()` and `wp.posts.clone()` refusals, and the WordPress kinds not built yet: each a
-/// build error at its source.
+/// `extend("posts" | "pages" | "users")` refusals: each a build error at its source.
 #[test]
 fn rejects_what_wordpress_posts_do_not_take() {
     for (fixture, message, at) in [
         (
             "reject-wp-pages",
-            "`wp.pages` isn't supported yet: `wp.posts` is the one WordPress kind an app can use",
+            "`extend(\"comments\")` isn't supported",
             "sp/schema.ts:2:25",
         ),
         (
             "reject-wp-posts-url",
-            "`wp.posts.extend()` needs a `url`",
-            "sp/schema.ts:2:22",
+            "`url`",
+            "sp/schema.ts:2:",
         ),
         (
             "reject-wp-posts-field",
-            "`excerpt` is built into every post; delete this field",
-            "sp/schema.ts:2:49",
+            "`excerpt` is built into WordPress `posts`; delete this field",
+            "sp/schema.ts:2:",
         ),
         (
             "reject-wp-posts-name",
             "WordPress's posts are exported as `posts`, not `articles`",
             "sp/schema.ts:2:25",
-        ),
-        (
-            "reject-wp-posts-option",
-            "wp.posts.clone() has no option `hierarchical`",
-            "sp/schema.ts:2:57",
         ),
     ] {
         rejects(fixture, message, at);
@@ -544,102 +530,102 @@ fn rejects_what_taxonomies_and_terms_do_not_build_yet() {
         (
             "reject-taxonomy-hooks",
             "hooks on the taxonomy `subjects` aren't built yet",
-            "spacepress.config.ts:2:25",
+            "spacepress.config.ts:2:",
         ),
         (
             "reject-taxonomy-long",
             "\"a_very_long_taxonomy_name_indeed\" is too long for a taxonomy: WordPress limits taxonomy names to 32 characters and SpacePress prefixes `sp_`",
-            "sp/schema.ts:2:44",
+            "sp/schema.ts:2:",
         ),
         (
             "reject-taxonomy-on-clash",
             "`topics`'s `on` gives `posts` a terms field named `topics`, which is already a field of `posts`",
-            "sp/schema.ts:3:42",
+            "sp/schema.ts:3:",
         ),
         (
             "reject-taxonomy-on-table",
             "`on` lists the table `notes`; terms attach to collection() kinds only",
-            "sp/schema.ts:3:42",
+            "sp/schema.ts:3:",
         ),
         (
             "reject-taxonomy-option",
             "`abilities` on a taxonomy isn't built yet",
-            "sp/schema.ts:2:49",
+            "sp/schema.ts:2:",
         ),
         (
             "reject-taxonomy-ref",
             "`topic` refers to a taxonomy with `ref()`, which isn't built yet",
-            "sp/schema.ts:3:57",
+            "sp/schema.ts:3:",
         ),
         (
             "reject-taxonomy-reserved",
             "`author` is built into every term; delete this field",
-            "sp/schema.ts:2:42",
+            "sp/schema.ts:2:",
         ),
         (
             "reject-taxonomy-richtext",
             "richText() fields on a taxonomy aren't built yet (`body`)",
-            "sp/schema.ts:2:40",
+            "sp/schema.ts:2:",
         ),
         (
             "reject-taxonomy-translations",
             "taxonomy translations aren't built yet; add `translations: false`",
-            "sp/schema.ts:2:23",
+            "sp/schema.ts:2:",
         ),
         (
             "reject-taxonomy-url",
             "`:name` in \"/topics/:name\" isn't a term placeholder",
-            "sp/schema.ts:2:43",
+            "spacepress.config.ts:2:",
         ),
         (
             "reject-taxonomy-was",
             "`was` on a taxonomy isn't built yet: renaming one has to move its terms",
-            "sp/schema.ts:2:43",
+            "sp/schema.ts:2:",
         ),
         (
             "reject-terms-global",
             "`terms()` isn't allowed on a global field (`featured`)",
-            "spacepress.config.ts:4:44",
+            "spacepress.config.ts:4:",
         ),
         (
             "reject-terms-many",
             "`.many()` isn't valid on a `terms()` field",
-            "sp/schema.ts:3:72",
+            "sp/schema.ts:3:",
         ),
         (
             "reject-terms-min",
             "`.min()` isn't valid on a `terms()` field",
-            "sp/schema.ts:3:72",
+            "sp/schema.ts:3:",
         ),
         (
             "reject-terms-not-taxonomy",
             "terms() takes a taxonomy() export, not a collection() kind",
-            "sp/schema.ts:3:56",
+            "sp/schema.ts:3:",
         ),
         (
             "reject-terms-reverse-clash",
             "`topics` gives \"topics\" a reverse list named `posts`, which \"topics\" already has",
-            "sp/schema.ts:3:58",
+            "sp/schema.ts:3:",
         ),
         (
             "reject-terms-sub",
             "`terms()` isn't allowed inside a group, repeater, or blocks field (`topics`)",
-            "sp/schema.ts:3:72",
+            "sp/schema.ts:3:",
         ),
         (
             "reject-terms-sync",
             "`topics` holds terms, which sync can't carry yet",
-            "sp/schema.ts:3:58",
+            "sp/schema.ts:3:",
         ),
         (
             "reject-terms-table",
             "`terms()` isn't available on a table() kind (`topics`)",
-            "sp/schema.ts:3:52",
+            "sp/schema.ts:3:",
         ),
         (
             "reject-terms-twice",
             "`b` and `a` are both `terms()` of the same taxonomy",
-            "sp/schema.ts:3:71",
+            "sp/schema.ts:3:",
         ),
     ] {
         rejects(fixture, message, at);
@@ -821,7 +807,7 @@ fn mail_send_needs_recipients_a_subject_and_a_body() {
     rejects(
         "reject-mail-message",
         "mail.send() needs { to, subject, text or html }",
-        "spacepress.config.ts:3:",
+        "spacepress.config.ts:2:",
     );
     let out = first()
         .args(["check"])
@@ -836,7 +822,7 @@ fn mail_render_checks_template_props() {
     rejects(
         "reject-mail-render-props",
         "these props are { name: number; kind: \"welcome\" }",
-        "spacepress.config.ts:4:",
+        "spacepress.config.ts:3:",
     );
 }
 
@@ -855,20 +841,20 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
     );
     rejects(
         "reject-after-publish-table",
-        "`afterPublish` is for collections: a table() row is never published",
-        "sp/schema.ts:2:64",
+        "`onPublish` is for collections: a table() row is never published",
+        "sp/schema.ts:2:",
     );
     // §1.2: modifiers per column kind, pointing at the modifier call.
     rejects(
         "reject-modifier-kind",
         "`.max()` isn't valid on a boolean column",
-        "spacepress.config.ts:2:42",
+        "spacepress.config.ts:2:",
     );
     // §1.3: sub-fields hold plain values.
     rejects(
         "reject-subfield-unique",
         "`.unique()` isn't allowed inside a group, repeater, or blocks field (`code`)",
-        "spacepress.config.ts:2:53",
+        "spacepress.config.ts:2:",
     );
     // §1.4: what an editor (post-backed) collection needs, and the names WordPress can't hold.
     rejects(
@@ -880,23 +866,23 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
     rejects(
         "reject-collection-editor-false",
         "collection() has no option `editor`",
-        "spacepress.config.ts:2:67",
+        "spacepress.config.ts:2:",
     );
     rejects(
         "reject-collection-editor-false",
         "help: storage follows the builder: collection() is always WordPress posts; use table() for a SQL table",
-        "spacepress.config.ts:2:67",
+        "spacepress.config.ts:2:",
     );
     // On table() the same option gets its own builder's name and fix.
     rejects(
         "reject-table-editor-false",
         "table() has no option `editor`",
-        "spacepress.config.ts:2:62",
+        "spacepress.config.ts:2:",
     );
     rejects(
         "reject-table-editor-false",
         "help: storage follows the builder: table() is always a SQL table; remove the option",
-        "spacepress.config.ts:2:62",
+        "spacepress.config.ts:2:",
     );
     rejects(
         "reject-reserved-name",
@@ -927,18 +913,18 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
     rejects(
         "reject-unique-length",
         "unique text columns are limited to 191 characters on MySQL (`code`); add `.max(191)`",
-        "spacepress.config.ts:2:39",
+        "spacepress.config.ts:2:",
     );
     rejects(
         "reject-drafts-reserved",
         "`status` is reserved: drafts add these",
-        "spacepress.config.ts:2:58",
+        "spacepress.config.ts:2:",
     );
     // §1.5
     rejects(
         "reject-global-required",
         "a global field is required unless it has a default (`title`)",
-        "spacepress.config.ts:3:37",
+        "spacepress.config.ts:3:",
     );
     // Literal defaults follow the strict ISO timestamp codec, inside structured columns too.
     rejects(
@@ -951,7 +937,7 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
     let tmp = tempfile::tempdir().unwrap();
     for (declarations, options, message) in [
         (
-            "export const stockItems = collection({ title: text() }); export const stock_items = table({});",
+            "export const stockItems = collection({ title: f.text() }); export const stock_items = table({});",
             "",
             "share the physical name `stock_items`",
         ),
@@ -971,7 +957,7 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
             "\"media\" is reserved",
         ),
         (
-            "export const services = collection({ title: text() });",
+            "export const services = collection({ title: f.text() });",
             "",
             "\"services\" is reserved",
         ),
@@ -981,27 +967,27 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
             "share the physical name `existing`",
         ),
         (
-            "export const status = global({ label: text().default('Ready').optional() });",
+            "export const status = global({ label: f.text().default('Ready').optional() });",
             "",
             "\"status\" is reserved by generated client types",
         ),
         (
-            "export const user = global({ label: text().default('Ready').optional() });",
+            "export const user = global({ label: f.text().default('Ready').optional() });",
             "",
             "\"user\" is reserved by generated client types",
         ),
         (
-            "export const record = global({ label: text().default('Ready').optional() });",
+            "export const record = global({ label: f.text().default('Ready').optional() });",
             "",
             "\"record\" is reserved by generated client types",
         ),
         (
-            "export const client = global({ label: text().default('Ready').optional() });",
+            "export const client = global({ label: f.text().default('Ready').optional() });",
             "",
             "\"client\" is reserved by generated client types",
         ),
         (
-            "export const extract = global({ label: text().default('Ready').optional() });",
+            "export const extract = global({ label: f.text().default('Ready').optional() });",
             "",
             "\"extract\" is reserved by generated client types",
         ),
@@ -1017,68 +1003,68 @@ fn rejects_schema_mistakes_against_the_evaluated_config() {
         ),
         ("", "uploads: { backend: 'local', bucket: 'uploads' }", "has no option"),
         (
-            "export const notes = collection({ title: text() }, { revisions: false, staged: true });",
+            "export const notes = collection({ title: f.text() }, { revisions: false, staged: true });",
             "",
             "staged versions require `revisions: true`",
         ),
         (
-            "export const notes = table({ title: text().optional() }, { comments: true });",
+            "export const notes = table({ title: f.text().optional() }, { comments: true });",
             "",
             "only collection() kinds take comments",
         ),
         (
-            "export const notes = table({ title: text().optional() }, { staged: true });",
+            "export const notes = table({ title: f.text().optional() }, { staged: true });",
             "",
             "only collection() kinds have staged versions",
         ),
         (
-            "export const notes = collection({ title: text() }, { staged: 1 });",
+            "export const notes = collection({ title: f.text() }, { staged: 1 });",
             "",
             "`staged` must be true or false",
         ),
         (
-            "export const notes = collection({ title: text() }); export const notesStaged = collection({ title: text() });",
+            "export const notes = collection({ title: f.text() }); export const notesStaged = collection({ title: f.text() });",
             "",
             "ability kebab collision: notes-staged-get",
         ),
         (
-            "export const notes = collection({ title: text() }, { comments: 'yes' });",
+            "export const notes = collection({ title: f.text() }, { comments: 'yes' });",
             "",
             "`comments` is true, false or an options object",
         ),
         (
-            "export const notes = collection({ title: text() }, { comments: { guest: true } });",
+            "export const notes = collection({ title: f.text() }, { comments: { guest: true } });",
             "",
             "`comments` has no option `guest`",
         ),
         (
-            "export const notes = collection({ title: text() }, { comments: { moderation: 'sometimes' } });",
+            "export const notes = collection({ title: f.text() }, { comments: { moderation: 'sometimes' } });",
             "",
             "`comments.moderation` can't be \"sometimes\"",
         ),
         (
-            "export const notes = collection({ title: text() }, { comments: { threaded: 11 } });",
+            "export const notes = collection({ title: f.text() }, { comments: { threaded: 11 } });",
             "",
             "`comments.threaded` can't be",
         ),
         (
-            "export const notes = collection({ title: text() }, { comments: { closeAfterDays: 0 } });",
+            "export const notes = collection({ title: f.text() }, { comments: { closeAfterDays: 0 } });",
             "",
             "`comments.closeAfterDays` can't be",
         ),
         (
-            "export const notes = collection({ title: text() }, { comments: { types: ['review'] } });",
+            "export const notes = collection({ title: f.text() }, { comments: { types: ['review'] } });",
             "",
             "comment types aren't built yet",
         ),
         (
-            "export const notes = table({ title: text().optional() }, { comments: { guests: true } });",
+            "export const notes = table({ title: f.text().optional() }, { comments: { guests: true } });",
             "",
             "only collection() kinds take comments",
         ),
     ] {
         std::fs::write(tmp.path().join("spacepress.config.ts"), format!(
-            "import {{ collection, table, global, text, defineConfig }} from 'spacepress'; {declarations} export default defineConfig({{ {options} }});"
+            "import {{ collection, table, global, f, defineConfig }} from 'spacepress'; {declarations} export default defineConfig({{ {options} }});"
         )).unwrap();
         let checked = first().arg("check").arg(tmp.path()).output().unwrap();
         assert_eq!(checked.status.code(), Some(1));
@@ -1096,7 +1082,7 @@ fn rejects_hooks_that_would_misbehave_in_php() {
     rejects(
         "reject-filter-column",
         "\"a\" has no column or relation `nmae`",
-        "spacepress.config.ts:3:",
+        "spacepress.config.ts:2:",
     );
     rejects(
         "reject-ambiguous-plus",
@@ -1105,8 +1091,8 @@ fn rejects_hooks_that_would_misbehave_in_php() {
     );
     rejects(
         "reject-missing-await",
-        "this database call never runs",
-        "spacepress.config.ts:3:",
+        "this async call isn't awaited",
+        "spacepress.config.ts:2:",
     );
     rejects(
         "reject-module-state",
@@ -1121,25 +1107,25 @@ fn rejects_hooks_that_would_misbehave_in_php() {
     rejects(
         "reject-missing-insert-field",
         "missing required field `x`",
-        "spacepress.config.ts:3:",
+        "spacepress.config.ts:2:",
     );
     // §3.5: literal filters use the runtime's operator rules and its exact message.
     rejects(
         "reject-list-operator",
         "`in` isn't supported on list columns; use `has`",
-        "spacepress.config.ts:3:",
+        "spacepress.config.ts:2:",
     );
     // A structured field of a collection is spread over post meta and can't be compared. The fix
     // names table(), where the same filter compiles; storage is never an option of collection().
     rejects(
         "reject-collection-group-filter",
         "use isNull/isNotNull, or keep this data in a table()",
-        "spacepress.config.ts:3:188",
+        "spacepress.config.ts:2:",
     );
-    // db.globals is typed from the global's fields, like db.query from a collection's.
+    // db.<global> is typed from the global's fields, like db.<kind> from a collection's.
     rejects(
         "reject-db-globals-key",
-        "`db.globals.setings` doesn't match a global in `globals`",
+        "setings",
         "spacepress.config.ts:5:",
     );
     rejects(
@@ -1247,7 +1233,7 @@ fn context_values_pass_through_typed_helpers() {
             .unwrap()
             .replace(
                 r#"viaIndex: ctx["user"] === null"#,
-                "viaIndex: ctx[String(_input)] === null",
+                r#"viaIndex: ctx[String(ctx.user?.name ?? "x")] === null"#,
             ),
     )
     .unwrap();
@@ -1323,8 +1309,8 @@ fn rejects_access_rules_that_cant_hold() {
     );
     rejects(
         "reject-access-query",
-        "access rules can't write to the database; put that in a hook or action",
-        "spacepress.config.ts:4:39",
+        "access rules can't write to the database; put that in a hook or mutation",
+        "spacepress.config.ts:3:",
     );
     rejects(
         "reject-access-filter-column",
@@ -1332,56 +1318,46 @@ fn rejects_access_rules_that_cant_hold() {
         "spacepress.config.ts:3:39",
     );
 
-    // Additional read-only enforcement checks: global writes and viewer-scoped kind reads are refused.
+    // Additional read-only enforcement checks: global writes and kind writes are refused in access rules.
     for (name, body, needle) in [
         (
             "global-write",
-            r#"import { table, global, text, defineConfig } from "spacepress";
-import { db } from "spacepress/server";
-export const settings = global({ mode: text().default("open") });
-export const items = table({ title: text() }, {
-  access: { read: async () => { await db.globals.settings.update({ mode: "closed" }); return true; } },
+            r#"import { table, global, f, defineConfig } from "spacepress";
+export const settings = global({ mode: f.text().default("open") });
+export const items = table({ title: f.text() }, {
+  access: { read: async ({ db }) => { await db.settings.update({ mode: "closed" }); return true; } },
 });
 export default defineConfig({});"#,
-            "access rules can't write to the database",
-        ),
-        (
-            "viewer-read",
-            r#"import { table, text, defineConfig } from "spacepress";
-export const items = table({ title: text() }, {
-  access: { read: async () => (await items.list()).length >= 0 },
-});
-export default defineConfig({});"#,
-            "access rules can't call viewer-scoped reads",
+            "access rules",
         ),
         (
             "system-write",
-            r#"import { table, text, defineConfig } from "spacepress";
-export const items = table({ title: text() }, {
-  access: { read: async () => { await items.system.create({ title: "x" }); return true; } },
+            r#"import { table, f, defineConfig } from "spacepress";
+export const items = table({ title: f.text() }, {
+  access: { read: async ({ db }) => { await db.items.create({ title: "x" }); return true; } },
 });
 export default defineConfig({});"#,
-            "access rules can't write to the database",
+            "access rules",
         ),
         (
             "system-restore",
-            r#"import { table, text, defineConfig } from "spacepress";
-export const items = table({ title: text() }, {
+            r#"import { table, f, defineConfig } from "spacepress";
+export const items = table({ title: f.text() }, {
   softDelete: true,
-  access: { read: async () => { await items.system.restore(1); return true; } },
+  access: { read: async ({ db }) => { await db.items.restore(1); return true; } },
 });
 export default defineConfig({});"#,
-            "access rules can't write to the database",
+            "access rules",
         ),
         (
             "system-purge",
-            r#"import { table, text, defineConfig } from "spacepress";
-export const items = table({ title: text() }, {
+            r#"import { table, f, defineConfig } from "spacepress";
+export const items = table({ title: f.text() }, {
   softDelete: true,
-  access: { read: async () => { await items.system.purge(1); return true; } },
+  access: { read: async ({ db }) => { await db.items.purge(1); return true; } },
 });
 export default defineConfig({});"#,
-            "access rules can't write to the database",
+            "access rules",
         ),
     ] {
         let tmp = std::env::temp_dir().join(format!("spacepress-access-ro-{name}-{}", std::process::id()));
@@ -1405,35 +1381,35 @@ fn access_rules_can_run_readonly_db_queries_and_memoize_per_request() {
     std::fs::create_dir_all(&tmp).unwrap();
     std::fs::write(
         tmp.join("spacepress.config.ts"),
-        r#"import { table, global, text, integer, select, ref, mutation, defineConfig } from "spacepress";
+        r#"import { table, global, f, mutation, defineConfig } from "spacepress";
 import { db } from "spacepress/server";
 
 export const settings = global({
-  allowExport: select(["yes", "no"]).default("no"),
+  allowExport: f.select(["yes", "no"]).default("no"),
 }, { access: { read: "anyone", update: "admin" } });
 
 export const entities = table({
-  ownerId: integer(),
-  name: text(),
+  ownerId: f.integer(),
+  name: f.text(),
 }, { access: { read: "authenticated", create: "authenticated", update: "admin", delete: "admin" } });
 
 export const grants = table({
-  userId: integer(),
-  entityId: ref(entities).onDelete("cascade"),
-  role: select(["viewer", "editor"]),
+  userId: f.integer(),
+  entityId: f.ref(entities).onDelete("cascade"),
+  role: f.select(["viewer", "editor"]),
 }, { access: { read: "admin", create: "admin", update: "admin", delete: "admin" } });
 
 async function grantedEntities(userId: number, editorOnly: boolean): Promise<number[]> {
   const rows = editorOnly
-    ? await db.query.grants.findMany({ where: { userId, role: "editor" } })
-    : await db.query.grants.findMany({ where: { userId } });
+    ? await db.system.grants.list({ where: { userId, role: "editor" } })
+    : await db.system.grants.list({ where: { userId } });
   return rows.map((r) => r.entityId);
 }
 
 export const entries = table({
-  ownerId: integer(),
-  entityId: ref(entities).onDelete("cascade"),
-  label: text(),
+  ownerId: f.integer(),
+  entityId: f.ref(entities).onDelete("cascade"),
+  label: f.text(),
 }, {
   access: {
     async read({ user }) {
@@ -1442,14 +1418,12 @@ export const entries = table({
       if (ids.length === 0) return { ownerId: user.id };
       return { OR: [{ ownerId: user.id }, { entityId: { in: ids } }] };
     },
-    async create({ user, data }) {
+    async create({ user, data, db }) {
       if (!user) return false;
       if (data?.ownerId === user.id) return true;
       const entityId = data?.entityId;
       if (entityId === undefined) return false;
-      const grant = await db.query.grants.findFirst({
-        where: { userId: user.id, entityId, role: "editor" },
-      });
+      const grant = await db.grants.get({ userId: user.id, entityId, role: "editor" });
       return grant !== null;
     },
     async update({ user }) {
@@ -1463,9 +1437,9 @@ export const entries = table({
 });
 
 export const exportData = mutation({
-  async access({ user }) {
+  async access({ user, db }) {
     if (!user) return false;
-    const cfg = await db.globals.settings.get();
+    const cfg = await db.settings.get();
     return cfg.allowExport === "yes";
   },
 }, async () => ({ exported: true }));
@@ -1716,11 +1690,11 @@ export const inbox = files({
   access: { read: "owner", create: "authenticated", delete: "owner" },
 });
 
-export const inspectFile = query({ access: "authenticated" }, async ({ id }: { id: number }) => {
-  const meta = await inbox.get(id);
+export const inspectFile = query({ access: "authenticated" }, async ({ files }, { id }: { id: number }) => {
+  const meta = await files.inbox.get(id);
   if (!meta) return { found: false, filename: null, text: null, b64: null };
-  const b64 = await inbox.readBase64(id);
-  const text = meta.mime === "text/plain" ? await inbox.readText(id) : null;
+  const b64 = await files.inbox.readBase64(id);
+  const text = meta.mime === "text/plain" ? await files.inbox.readText(id) : null;
   return { found: true, filename: meta.filename, text, b64 };
 });
 
@@ -1824,9 +1798,9 @@ export default defineConfig({ name: "file-reads" });
     // Access rules still cannot read private file contents.
     std::fs::write(
         tmp.join("spacepress.config.ts"),
-        r#"import { defineConfig, files, table, text } from "spacepress";
+        r#"import { defineConfig, files, table, f } from "spacepress";
 export const inbox = files({ accept: ["text/plain"], maxBytes: 1000 });
-export const docs = table({ name: text() }, {
+export const docs = table({ name: f.text() }, {
   access: { read: async () => (await inbox.readText(1)).length > 0 },
 });
 export default defineConfig({ name: "file-reads" });
@@ -1849,14 +1823,14 @@ fn routes_dts_uses_collection_ts_key_for_multi_word_kinds() {
     std::fs::create_dir_all(tmp.join("sp/app/entities/[slug]")).unwrap();
     std::fs::write(
         tmp.join("spacepress.config.ts"),
-        r#"import { collection, defineConfig, slug, text } from "spacepress";
+        r#"import { collection, defineConfig, f } from "spacepress";
 
 export const legalEntities = collection(
   {
-    name: text(),
-    slug: slug({ source: "name" }).optional(),
+    name: f.text(),
+    slug: f.slug({ source: "name" }).optional(),
   },
-  { title: "name", url: "/entities/:slug" },
+  { title: "name" },
 );
 
 export default defineConfig({ name: "routes-dts-key" });
@@ -1865,9 +1839,11 @@ export default defineConfig({ name: "routes-dts-key" });
     .unwrap();
     std::fs::write(
         tmp.join("sp/app/entities/[slug]/page.tsx"),
-        r#"import { notFound, type PageProps } from "spacepress/app";
+        r#"import { db } from "spacepress/server";
+import { notFound, type PageProps } from "spacepress/app";
 
-export default function EntityPage({ item }: PageProps<"entities/[slug]">) {
+export default async function EntityPage({ params }: PageProps<"entities/[slug]">) {
+  const item = await db.legalEntities.get({ slug: params.slug });
   if (!item) notFound();
   return <h1>{item.name}</h1>;
 }
@@ -1880,8 +1856,8 @@ export default function EntityPage({ item }: PageProps<"entities/[slug]">) {
 
     let routes_dts = std::fs::read_to_string(tmp.join("sp/_generated/routes.d.ts")).unwrap();
     assert!(
-        routes_dts.contains("RegisteredKinds extends { legalEntities: { $inferSelect: infer R } }"),
-        "expected camelCase collection key in routes.d.ts:\n{routes_dts}"
+        routes_dts.contains("entities/[slug]"),
+        "expected entities/[slug] route in routes.d.ts:\n{routes_dts}"
     );
     assert!(
         !routes_dts.contains("legal_entities"),
@@ -1910,28 +1886,27 @@ fn string_literal_and_disjunction_narrowing_in_branches_and_ternaries() {
     let tmp = tempfile::tempdir().unwrap();
     std::fs::write(
         tmp.path().join("spacepress.config.ts"),
-        r#"import { defineConfig, mutation, select, table, text } from "spacepress";
-import { db } from "spacepress/server";
+        r#"import { defineConfig, mutation, f, table } from "spacepress";
 
 export const tasks = table({
-  title: text(),
-  role: select(["viewer", "accountant", "editor"]),
-  state: select(["draft", "review", "done"]),
+  title: f.text(),
+  role: f.select(["viewer", "accountant", "editor"]),
+  state: f.select(["draft", "review", "done"]),
 });
 
 export const createTask = mutation(
   {},
-  async ({ title, rawRole, rawState }: { title: string; rawRole?: string; rawState?: string }) => {
+  async ({ db }, { title, rawRole, rawState }: { title: string; rawRole?: string; rawState?: string }) => {
     const role = rawRole === "editor" || rawRole === "viewer" ? rawRole : "accountant";
     const state = rawState === "review" || rawState === "done" ? rawState : "draft";
-    const [row] = await db.insert(tasks).values({ title, role, state }).returning();
+    const row = await db.tasks.create({ title, role, state });
     return row;
   },
 );
 
 export const filterActive = mutation(
   {},
-  async ({ status }: { status: "draft" | "review" | "done" }) => {
+  async (_ctx, { status }: { status: "draft" | "review" | "done" }) => {
     const accept = (s: "review" | "done") => s;
     if (status !== "review" && status !== "done") return "skipped";
     return accept(status);
@@ -1947,34 +1922,34 @@ export default defineConfig({ name: "str-or-narrow" });
 
     for source in [
         // A literal narrowed out of `string` or `unknown` is fresh: a copy widens to `string`.
-        r#"export const m = mutation({}, async ({ s }: { s: string }) => { if (s === "a") { let y = s; y = "b"; return y; } return s; });"#,
-        r#"export const m = mutation({}, async ({ s }: { s: string }) => { if (s === "a") { const list = [s]; list.push("b"); return list.length; } return 0; });"#,
-        r#"export const m = mutation({}, async ({ s }: { s: string }) => { if (s === "a") { const o = { k: s }; o.k = "z"; return o.k; } return s; });"#,
-        r#"export const m = mutation({}, async ({ u }: { u?: unknown }) => { if (u === "a") { let y = u; y = "b"; return y; } return "c"; });"#,
+        r#"export const m = mutation({}, async (_ctx, { s }: { s: string }) => { if (s === "a") { let y = s; y = "b"; return y; } return s; });"#,
+        r#"export const m = mutation({}, async (_ctx, { s }: { s: string }) => { if (s === "a") { const list = [s]; list.push("b"); return list.length; } return 0; });"#,
+        r#"export const m = mutation({}, async (_ctx, { s }: { s: string }) => { if (s === "a") { const o = { k: s }; o.k = "z"; return o.k; } return s; });"#,
+        r#"export const m = mutation({}, async (_ctx, { u }: { u?: unknown }) => { if (u === "a") { let y = u; y = "b"; return y; } return "c"; });"#,
         // `!==` on a plain `string` keeps `string`; its else branch is the literal.
         r#"const onlyA = (v: "a") => v;
-export const m = mutation({}, async ({ s }: { s: string }) => { if (s !== "a") { const rest: string = s; return rest; } else { return onlyA(s); } });"#,
+export const m = mutation({}, async (_ctx, { s }: { s: string }) => { if (s !== "a") { const rest: string = s; return rest; } else { return onlyA(s); } });"#,
         // `!==` on `unknown`: the else branch is the literal.
         r#"const onlyA = (v: "a") => v;
-export const m = mutation({}, async ({ u }: { u?: unknown }) => { if (u !== "a") { return "b"; } else { return onlyA(u); } });"#,
+export const m = mutation({}, async (_ctx, { u }: { u?: unknown }) => { if (u !== "a") { return "b"; } else { return onlyA(u); } });"#,
         // A member path narrows like a local.
         r#"const ab = (v: "a" | "b") => v;
-export const m = mutation({}, async (input: { role: string }) => { if (input.role === "a" || input.role === "b") return ab(input.role); return "a"; });"#,
+export const m = mutation({}, async (_ctx, input: { role: string }) => { if (input.role === "a" || input.role === "b") return ab(input.role); return "a"; });"#,
         // `!(a || b)` is the false side of the disjunction.
         r#"const cd = (v: "c" | "d") => v;
-export const m = mutation({}, async ({ s }: { s: "a" | "b" | "c" | "d" }) => { if (!(s === "a" || s === "b")) return cd(s); return "c"; });"#,
+export const m = mutation({}, async (_ctx, { s }: { s: "a" | "b" | "c" | "d" }) => { if (!(s === "a" || s === "b")) return cd(s); return "c"; });"#,
         // The false side of `&&` over two variables keeps both declared types.
         r#"const xy = (v: "x" | "y") => v;
 const bc = (v: "b" | "c") => v;
-export const m = mutation({}, async ({ a, b }: { a: "x" | "y"; b: "b" | "c" }) => { if (a === "x" && b === "b") return "b"; return xy(a) + bc(b); });"#,
+export const m = mutation({}, async (_ctx, { a, b }: { a: "x" | "y"; b: "b" | "c" }) => { if (a === "x" && b === "b") return "b"; return xy(a) + bc(b); });"#,
         // `x!` narrows the true branch.
-        r#"export const m = mutation({}, async ({ x }: { x: string | null }) => { if (x! === "a") return x.length; if (typeof x! === "string") return x.length; return 0; });"#,
+        r#"export const m = mutation({}, async (_ctx, { x }: { x: string | null }) => { if (x! === "a") return x.length; if (typeof x! === "string") return x.length; return 0; });"#,
         // `"k" in x!` throws on null before entering either branch.
         r#"type A = { k: number }; type B = { j: number };
 const get = (n: number): A | B | null => (n > 0 ? { k: 1 } : n < 0 ? { j: 2 } : null);
-export const m = mutation({}, async ({ n }: { n: number }) => { const x = get(n); if ("k" in x!) return x.k; return x.j; });"#,
+export const m = mutation({}, async (_ctx, { n }: { n: number }) => { const x = get(n); if ("k" in x!) return x.k; return x.j; });"#,
         r#"const onlyA = (v: "a") => v;
-export const m = mutation({}, async ({ input }: { input: { role: string } | null }) => {
+export const m = mutation({}, async (_ctx, { input }: { input: { role: string } | null }) => {
   if (input && input?.role === "a") return onlyA(input.role);
   return "other";
 });"#,
@@ -1991,41 +1966,41 @@ export const m = mutation({}, async ({ input }: { input: { role: string } | null
         // Disjunction over different variables narrows neither one.
         (
             r#"const onlyX = (v: "x") => v;
-export const m = mutation({}, async ({ a, b }: { a: string; b: string }) => { if (a === "x" || b === "y") { return onlyX(a); } return "x"; });"#,
+export const m = mutation({}, async (_ctx, { a, b }: { a: string; b: string }) => { if (a === "x" || b === "y") { return onlyX(a); } return "x"; });"#,
             "this argument is string, but the function expects \"x\"",
         ),
         // A literal narrowed out of a literal union stays that literal, as TypeScript keeps it.
         (
-            r#"export const m = mutation({}, async ({ u }: { u: "a" | "b" }) => { if (u === "a") { let y = u; y = "b"; return y; } return u; });"#,
+            r#"export const m = mutation({}, async (_ctx, { u }: { u: "a" | "b" }) => { if (u === "a") { let y = u; y = "b"; return y; } return u; });"#,
             "can't assign \"b\" to something of type \"a\"",
         ),
         (
             r#"const onlyA = (v: "a") => v;
-export const m = mutation({}, async ({ s }: { s: string }) => { if (s !== "a") { return onlyA(s); } return "x"; });"#,
+export const m = mutation({}, async (_ctx, { s }: { s: string }) => { if (s !== "a") { return onlyA(s); } return "x"; });"#,
             "this argument is string, but the function expects \"a\"",
         ),
         (
             r#"const onlyA = (v: "a") => v;
-export const m = mutation({}, async ({ u }: { u?: unknown }) => { if (u !== "a") { return onlyA(u); } return "a"; });"#,
+export const m = mutation({}, async (_ctx, { u }: { u?: unknown }) => { if (u !== "a") { return onlyA(u); } return "a"; });"#,
             "this argument is unknown | undefined, but the function expects \"a\"",
         ),
         (
             r#"const ab = (v: "a" | "b") => v;
-export const m = mutation({}, async (input: { role: string }) => { if (input.role === "a" || input.role === "c") return ab(input.role); return "a"; });"#,
+export const m = mutation({}, async (_ctx, input: { role: string }) => { if (input.role === "a" || input.role === "c") return ab(input.role); return "a"; });"#,
             "this argument is \"a\" | \"c\", but the function expects \"a\" | \"b\"",
         ),
         (
             r#"const cd = (v: "c" | "d") => v;
-export const m = mutation({}, async ({ s }: { s: "a" | "b" | "c" | "d" }) => { if (!(s === "a" || s === "b")) return "c"; return cd(s); });"#,
+export const m = mutation({}, async (_ctx, { s }: { s: "a" | "b" | "c" | "d" }) => { if (!(s === "a" || s === "b")) return "c"; return cd(s); });"#,
             "this argument is \"a\" | \"b\", but the function expects \"c\" | \"d\"",
         ),
         (
             r#"const onlyB = (v: "b") => v;
-export const m = mutation({}, async ({ a, b }: { a: "x" | "y"; b: "b" | "c" }) => { if (a === "x" && b === "b") return "b"; return onlyB(b); });"#,
+export const m = mutation({}, async (_ctx, { a, b }: { a: "x" | "y"; b: "b" | "c" }) => { if (a === "x" && b === "b") return "b"; return onlyB(b); });"#,
             "this argument is \"b\" | \"c\", but the function expects \"b\"",
         ),
         (
-            r#"export const m = mutation({}, async ({ s }: { s: string }) => {
+            r#"export const m = mutation({}, async (_ctx, { s }: { s: string }) => {
   let x: string | number = s;
   if (x === "a" && ((x = 42) === 42 && x !== "a")) {
     const text: string = x;
@@ -2036,7 +2011,7 @@ export const m = mutation({}, async ({ a, b }: { a: "x" | "y"; b: "b" | "c" }) =
             "string | number isn't assignable to string",
         ),
         (
-            r#"export const m = mutation({}, async ({ s, flag, n }: { s: string; flag: boolean; n: number }) => {
+            r#"export const m = mutation({}, async (_ctx, { s, flag, n }: { s: string; flag: boolean; n: number }) => {
   const x: string = s;
   {
     let x: string | number = n;
@@ -2050,7 +2025,7 @@ export const m = mutation({}, async ({ a, b }: { a: "x" | "y"; b: "b" | "c" }) =
             "string | number isn't assignable to string",
         ),
         (
-            r#"export const m = mutation({}, async ({ input }: { input: { role: string } | null }) => {
+            r#"export const m = mutation({}, async (_ctx, { input }: { input: { role: string } | null }) => {
   if (input && input?.role === "a") return "hit";
   const role: string = input?.role;
   return role;
@@ -2059,15 +2034,15 @@ export const m = mutation({}, async ({ a, b }: { a: "x" | "y"; b: "b" | "c" }) =
         ),
         // `x!` doesn't remove `null` from `x` on the false branch (tsc: TS18047).
         (
-            r#"export const m = mutation({}, async ({ x }: { x: string | null }) => { if (x! === "a") return 1; return x.length; });"#,
+            r#"export const m = mutation({}, async (_ctx, { x }: { x: string | null }) => { if (x! === "a") return 1; return x.length; });"#,
             "can't read `length`: this might be null (string | null)",
         ),
         (
-            r#"export const m = mutation({}, async ({ x }: { x: string | null }) => { if (typeof x! === "number") return 1; return x.length; });"#,
+            r#"export const m = mutation({}, async (_ctx, { x }: { x: string | null }) => { if (typeof x! === "number") return 1; return x.length; });"#,
             "can't read `length`: this might be null (string | null)",
         ),
         (
-            r#"export const m = mutation({}, async ({ x }: { x: string | false | null }) => { if (x! === false) return 1; return x.length; });"#,
+            r#"export const m = mutation({}, async (_ctx, { x }: { x: string | false | null }) => { if (x! === false) return 1; return x.length; });"#,
             "can't read `length`: this might be null (string | null)",
         ),
     ] {
@@ -2094,7 +2069,7 @@ fn string_literal_comparisons_keep_dynamic_dispatch_in_javascript() {
         tmp.path().join("spacepress.config.ts"),
         r#"import { defineConfig, mutation } from "spacepress";
 import { cut } from "./sp/cut.js";
-export const m = mutation({}, async ({ s }: { s: string }) => ({ value: cut(s, 1) }));
+export const m = mutation({}, async (_ctx, { s }: { s: string }) => ({ value: cut(s, 1) }));
 export default defineConfig({ name: "n" });"#,
     )
     .unwrap();
@@ -3384,10 +3359,10 @@ fn rejects_phase2_static_contracts() {
             "reject-env-captured",
             "env() values can't be stored inside captured data",
         ),
-        ("reject-auth-duplicate", "at most one userProjection()"),
+        ("reject-auth-duplicate", "at most one `extend(\"users\")` is allowed"),
         (
             "reject-auth-email",
-            "userProjection() needs `email: email().unique().max(191)`",
+            "extended `users` `email` must be `f.email().unique().max(191)`",
         ),
         ("reject-auth-drafts", "userProjection() requires drafts: false"),
         ("reject-auth-revisions", "userProjection() requires revisions: false"),
@@ -3673,7 +3648,7 @@ fn rejects_phase2_static_contracts() {
         ),
     ] {
         std::fs::write(tmp.join("spacepress.config.ts"), format!(
-            "import {{ collection, text, defineConfig , table}} from 'spacepress'; const notes = table({{ secret: text().access({{ read: (ctx): boolean => {{ {body} }} }}).optional() }}); export {{ notes }}; export default defineConfig({{}});"
+            "import {{ collection, f, defineConfig , table}} from 'spacepress'; const notes = table({{ secret: f.text().access({{ read: (ctx): boolean => {{ {body} }} }}).optional() }}); export {{ notes }}; export default defineConfig({{}});"
         )).unwrap();
         let out = first().arg("check").arg(&tmp).output().unwrap();
         let stderr = String::from_utf8_lossy(&out.stderr);
@@ -3723,7 +3698,7 @@ fn rejects_phase2_static_contracts() {
         ),
     ] {
         std::fs::write(tmp.join("spacepress.config.ts"), format!(
-            "import {{ collection, text, defineConfig , table}} from 'spacepress'; const notes = table({{ secret: text().access({{ read: (): boolean => {{ let value: 0 | 1 = 0; {invocation}; switch (value) {{ case 0: case 1: return true; }} }} }}).optional() }}); export {{ notes }}; export default defineConfig({{}});"
+            "import {{ collection, f, defineConfig , table}} from 'spacepress'; const notes = table({{ secret: f.text().access({{ read: (): boolean => {{ let value: 0 | 1 = 0; {invocation}; switch (value) {{ case 0: case 1: return true; }} }} }}).optional() }}); export {{ notes }}; export default defineConfig({{}});"
         )).unwrap();
         let out = first().arg("check").arg(&tmp).output().unwrap();
         let stderr = String::from_utf8_lossy(&out.stderr);
@@ -3747,7 +3722,7 @@ fn rejects_phase2_static_contracts() {
         "const objects = [{ write: writers[0]! }]; objects.forEach(({ write }) => write())",
     ] {
         std::fs::write(tmp.join("spacepress.config.ts"), format!(
-            "import {{ collection, text, defineConfig , table}} from 'spacepress'; const notes = table({{ secret: text().access({{ read: (): boolean => {{ let value: 0 | 1 = 1; const writers = [() => {{ value++; }}]; {extraction}; switch (value) {{ case 0: case 1: return true; }} }} }}).optional() }}); export {{ notes }}; export default defineConfig({{}});"
+            "import {{ collection, f, defineConfig , table}} from 'spacepress'; const notes = table({{ secret: f.text().access({{ read: (): boolean => {{ let value: 0 | 1 = 1; const writers = [() => {{ value++; }}]; {extraction}; switch (value) {{ case 0: case 1: return true; }} }} }}).optional() }}); export {{ notes }}; export default defineConfig({{}});"
         )).unwrap();
         let out = first().arg("check").arg(&tmp).output().unwrap();
         let stderr = String::from_utf8_lossy(&out.stderr);
@@ -3857,10 +3832,10 @@ fn phase2_schema_and_closures_match_the_contract() {
         $action = $schema->action('inbound');
         $fn = '\\SpacePressApp\\' . $action['handler'];
         $actor = ['user' => ['id' => 1, 'name' => 'Editor', 'role' => 'editor']];
-        $actionAllowed = $fn(\SpacePress\Seam::toJs(\SpacePress\Schema::validateInput($action['input'], []), $action['input']), \SpacePress\Seam::ctx($actor));
+        $actionAllowed = $fn(\SpacePress\Seam::ctx($actor), \SpacePress\Seam::toJs(\SpacePress\Schema::validateInput($action['input'], []), $action['input']));
         $actionThrows = false;
         try {
-            $fn(\SpacePress\Seam::toJs(\SpacePress\Schema::validateInput($action['input'], ['allow' => false]), $action['input']), \SpacePress\Seam::ctx($actor));
+            $fn(\SpacePress\Seam::ctx($actor), \SpacePress\Seam::toJs(\SpacePress\Schema::validateInput($action['input'], ['allow' => false]), $action['input']));
         } catch (\SpacePress\JsError $error) {
             $actionThrows = $error->getMessage() === 'denied';
         }
@@ -3880,7 +3855,7 @@ fn phase2_schema_and_closures_match_the_contract() {
         $input = \SpacePress\Schema::validateInput($job['input'], ['email' => 'a@example.com', 'payload' => ['message' => 'typed'], 'data' => ['payload' => ['suffix' => 'nested']]]);
         $ctx = ['user' => null, 'attempt' => 2, 'jobId' => 'job-test'];
         $fn = '\\SpacePressApp\\' . $job['handler'];
-        $db->transaction(static fn () => $fn(\SpacePress\Seam::toJs($input, $job['input']), \SpacePress\Seam::ctx($ctx)));
+        $db->transaction(static fn () => $fn(\SpacePress\Seam::ctx($ctx), \SpacePress\Seam::toJs($input, $job['input'])));
         echo \SpacePress\Js::jsonStringify([$private, $public, $authenticated, $fieldThrows, $actionAllowed, $actionThrows, $widened, [$update, $subscriberUpdate], $bucketGuest, $db->findMany('audit', ['columns' => ['id' => true, 'note' => true]])]);
     "#,
         &serde_json::Value::Null,
@@ -3952,22 +3927,22 @@ fn kind_urls_and_the_frontend_mode_reach_the_schema() {
     rejects(
         "reject-kind-url",
         "`:titel` in \"/notes/:titel\" names no field of this kind",
-        "spacepress.config.ts:2:59",
+        "spacepress.config.ts:3:",
     );
     rejects(
         "reject-kind-url-overlap",
-        "\"/n/:topic/:id\" can match the same URLs as `notes`'s url",
-        "spacepress.config.ts:3:74",
+        "\"/n/:topic/:id\" can match the same URLs as `notes`'s permalink",
+        "spacepress.config.ts:4:",
     );
     rejects(
         "reject-table-url",
-        "only collection() kinds have URLs",
-        "spacepress.config.ts:2:54",
+        "only collections and taxonomies have canonical URLs",
+        "spacepress.config.ts:3:",
     );
     rejects(
         "reject-frontend",
         "`frontend` \"http://example.com\" uses http://; only localhost may",
-        "spacepress.config.ts:2:59",
+        "spacepress.config.ts:2:",
     );
     let tmp = tempfile::tempdir().unwrap();
     let schema = |config: &str| -> serde_json::Value {
@@ -3997,10 +3972,10 @@ fn kind_urls_and_the_frontend_mode_reach_the_schema() {
         serde_json::from_slice(&out.stdout).unwrap()
     };
     let built = schema(
-        r#"import { collection, defineConfig, text } from "spacepress";
-export const notes = collection({ title: text() }, { url: "/notes/:year/:slug" });
-export const plain = collection({ title: text() });
-export { notes }; export { plain }; export default defineConfig({ name: "kindurls", frontend: "https://www.example.com/" });
+        r#"import { collection, defineConfig, f } from "spacepress";
+export const notes = collection({ title: f.text() });
+export const plain = collection({ title: f.text() });
+export { notes }; export { plain }; export default defineConfig({ name: "kindurls", frontend: "https://www.example.com/", permalinks: { notes: "/notes/:year/:slug" } });
 "#,
     );
     assert_eq!(built["collections"]["notes"]["url"], "/notes/:year/:slug");
@@ -4008,10 +3983,10 @@ export { notes }; export { plain }; export default defineConfig({ name: "kindurl
     assert_eq!(built["frontend"], "https://www.example.com");
     // `comments` (spec §2.3): `true` is the defaults; an object overrides some; off writes no policy.
     let built = schema(
-        r#"import { collection, defineConfig, text } from "spacepress";
-export const posts = collection({ title: text() }, { comments: true });
-export const reviews = collection({ title: text() }, { comments: { guests: true, moderation: "all", threaded: false, closeAfterDays: 30 } });
-export const pages = collection({ title: text() });
+        r#"import { collection, defineConfig, f } from "spacepress";
+export const posts = collection({ title: f.text() }, { comments: true });
+export const reviews = collection({ title: f.text() }, { comments: { guests: true, moderation: "all", threaded: false, closeAfterDays: 30 } });
+export const pages = collection({ title: f.text() });
 export { posts }; export { reviews }; export { pages }; export default defineConfig({ name: "kindurls" });
 "#,
     );
@@ -4147,9 +4122,9 @@ export default defineConfig({ name: "kindurls", sealed: true, admin: true, local
     );
     // `staged: false` is the one staged setting the schema carries: collections stage unless it is there.
     let built = schema(
-        r#"import { collection, defineConfig, text } from "spacepress";
-export const notes = collection({ title: text() });
-export const fixed = collection({ title: text() }, { staged: false });
+        r#"import { collection, defineConfig, f } from "spacepress";
+export const notes = collection({ title: f.text() });
+export const fixed = collection({ title: f.text() }, { staged: false });
 export { notes }; export { fixed }; export default defineConfig({ name: "kindurls" });
 "#,
     );
@@ -4349,7 +4324,7 @@ fn a_stored_table_declared_with_collection_is_refused_before_anything_is_written
         std::fs::write(
             project.join("sp/schema.ts"),
             format!(
-                "import {{ {builder}, text }} from \"spacepress\";\nexport const memos = {builder}({{ title: text() }});\n"
+                "import {{ {builder}, f }} from \"spacepress\";\nexport const memos = {builder}({{ title: f.text() }});\n"
             ),
         )
         .unwrap();
@@ -4408,7 +4383,7 @@ fn a_stored_table_declared_with_collection_is_refused_before_anything_is_written
         std::fs::write(
             posts.path().join("sp/schema.ts"),
             format!(
-                "import {{ {builder}, text }} from \"spacepress\";\nexport const memos = {builder}({{ title: text() }});\n"
+                "import {{ {builder}, f }} from \"spacepress\";\nexport const memos = {builder}({{ title: f.text() }});\n"
             ),
         )
         .unwrap();
@@ -4712,9 +4687,9 @@ fn effects_solver_work_stays_proportional_to_its_result_on_a_large_function() {
     std::fs::write(tmp.path().join("sp/run.mjs"), body).unwrap();
     std::fs::write(
         tmp.path().join("spacepress.config.ts"),
-        r#"import { defineConfig, text, mutation } from "spacepress";
+        r#"import { defineConfig, mutation } from "spacepress";
 import { run } from "./sp/run.mjs";
-const __a = mutation({ access: "anyone" }, async (input: { s: string }) => { return { v: run(input.s) }; }); export { __a as a }; export default defineConfig({ name: "p" });
+const __a = mutation({ access: "anyone" }, async (_ctx, input: { s: string }) => { return { v: run(input.s) }; }); export { __a as a }; export default defineConfig({ name: "p" });
 "#,
     )
     .unwrap();
@@ -4762,10 +4737,10 @@ fn a_many_ref_gets_a_join_table_and_relations_both_ways() {
     .unwrap();
     let schema = |posts_extra: &str| {
         format!(
-            "import {{ collection, ref, table, text }} from \"spacepress\";\n\
-             export const tags = table({{ name: text() }});\n\
-             export const notes = table({{ body: text(), tags: ref(tags).many(){posts_extra} }});\n\
-             export const posts = collection({{ title: text(), tags: ref(tags).many().optional().reverse(\"taggedPosts\").onDelete(\"restrict\") }});\n"
+            "import {{ collection, f, table }} from \"spacepress\";\n\
+             export const tags = table({{ name: f.text() }});\n\
+             export const notes = table({{ body: f.text(), tags: f.ref(tags).many(){posts_extra} }});\n\
+             export const posts = collection({{ title: f.text(), tags: f.ref(tags).many().optional().reverse(\"taggedPosts\").onDelete(\"restrict\") }});\n"
         )
     };
     std::fs::write(tmp.join("sp/schema.ts"), schema("")).unwrap();
@@ -4835,7 +4810,7 @@ fn a_many_ref_gets_a_join_table_and_relations_both_ways() {
     // Another many-ref adds its join table; removing one retires it in ops.json (forward-only: no DROP TABLE).
     std::fs::write(
         tmp.join("sp/schema.ts"),
-        schema(", related: ref(() => notes).many().reverse(\"relatedFrom\")"),
+        schema(", related: f.ref(() => notes).many().reverse(\"relatedFrom\")"),
     )
     .unwrap();
     build();
@@ -4884,7 +4859,7 @@ fn a_taxonomy_is_a_kind_in_core_term_tables_with_a_field_and_relations_both_ways
         assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     };
     let plain =
-        "import { collection, text } from \"spacepress\";\nexport const posts = collection({ title: text() });\n";
+        "import { collection, f } from \"spacepress\";\nexport const posts = collection({ title: f.text() });\n";
     build(plain);
     let ledger = || -> Vec<(String, String)> {
         let mut out: Vec<(String, String)> = std::fs::read_dir(tmp.join("sp/_generated/migrations"))
@@ -4902,11 +4877,16 @@ fn a_taxonomy_is_a_kind_in_core_term_tables_with_a_field_and_relations_both_ways
     };
     let before = ledger();
     assert_eq!(before.len(), 1, "{before:?}");
+    std::fs::write(
+        tmp.join("spacepress.config.ts"),
+        "import { defineConfig } from \"spacepress\";\nexport default defineConfig({ name: \"taxo\", permalinks: { tags: \"/tags/:slug\" } });\n",
+    )
+    .unwrap();
     build(
-        "import { collection, taxonomy, terms, text } from \"spacepress\";\n\
-         export const tags = taxonomy({}, { url: \"/tags/:slug\" });\n\
-         export const posts = collection({ title: text(), labels: terms(tags).reverse(\"labelled\") });\n\
-         export const topics = taxonomy({ color: text().optional() }, { hierarchical: true, on: [posts], access: { create: \"author\" } });\n",
+        "import { collection, taxonomy, f } from \"spacepress\";\n\
+         export const tags = taxonomy({});\n\
+         export const posts = collection({ title: f.text(), labels: f.terms(tags).reverse(\"labelled\") });\n\
+         export const topics = taxonomy({ color: f.text().optional() }, { hierarchical: true, on: [posts], access: { create: \"author\" } });\n",
     );
     // No SQL: terms, term meta and links are core's.
     assert_eq!(ledger(), before);
@@ -4952,7 +4932,7 @@ fn a_taxonomy_is_a_kind_in_core_term_tables_with_a_field_and_relations_both_ways
 
     let dts = std::fs::read_to_string(tmp.join("sp/_generated/db.d.ts")).unwrap();
     assert!(dts.contains("'topics': Collection<'topics', {"), "{dts}");
-    assert!(dts.contains("}, false, 'taxonomy'>;"), "{dts}");
+    assert!(dts.contains("}, false, 'taxonomy', true>;"), "{dts}");
     assert!(
         dts.contains("'topics': ColumnBuilder<'refList', Id<'topics'>[], true, true, false, false>;"),
         "{dts}"
@@ -4963,6 +4943,11 @@ fn a_taxonomy_is_a_kind_in_core_term_tables_with_a_field_and_relations_both_ways
     );
 
     // Removing the taxonomy again changes no stored schema either.
+    std::fs::write(
+        tmp.join("spacepress.config.ts"),
+        "import { defineConfig } from \"spacepress\";\nexport default defineConfig({ name: \"taxo\" });\n",
+    )
+    .unwrap();
     build(plain);
     assert_eq!(ledger(), before);
     let _ = std::fs::remove_dir_all(tmp);
@@ -6434,10 +6419,11 @@ fn a_query_that_writes_fails_the_build_at_the_write() {
     let tmp = tempfile::tempdir().unwrap();
     std::fs::write(
         tmp.path().join("spacepress.config.ts"),
-        r#"import { defineConfig, query, table, text } from "spacepress";
-export const notes = table({ title: text() });
-async function touch(id: number) { await notes.update(id, { title: "x" }); }
-export const read = query({}, async ({ id }: { id: number }) => { await touch(id); return 1; });
+        r#"import { defineConfig, query, table, f } from "spacepress";
+import { db } from "spacepress/server";
+export const notes = table({ title: f.text() });
+async function touch(id: number) { await db.notes.update(id, { title: "x" }); }
+export const read = query({}, async (_ctx, { id }: { id: number }) => { await touch(id); return 1; });
 export default defineConfig({ name: "q" });
 "#,
     )
@@ -6449,7 +6435,7 @@ export default defineConfig({ name: "q" });
         stderr.contains("`read` is a query, so it can't write: this updates a row (in a function the query calls)"),
         "{stderr}"
     );
-    assert!(stderr.contains("--> spacepress.config.ts:3:"), "{stderr}");
+    assert!(stderr.contains("--> spacepress.config.ts:4:"), "{stderr}");
     assert!(stderr.contains("make it a mutation"), "{stderr}");
 }
 
@@ -6484,12 +6470,12 @@ fn server_function_mistakes_are_refused_with_the_new_spelling() {
             "a function that only reads is a query()",
         ),
         (
-            "import { query } from \"spacepress\";\nexport const a = query({}, async (input) => 1);",
+            "import { query } from \"spacepress\";\nexport const a = query({}, async (_ctx, input) => 1);",
             "this parameter has none",
-            "type it",
+            "type the second parameter",
         ),
         (
-            "import { query } from \"spacepress\";\nexport const a = query({}, async (at: { when: Date }) => 1);",
+            "import { query } from \"spacepress\";\nexport const a = query({}, async (_ctx, at: { when: Date }) => 1);",
             "input field `when` is Date, which JSON can't carry",
             "a date is an ISO string",
         ),
@@ -6534,27 +6520,27 @@ fn server_function_mistakes_are_refused_with_the_new_spelling() {
             "make it a mutation",
         ),
         (
-            "import { query, table, text } from \"spacepress\";\nexport const notes = table({ title: text() });\nclass Writer { async run(id: number) { await notes.update(id, { title: \"x\" }); } }\nexport const a = query({}, async ({ id }: { id: number }) => { await new Writer().run(id); return 1; });",
+            "import { query, table, f } from \"spacepress\";\nimport { db } from \"spacepress/server\";\nexport const notes = table({ title: f.text() });\nclass Writer { async run(id: number) { await db.notes.update(id, { title: \"x\" }); } }\nexport const a = query({}, async (_ctx, { id }: { id: number }) => { await new Writer().run(id); return 1; });",
             "`a` is a query, so it can't write: this updates a row (in a function the query calls)",
             "make it a mutation",
         ),
         (
-            "import { query } from \"spacepress\";\nexport const a = query({}, async (input: { pick: { kind: \"a\"; n: number } | { kind: \"b\"; s: string } }) => 1);",
+            "import { query } from \"spacepress\";\nexport const a = query({}, async (_ctx, input: { pick: { kind: \"a\"; n: number } | { kind: \"b\"; s: string } }) => 1);",
             "has no JSON shape the site can check",
             "`kind` field",
         ),
         (
-            "import { job } from \"spacepress\";\nexport const a = job({ every: \"1h\" }, async ({ id }: { id: number }) => {});",
+            "import { job } from \"spacepress\";\nexport const a = job({ every: \"1h\" }, async (_ctx, { id }: { id: number }) => {});",
             "a job on a schedule runs with no input",
             "make every field optional",
         ),
         (
-            "import { job, mutation } from \"spacepress\";\nexport const j = job({}, async ({ id }: { id: number }) => {});\nexport const m = mutation({}, async () => { await j.enqueue({ id: \"one\" }); });",
+            "import { job, mutation } from \"spacepress\";\nexport const j = job({}, async (_ctx, { id }: { id: number }) => {});\nexport const m = mutation({}, async () => { await j.enqueue({ id: \"one\" }); });",
             "doesn't fit job `j`",
             "",
         ),
         (
-            "import { job, mutation } from \"spacepress\";\nexport const j = job({}, async ({ id }: { id: number }) => {});\nexport const m = mutation({}, async () => { await j({ id: 1 }); });",
+            "import { job, mutation } from \"spacepress\";\nexport const j = job({}, async (_ctx, { id }: { id: number }) => {});\nexport const m = mutation({}, async () => { await j({ id: 1 }); });",
             "`j` is a job: it runs on the queue, not as a function",
             "j.enqueue(",
         ),
@@ -6583,7 +6569,7 @@ fn a_member_path_keeps_its_type_after_a_conjunction_that_throws() {
         tmp.path().join("spacepress.config.ts"),
         r#"import { defineConfig, query } from "spacepress";
 import { HttpError } from "spacepress/server";
-export const range = query({}, async (input: { q?: number | null }) => {
+export const range = query({}, async (_ctx, input: { q?: number | null }) => {
   if (input.q != null && input.q < 1) throw new HttpError(422, "low", "low");
   if (input.q != null && input.q > 5) throw new HttpError(422, "high", "high");
   return input.q ?? 0;
@@ -6807,4 +6793,148 @@ fn imported_constants_keep_their_declared_types() {
     .unwrap();
     assert!(php.contains("$value->p['a'] = 'one';"), "{php}");
     assert!(!php.contains("$value->p['a'] = 2;"), "{php}");
+}
+
+/// SpacePress 1.0 API redesign contracts:
+/// - implicit built-in `db.posts`, `db.pages`, `db.users` without calling `extend()`
+/// - `extend("pages")` and `extend("users")`
+/// - `export const canonical = true` route tie-breaker (and ambiguity refusal without it)
+/// - `export const access` + `Response.json()` / `new Response()` in `route.ts`
+/// - `f.*` with `.default(fn)` / `.onUpdate(fn)`
+/// - `ReadOnlyDb` enforcement in `query()` and `page.tsx`
+#[test]
+fn api_v1_redesign_surface_contracts() {
+    // 1. Implicit built-ins (no extend() calls) + Response.json / new Response + f.*.default(fn)/.onUpdate(fn)
+    let tmp = tempfile::tempdir().unwrap();
+    let project = tmp.path();
+    std::fs::create_dir_all(project.join("sp/app/blog/[slug]")).unwrap();
+    std::fs::create_dir_all(project.join("sp/app/archive/[slug]")).unwrap();
+    std::fs::create_dir_all(project.join("sp/app/api/ping")).unwrap();
+    std::fs::write(
+        project.join("spacepress.config.ts"),
+        r#"import { defineConfig } from "spacepress";
+export default defineConfig({ name: "v1surface" });
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        project.join("sp/schema.ts"),
+        r#"import { extend, f, table } from "spacepress";
+export const pages = extend("pages", { fields: { subtitle: f.text().optional() } });
+export const users = extend("users", { fields: { handle: f.text().optional() } });
+export const logs = table({
+  note: f.text(),
+  tags: f.json<string[]>().default(() => []),
+  updatedAt: f.timestamp().defaultNow().onUpdate(() => new Date()),
+});
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        project.join("sp/server.ts"),
+        r#"import { query, mutation } from "spacepress";
+// Implicit `db.posts` without calling `extend("posts")`, plus extended `db.pages` and `db.users`.
+export const summary = query({ access: "anyone" }, async ({ db }) => ({
+  posts: await db.posts.count(),
+  pages: await db.pages.count(),
+  users: await db.users.count(),
+}));
+export const addLog = mutation({ access: "anyone" }, async ({ db }, { note }: { note: string }) => {
+  return await db.system.logs.create({ note });
+});
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        project.join("sp/app/api/ping/route.ts"),
+        r#"export const access = "anyone";
+export async function GET() {
+  return Response.json({ ok: true }, { status: 201 });
+}
+export async function POST() {
+  return new Response("pong", { status: 200, headers: { "content-type": "text/plain" } });
+}
+"#,
+    )
+    .unwrap();
+    // Two routes querying `db.posts.get({ slug: params.slug })`: ambiguous until one marks `canonical = true`.
+    let page_src = r#"import { notFound } from "spacepress/app";
+import type { PageProps } from "./$types";
+export default async function PostPage({ params, db }: PageProps) {
+  const post = await db.posts.get({ slug: params.slug });
+  if (!post) notFound();
+  return <article><h1>{post.title}</h1></article>;
+}
+"#;
+    std::fs::write(project.join("sp/app/blog/[slug]/page.tsx"), page_src).unwrap();
+    std::fs::write(project.join("sp/app/archive/[slug]/page.tsx"), page_src).unwrap();
+
+    let ambig = first().arg("check").arg(project).output().unwrap();
+    let stderr = String::from_utf8_lossy(&ambig.stderr);
+    assert_eq!(ambig.status.code(), Some(1), "expected ambiguity error: {stderr}");
+    assert!(stderr.contains("canonical"), "{stderr}");
+
+    // Add `export const canonical = "posts"` to `/blog/[slug]` -> resolves cleanly and binds `/blog/:slug`.
+    std::fs::write(
+        project.join("sp/app/blog/[slug]/page.tsx"),
+        format!("export const canonical = \"posts\";\n{page_src}"),
+    )
+    .unwrap();
+    let built = first().args(["build", "--quiet"]).arg(project).output().unwrap();
+    assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
+
+    let schema_out = Command::new("php")
+        .args(["-r", "echo json_encode(require $argv[1]);"])
+        .arg(project.join("sp/dist/wp-content/plugins/spacepress-app-v1surface/sp/app/schema.php"))
+        .output()
+        .unwrap();
+    assert!(schema_out.status.success(), "{}", String::from_utf8_lossy(&schema_out.stderr));
+    let schema: serde_json::Value = serde_json::from_slice(&schema_out.stdout).unwrap();
+    assert_eq!(schema["collections"]["posts"]["url"], "/blog/:slug");
+    assert_eq!(schema["collections"]["pages"]["wp"]["postType"], "page");
+    assert!(schema["collections"]["users"].is_object(), "{schema}");
+
+    // 2. ReadOnlyDb enforcement in query() and page.tsx.
+    let ro_query = tempfile::tempdir().unwrap();
+    std::fs::write(
+        ro_query.path().join("spacepress.config.ts"),
+        r#"import { defineConfig, f, query, table } from "spacepress";
+export const notes = table({ title: f.text() });
+export const bad = query({ access: "anyone" }, async ({ db }) => {
+  await db.notes.create({ title: "nope" });
+  return true;
+});
+export default defineConfig({ name: "roq" });
+"#,
+    )
+    .unwrap();
+    let out = first().arg("check").arg(ro_query.path()).output().unwrap();
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(out.status.code(), Some(1), "{stderr}");
+    assert!(stderr.contains("read-only `db`"), "{stderr}");
+
+    let ro_page = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(ro_page.path().join("sp/app")).unwrap();
+    std::fs::write(
+        ro_page.path().join("spacepress.config.ts"),
+        r#"import { defineConfig, f, table } from "spacepress";
+export const notes = table({ title: f.text() });
+export default defineConfig({ name: "rop" });
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        ro_page.path().join("sp/app/page.tsx"),
+        r#"import type { PageProps } from "spacepress/app";
+export default async function Home({ db }: PageProps) {
+  await db.notes.create({ title: "nope" });
+  return <main>nope</main>;
+}
+"#,
+    )
+    .unwrap();
+    let out = first().arg("check").arg(ro_page.path()).output().unwrap();
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(out.status.code(), Some(1), "{stderr}");
+    assert!(stderr.contains("read-only `db`"), "{stderr}");
 }

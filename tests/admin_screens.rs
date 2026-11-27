@@ -13,13 +13,14 @@ fn first() -> Command {
 }
 
 /// Two actions every case uses: a readonly list and a write that takes an id.
-const ACTIONS: &str = r#"import { adminScreen, item, defineConfig, query, mutation } from "spacepress";
+const ACTIONS: &str = r#"import { defineConfig, query, mutation } from "spacepress";
+import { adminScreen, item } from "spacepress/admin";
 
-export const listPending = query({ access: "editor" }, (_input: { limit?: number }) => ({ rows: [{ id: 1, total: 3, shipped: false }] }));
+export const listPending = query({ access: "editor" }, (_ctx, _input: { limit?: number }) => ({ rows: [{ id: 1, total: 3, shipped: false }] }));
 
-export const markShipped = mutation({ access: "editor" }, ({ id }: { id: number; note?: string }) => ({ id }));
+export const markShipped = mutation({ access: "editor" }, (_ctx, { id }: { id: number; note?: string }) => ({ id }));
 
-export const purge = mutation({ destructive: true, idempotent: true }, ({ id }: { id: number }) => id);
+export const purge = mutation({ destructive: true, idempotent: true }, (_ctx, { id }: { id: number }) => id);
 "#;
 
 fn project(screens: &str) -> tempfile::TempDir {

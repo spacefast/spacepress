@@ -20,7 +20,7 @@ Labels:
 
 | label | captured at | how |
 |---|---|---|
-| `head` | the commit that split server and client imports (`spacepress/server/*`, `react`, `@spacepress/client/react`) (2026-11-26) | `tests/fixtures/spacepress-sources/capture.sh head`, with the compiler built from that commit |
+| `head` | the SpacePress 1.0 API redesign (`db.<kind>.*`, `(ctx, input)`, `f.*`, `extend()`, route-owned URLs, flat `#sp/api`) (2026-11-27) | `tests/fixtures/spacepress-sources/capture.sh head`, with the compiler built from that commit |
 
 The examples are `pantry` (SQL tables, references, a job, actions), `blog` (post-backed kinds, a user
 projection, a global, files, synced content, `public/`) and `full-site` (`sp/app/` pages and
@@ -54,6 +54,7 @@ compiled with main at `6ca0f37fe` (2026-11-14), before the first kept fixture.
 | `277ad98f9` (the first `head` capture) | pantry, blog, full-site | `defineConfig({ collections, tables, users, globals, files, actions, jobs, hooks })` | each registers by its export; hooks are `.on({ ... })` on the kind (authoring-surface ruling 36) | `` `collections` is gone: a kind registers by its export `` |
 | `head` before the server API change (main, 2026-11-14 to 2026-11-17) | pantry, blog, full-site | `action({ input, handler })`, `job({ input, handler })`, `jobs.x.enqueue()` | `query(options, handler)` or `mutation(options, handler)` and `job(options, handler)`, the input from the handler's parameter type; `x.enqueue()` on the job's export | `` `action()` is gone: a server function is `query()` when it only reads and `mutation()` when it writes `` |
 | `head` before the import split (main, 2026-11-26) | pantry, blog, full-site | `db`/`HttpError`/`once`/`mail`/`connectors` from `spacepress`, `spacepress:db`, `spacepress/app`, `spacepress/content`, `php/wordpress`, `spacepress/client` | `spacepress/server`, `spacepress/server/db`, `spacepress/app`, `spacepress/content`, `spacepress/server/wp`, `react`, `@spacepress/client/react` | `` `db` is a server API: import it from `spacepress/server` `` / `` `spacepress/app` moved to `spacepress/app` `` |
+| `head` before the 1.0 API redesign (2026-11-27) | pantry, blog, full-site | flat field builders, `spacepress/server/db`, Drizzle `db.query`/`db.insert`/`db.update`/`db.delete`, `(input, ctx)`, `url` on kinds, `export const guard`, `spacepress/content`, `wp.posts.extend`/`userProjection` | `f.*`, `db.<kind>.*` / `db.system.<kind>.*`, `(ctx, input)`, route-owned URLs + `permalinks`, `export const access`, `db.<kind>.nav()`/`pager()`, `extend("posts" \| "pages" \| "users")`, flat `#sp/api` | `` `text()` moved onto the `f` field namespace `` / `` `"spacepress/server/db"` is gone `` |
 
 Each capture was made with the compiler of its own commit (`cargo build --bin spacepress` there, then
 `spacepress sources examples/<example> --out <dir>`), and compiled against the baseline that compiler wrote

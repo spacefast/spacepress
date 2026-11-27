@@ -1,7 +1,7 @@
-import { collection, text, slug } from "spacepress";
+import { collection, f } from "spacepress";
 
 export const notes = collection({
-  title: text(),
-  slug: slug({ source: "title" }).optional(),
-  secret: text().access({ read: "editor" }).optional(),
+  title: f.text(),
+  slug: f.slug({ source: "title" }).optional(),
+  secret: f.text().access({ read: "editor" }).optional(),
 }, { title: "title" });

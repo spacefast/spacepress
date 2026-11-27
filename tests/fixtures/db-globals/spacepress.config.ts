@@ -1,21 +1,21 @@
-import { collection, text, json, global, defineConfig, table, mutation } from "spacepress";
-import { db } from "spacepress/server";
-export const n = table({ meta: json().optional() });
+import { collection, global, defineConfig, table, mutation, f } from "spacepress";
+export const n = table({ meta: f.json().optional() });
 export const settings = global({
-  title: text().default("Hi"),
-  stats: json<{ visits: number }>().optional(),
+  title: f.text().default("Hi"),
+  stats: f.json<{ visits: number }>().optional(),
 });
 // Never written: defaults. Then a typed JSON field round-trips through update().
-export const visit = mutation({}, async () => {
-  const before = await db.globals.settings.get();
-  const after = await db.globals.settings.update({ stats: { visits: (before.stats?.visits ?? 0) + 1 } });
+export const visit = mutation({}, async ({ db }) => {
+  const before = await db.settings.get();
+  const after = await db.settings.update({ stats: { visits: (before.stats?.visits ?? 0) + 1 } });
   return [before.title, before.stats, after.stats?.visits ?? null];
 });
 
 // A compiled filter on a json() column: `{}` is the empty object to compare with, not "no operators".
-export const emptyMeta = mutation({}, async () => {
-  await db.insert(n).values([{ meta: {} }, { meta: [] }]);
-  return (await db.query.n.findMany({ where: { meta: {} } })).map((r) => JSON.stringify(r.meta));
+export const emptyMeta = mutation({}, async ({ db }) => {
+  await db.n.create({ meta: {} });
+  await db.n.create({ meta: [] });
+  return (await db.n.list({ where: { meta: {} } })).map((r) => JSON.stringify(r.meta));
 });
 
 export default defineConfig({});

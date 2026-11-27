@@ -1,3 +1,3 @@
-import { collection, taxonomy, terms, text } from "spacepress";
+import { collection, taxonomy, f } from "spacepress";
 export const topics = taxonomy({});
-export const notes = collection({ title: text(), topics: terms(topics) }, { sync: "content/notes/*.json" });
+export const notes = collection({ title: f.text(), topics: f.terms(topics) }, { sync: "content/notes/*.json" });

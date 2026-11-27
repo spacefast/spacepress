@@ -1,4 +1,4 @@
-import { defineConfig, defineRelations, table, text } from "spacepress";
-export const notes = table({ title: text() });
+import { defineConfig, defineRelations, table, f } from "spacepress";
+export const notes = table({ title: f.text() });
 export const relations = defineRelations({ notes }, (r) => ({}));
 export default defineConfig({});

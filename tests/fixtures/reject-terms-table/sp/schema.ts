@@ -1,3 +1,3 @@
-import { collection, global, ref, table, taxonomy, terms, text, richText, group } from "spacepress";
+import { collection, global, table, taxonomy, f } from "spacepress";
 export const topics = taxonomy({});
-export const notes = table({ body: text(), topics: terms(topics) });
+export const notes = table({ body: f.text(), topics: f.terms(topics) });

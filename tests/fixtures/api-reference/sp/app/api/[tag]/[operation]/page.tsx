@@ -1,5 +1,4 @@
-import { Html, notFound, type PageProps } from "spacepress/app";
-import { apiReference } from "spacepress/content";
+import { Html, apiReference, notFound, type PageProps } from "spacepress/app";
 import { Fields } from "../../../../components/Fields";
 
 export default function Operation({ params }: PageProps<"api/[tag]/[operation]">) {

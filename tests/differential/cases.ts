@@ -1,8 +1,7 @@
 // Every action, access rule, and `.validate` closure here runs under Node and as compiled PHP;
 // results must be identical. Add a case whenever the compiler learns a construct. Keep each one small.
-import { collection, text, integer, defineConfig, json as jsonField, group, repeater, blocks, table } from "spacepress";
+import { collection, defineConfig, f, table } from "spacepress";
 import { job, mutation } from "spacepress";
-import { once } from "spacepress/server"; // lane D
 import * as ns from "./namespace.mjs";
 import picoish from "./namespace.mjs";
 import { jsAbort as jsAbortImpl, jsCollections as jsCollectionsImpl, jsTimers as jsTimersImpl } from "./stdlib.js";
@@ -58,13 +57,13 @@ const FINITE_VALUES = [NaN, Infinity, -Infinity, 0, "3", "", null, false, [], [3
 const PURE_FINITE = FINITE_VALUES.map(value => [Number.isFinite(value), isFinite(value)]);
 
 export const docs = collection({
-  title: text().validate((v): true | string => v.includes("http://") ? "No links" : v.trim().length > 0 || "blank"),
-  score: integer().validate((v, ctx) => (v % 2 === 1 && ctx.user?.role === "admin" ? `odd ${v} for ${ctx.user?.name}` : undefined)).optional(),
-  ownerId: integer().optional(),
-  meta: jsonField<{ x: number }>().validate((value, ctx) => { if (ctx.data.meta) ctx.data.meta.x = 7; return value.x === 7 || "root alias lost"; }).optional(),
-  info: group({ meta: jsonField<{ x: number }>().validate((value, ctx) => { if (ctx.data.info) ctx.data.info.meta.x = 8; return value.x === 8 || "group alias lost"; }) }).optional(),
-  entries: repeater({ meta: jsonField<{ x: number }>().validate((value, ctx) => { const first = ctx.data.entries?.[0]; if (first) first.meta.x = 9; return value.x === 9 || "repeater alias lost"; }) }).optional(),
-  sections: blocks({ hero: { meta: jsonField<{ x: number }>().validate((value, ctx) => { const first = ctx.data.sections?.[0]; if (first && first.layout === "hero") first.meta.x = 10; return value.x === 10 || "block alias lost"; }) } }).optional(),
+  title: f.text().validate((v): true | string => v.includes("http://") ? "No links" : v.trim().length > 0 || "blank"),
+  score: f.integer().validate((v, ctx) => (v % 2 === 1 && ctx.user?.role === "admin" ? `odd ${v} for ${ctx.user?.name}` : undefined)).optional(),
+  ownerId: f.integer().optional(),
+  meta: f.json<{ x: number }>().validate((value, ctx) => { if (ctx.data.meta) ctx.data.meta.x = 7; return value.x === 7 || "root alias lost"; }).optional(),
+  info: f.group({ meta: f.json<{ x: number }>().validate((value, ctx) => { if (ctx.data.info) ctx.data.info.meta.x = 8; return value.x === 8 || "group alias lost"; }) }).optional(),
+  entries: f.repeater({ meta: f.json<{ x: number }>().validate((value, ctx) => { const first = ctx.data.entries?.[0]; if (first) first.meta.x = 9; return value.x === 9 || "repeater alias lost"; }) }).optional(),
+  sections: f.blocks({ hero: { meta: f.json<{ x: number }>().validate((value, ctx) => { const first = ctx.data.sections?.[0]; if (first && first.layout === "hero") first.meta.x = 10; return value.x === 10 || "block alias lost"; }) } }).optional(),
 }, {
   title: "title",
   access: {
@@ -349,9 +348,9 @@ export const refsGuardedUpdates = run(() => { const bump = (o: { n: number | nul
 
 export const refsCloneError = run(() => { const e = new Error("x"); const cloned = structuredClone([e, e]); return [cloned[0] === e, cloned[0] === cloned[1], cloned[0]!.message]; });
 
-export const refsOnceError = run(async () => { const e = new Error("snapshot"); const first = await once("refs-error", () => e); const next = await once("refs-error", () => e); return [first === e, next === e, next.message]; });
+export const refsOnceError = mutation({}, async ({ once }) => { const e = new Error("snapshot"); const first = await once("refs-error", () => e); const next = await once("refs-error", () => e); return [first === e, next === e, next.message]; });
 
-export const refsOnceFunction = run(async () => { try { await once("refs-function", () => ({ f: refsRegistered })); return false; } catch { return true; } });
+export const refsOnceFunction = mutation({}, async ({ once }) => { try { await once("refs-function", () => ({ f: refsRegistered })); return false; } catch { return true; } });
 
 export const refsDateArrayCoercion = run(() => [
   new Date(["2020-01-01"]).getTime(),
@@ -456,7 +455,7 @@ export const refsCapturedOtherRoot = run(() => { capturedOther.inner.n = 9; retu
 
 export const refsCallbackArray = run(() => { const a = [1, 2]; return a.map((v, i, source) => { source[1] = 5; return [v, i, source === a]; }); });
 
-export const refsOnceGraph = run(async () => { const p = { n: 1 }; const first = await once("refs-graph", () => p); first.n = 2; const second = await once("refs-graph", () => p); second.n = 3; const third = await once("refs-graph", () => p); return [first === p, first === second, third.n]; });
+export const refsOnceGraph = mutation({}, async ({ once }) => { const p = { n: 1 }; const first = await once("refs-graph", () => p); first.n = 2; const second = await once("refs-graph", () => p); second.n = 3; const third = await once("refs-graph", () => p); return [first === p, first === second, third.n]; });
 
 export const refs01 = run(() => { const a = { x: 1 }; const b = a; b.x = 2; return a.x === 2; });
 
@@ -775,7 +774,7 @@ export const uriEncoding = run(() => {
   return values.map(value => [encodeURI(value), encodeURIComponent(value)]);
 });
 
-export const hookCtx = mutation({}, (_input: {}, ctx) => [ctx.user?.name ?? "anonymous", ctx.user?.role ?? null]);
+export const hookCtx = mutation({}, (ctx) => [ctx.user?.name ?? "anonymous", ctx.user?.role ?? null]);
 
 export const numbers = run(() => {
   const finite = Number.isFinite;
@@ -1023,7 +1022,7 @@ export const thrown = run(() => {
   throw new Error("expected failure");
 });
 
-export const onceReplays = mutation({}, async () => {
+export const onceReplays = mutation({}, async ({ once }) => {
   let runs = 0;
   const first = await once("lane-d-replay", async () => { runs++; return { n: runs, tags: ["a"], extra: {} }; });
   const second = await once("lane-d-replay", () => { runs++; return { n: runs, tags: ["b"], extra: {} }; });
@@ -1031,13 +1030,13 @@ export const onceReplays = mutation({}, async () => {
   return { first, second, other, runs };
 });
 
-export const onceRegex = mutation({}, async () => {
+export const onceRegex = mutation({}, async ({ once }) => {
   const first = await once("lane-d-regex", () => /^a+$/i);
   const replay = await once("lane-d-regex", () => /never/);
   return [first.test("AAA"), replay.test("AAA"), replay.test("b")];
 });
 
-export const onceNull = mutation({}, async () => [await once("lane-d-null", () => null), await once("lane-d-null", () => "second")]);
+export const onceNull = mutation({}, async ({ once }) => [await once("lane-d-null", () => null), await once("lane-d-null", () => "second")]);
 
 export const enqueueIds = mutation({}, async () => {
   const plain = await ping.enqueue({ note: "hi" });
@@ -1179,7 +1178,7 @@ export const setOps = run(() => {
   return [deleted, visited, [...s], [...s.entries()], Array.from(s.keys(), (v, i) => v * 10 + i), s.has(7), s.size, copy.size, new Set("abca").size];
 });
 
-export const ping = job({}, async (_input: { note?: string }) => {});
+export const ping = job({}, async (_ctx, _input: { note?: string }) => {});
 
 export default defineConfig({});
 
@@ -1204,8 +1203,8 @@ export const FIELD_CTXS = [
 // A hoisted function, so the collection can live in this block below the default export.
 function fieldDocs() {
   return table({
-    ownerId: integer().optional(),
-    salary: integer().access({
+    ownerId: f.integer().optional(),
+    salary: f.integer().access({
       read: (ctx) => ctx.user !== null && (RANK.indexOf(ctx.user.role) >= 2 || ctx.data.ownerId === ctx.user.id),
       update: (ctx) => ctx.user?.role === "admin" || (ctx.data.salary !== null && ctx.op === "update"),
     }).optional(),

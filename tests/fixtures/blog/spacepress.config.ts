@@ -1,36 +1,36 @@
 // The phase-1 blog, frozen: tests/fixtures/blog/schema.php is what `spacepress build` emits for it, and the
 // PHP suites (tests/php/blog_app.php) run against that schema. examples/blog grows; this file does not.
-import { collection, global, text, integer, boolean, timestamp, richText, media, slug, select, repeater, group, blocks, email, url, defineConfig, table, ref, query, mutation } from "spacepress";
-import { db, HttpError } from "spacepress/server";
+import { collection, global, defineConfig, table, query, mutation, f } from "spacepress";
+import { HttpError } from "spacepress/server";
 
 export const authors = collection({
-  name: text().max(80),
-  email: email().unique().max(191),
-  bio: text({ multiline: true }).max(500).optional(),
-  avatar: media({ accept: "image" }).optional(),
-  userId: integer().optional(),                       // the User.id that owns this author profile
+  name: f.text().max(80),
+  email: f.email().unique().max(191),
+  bio: f.text({ multiline: true }).max(500).optional(),
+  avatar: f.media({ accept: "image" }).optional(),
+  userId: f.integer().optional(),                       // the User.id that owns this author profile
 }, { label: "Authors", title: "name", access: { read: "anyone", create: "admin", update: "admin", delete: "admin" } });
 
 export const posts = collection({
-  title: text().min(1).max(120),
-  slug: slug({ source: "title" }).optional(),
-  body: richText().optional(),
-  excerpt: text({ multiline: true }).max(300).optional(),
-  cover: media({ accept: "image" }).optional(),
-  tags: select(["news", "guide", "release"]).many().default([]),
-  authorId: ref(authors).optional(),
-  seo: group({
-    metaTitle: text().max(70).optional(),
-    metaDescription: text().max(160).optional(),
-    noindex: boolean().default(false),
+  title: f.text().min(1).max(120),
+  slug: f.slug({ source: "title" }).optional(),
+  body: f.richText().optional(),
+  excerpt: f.text({ multiline: true }).max(300).optional(),
+  cover: f.media({ accept: "image" }).optional(),
+  tags: f.select(["news", "guide", "release"]).many().default([]),
+  authorId: f.ref(authors).optional(),
+  seo: f.group({
+    metaTitle: f.text().max(70).optional(),
+    metaDescription: f.text().max(160).optional(),
+    noindex: f.boolean().default(false),
   }).optional(),
-  gallery: repeater({ image: media({ accept: "image" }), caption: text().max(120).optional() }).max(12).optional(),
-  sections: blocks({
-    hero: { heading: text().max(80), image: media({ accept: "image" }).optional() },
-    quote: { text: text({ multiline: true }), cite: text().max(80).optional() },
+  gallery: f.repeater({ image: f.media({ accept: "image" }), caption: f.text().max(120).optional() }).max(12).optional(),
+  sections: f.blocks({
+    hero: { heading: f.text().max(80), image: f.media({ accept: "image" }).optional() },
+    quote: { text: f.text({ multiline: true }), cite: f.text().max(80).optional() },
   }).optional(),
-  createdAt: timestamp().defaultNow(),
-  updatedAt: timestamp().defaultNow().$onUpdate(() => new Date()),
+  createdAt: f.timestamp().defaultNow(),
+  updatedAt: f.timestamp().defaultNow().onUpdate(() => new Date()),
 }, {
   label: "Posts",
   title: "title",
@@ -42,26 +42,26 @@ export const posts = collection({
     delete: "editor",
   },
 }).on({
-  async beforeCreate(data, ctx) {
-    if (data.authorId == null && ctx.user) {
-      const author = await db.query.authors.findFirst({ where: { userId: ctx.user.id } });
+  async beforeCreate({ data, user, db }) {
+    if (data.authorId == null && user) {
+      const author = await db.authors.get({ userId: user.id });
       if (author) data.authorId = author.id;
     }
   },
 });
 
 export const comments = table({
-  postId: ref(posts).onDelete("cascade"),
-  name: text().max(60),
-  body: text({ multiline: true }).min(1).max(2000).validate((v) => v.includes("http://") ? "No links in comments" : true),
-  approved: boolean().default(false),
-  createdAt: timestamp().defaultNow(),
+  postId: f.ref(posts).onDelete("cascade"),
+  name: f.text().max(60),
+  body: f.text({ multiline: true }).min(1).max(2000).validate((v) => v.includes("http://") ? "No links in comments" : true),
+  approved: f.boolean().default(false),
+  createdAt: f.timestamp().defaultNow(),
 }, {
   access: { read: (ctx) => ctx.user ? true : { approved: true }, create: "anyone", update: "editor", delete: "editor" },
 }).on({
-  async afterCreate(row, ctx) {
-    if (ctx.user && ctx.user.role !== "subscriber") {
-      await db.update(comments).set({ approved: true }).where({ id: row.id });
+  async afterCreate({ row, user, db }) {
+    if (user && user.role !== "subscriber") {
+      await db.comments.update(row.id, { approved: true });
     }
   },
 });
@@ -72,20 +72,20 @@ export const users = {  };
 export const entities = { ...collections, ...tables, ...users };
 
 export const settings = global({
-  siteTitle: text().default("My blog").max(80),
-  tagline: text().max(160).optional(),
-  postsPerPage: integer().default(10).min(1).max(50),
-  social: repeater({ label: text().max(40), href: url() }).optional(),
+  siteTitle: f.text().default("My blog").max(80),
+  tagline: f.text().max(160).optional(),
+  postsPerPage: f.integer().default(10).min(1).max(50),
+  social: f.repeater({ label: f.text().max(40), href: f.url() }).optional(),
 }, { label: "Site settings" });
 
-export const approveComment = mutation({ access: "editor" }, async ({ id }: { id: number }) => {
-  const [row] = await db.update(comments).set({ approved: true }).where({ id }).returning();
+export const approveComment = mutation({ access: "editor" }, async ({ db }, { id }: { id: number }) => {
+  const row = await db.comments.update(id, { approved: true });
   if (!row) throw new HttpError(404, "not_found", `No comment ${id}`);
   return row;
 });
 
-export const publishedCount = query({ access: "anyone" }, async () => {
-  const rows = await db.query.posts.findMany({ where: { status: "published" }, columns: { id: true } });
+export const publishedCount = query({ access: "anyone" }, async ({ db }) => {
+  const rows = await db.posts.list({ where: { status: "published" }, columns: { id: true } });
   return { count: rows.length };
 });
 

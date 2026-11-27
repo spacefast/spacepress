@@ -1,7 +1,7 @@
-import { text, table, type HookCtx, type User, type Role, type RouteRequest, type RouteResponse } from "spacepress";
+import { table, type HookCtx, type User, type Role, type RouteRequest, type RouteResponse, f } from "spacepress";
 import { db } from "spacepress/server";
 
-export const notes = table({ body: text(), author: text() });
+export const notes = table({ body: f.text(), author: f.text() });
 
 // A handler's context and request are values: helpers take them, return them, and read static keys.
 export function caller(ctx: HookCtx): User | null {
@@ -20,8 +20,8 @@ export function read(ctx: HookCtx, key: keyof HookCtx) {
   return ctx[key] === undefined || ctx[key] === null;
 }
 export async function write(ctx: HookCtx, body: string) {
-  await db.insert(notes).values({ body, author: label(caller(ctx)) });
-  return (await db.query.notes.findMany({ where: { body } })).map((n) => n.author);
+  await db.notes.create({ body, author: label(caller(ctx)) });
+  return (await db.notes.list({ where: { body } })).map((n) => n.author);
 }
 export function echo(req: RouteRequest, ctx: HookCtx): RouteResponse {
   return { status: 200, headers: { "content-type": "application/json" }, body: JSON.stringify({ method: req.method, url: req.url, share: req.query.has("__"), path: req.path, body: req.body, role: role(ctx) }) };

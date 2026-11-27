@@ -1,3 +1,3 @@
-import { collection, text, defineConfig, table } from "spacepress";
-export const notes = table({ kind: text().optional(), label: text().showIf({ kind: { in: [() => true] } }).optional() });
+import { collection, defineConfig, table, f } from "spacepress";
+export const notes = table({ kind: f.text().optional(), label: f.text().showIf({ kind: { in: [() => true] } }).optional() });
 export default defineConfig({});

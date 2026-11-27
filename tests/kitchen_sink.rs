@@ -33,8 +33,9 @@ const MODULES: &[(&str, &str)] = &[
     ("spacepress", "index.d.ts"),
     ("spacepress/server", "server.d.ts"),
     ("spacepress/app", "app.d.ts"),
-    ("spacepress/content", "content.d.ts"),
     ("spacepress/server/wp", "server-wp.d.ts"),
+    ("spacepress/commerce", "commerce.d.ts"),
+    ("spacepress/admin", "admin.d.ts"),
     ("react", "react-shim.d.ts"),
 ];
 
@@ -42,63 +43,6 @@ const MODULES: &[(&str, &str)] = &[
 /// label in a failure, the ways the example reaches a value of it).
 const INTERFACES: &[(&str, &str, &str, &[Reach])] = &[
     ("spacepress", "ColumnBuilder", "ColumnBuilder", &[Reach::Builder]),
-    (
-        "spacepress",
-        "Database",
-        "db",
-        &[Reach::Member("spacepress/server", "db")],
-    ),
-    (
-        "spacepress",
-        "InsertBuilder",
-        "db.insert()",
-        &[Reach::Chain("spacepress/server", "db")],
-    ),
-    (
-        "spacepress",
-        "UpdateBuilder",
-        "db.update()",
-        &[Reach::Chain("spacepress/server", "db")],
-    ),
-    (
-        "spacepress",
-        "UpdateSetQuery",
-        "db.update().set()",
-        &[Reach::Chain("spacepress/server", "db")],
-    ),
-    (
-        "spacepress",
-        "DeleteQuery",
-        "db.delete()",
-        &[Reach::Chain("spacepress/server", "db")],
-    ),
-    (
-        "spacepress",
-        "WriteQuery",
-        "a db write",
-        &[Reach::Chain("spacepress/server", "db")],
-    ),
-    (
-        "spacepress",
-        "CollectionQuery",
-        "db.query.<kind>",
-        &[Reach::MemberOf("spacepress/server", "db", "query")],
-    ),
-    (
-        "spacepress",
-        "GlobalApi",
-        "db.globals.<global>",
-        &[Reach::MemberOf("spacepress/server", "db", "globals")],
-    ),
-    (
-        "spacepress",
-        "KindApi",
-        "<kind> from spacepress/server/db",
-        &[
-            Reach::Import("spacepress/server/db"),
-            Reach::SystemOf("spacepress/server/db"),
-        ],
-    ),
     ("spacepress", "Job", "<job>", &[Reach::Chain("spacepress", "job")]),
     ("spacepress", "CollectionHooks", "collection hook", &[Reach::HookKey]),
     ("spacepress", "ConfigInput", "defineConfig", &[Reach::ConfigKey]),
@@ -107,19 +51,10 @@ const INTERFACES: &[(&str, &str, &str, &[Reach])] = &[
 /// How the example reaches a value whose members are required.
 #[derive(Clone, Copy)]
 enum Reach {
-    /// `text().min(1).method(...)`: a call chain that starts at a field builder of "spacepress"
-    /// (a function the declarations say returns a `ColumnBuilder`).
+    /// `f.text().min(1).method(...)`: a call chain that starts at a field builder on `f`.
     Builder,
     /// `<name>.a(...).method(...)`: a call chain that starts at this import.
     Chain(&'static str, &'static str),
-    /// `<name>.method(...)`, `name` imported from the module.
-    Member(&'static str, &'static str),
-    /// `<name>.<prop>.<anything>.method(...)`.
-    MemberOf(&'static str, &'static str, &'static str),
-    /// `<any named import of the module>.method(...)`.
-    Import(&'static str),
-    /// `<any named import of the module>.system.method(...)`.
-    SystemOf(&'static str),
     /// A key of an object passed to `.on({...})` or under `definePlugin({ hooks })`.
     HookKey,
     /// A key of the object passed to `defineConfig({...})`.
@@ -140,6 +75,8 @@ const NOT_USED: &[(&str, &str)] = &[
     ),
     // The example renders its own pages; `frontend` hands rendering to another site or turns it off.
     ("defineConfig.frontend", "the app renders its own pages"),
+    // The example defines its own routes in sp/app/; `permalinks` is for headless sites without sp/app/.
+    ("defineConfig.permalinks", "the app defines routes in sp/app/"),
     // The schedule screen lives in SpacePress Admin, which `admin: false` leaves out of the build.
     (
         "defineConfig.admin",
@@ -159,20 +96,8 @@ const NOT_USED: &[(&str, &str)] = &[
         "defineConfig.dir",
         "the example uses the default sp/ app root directory",
     ),
-    // Connectors are a host's (`sp_connectors_call`); the example runs on plain WordPress, where a
-    // call answers 503. tests/spacepress_cutover.rs and tests/php/connectors_test.php cover them.
-    (
-        "spacepress/server::connectors",
-        "connectors need a host transport the example site lacks",
-    ),
-    (
-        "connectors.call",
-        "connectors need a host transport the example site lacks",
-    ),
-    (
-        "connectors.enqueue",
-        "connectors need a host transport the example site lacks",
-    ),
+    // Canonical tie-breaker is only needed when two routes query the same kind.
+    ("page export canonical", "each kind has a single canonical route"),
     // GET and POST handlers already go through the HTTP handler compiler.
     ("page export PUT", "GET and POST exercise the handler compiler"),
     ("page export PATCH", "GET and POST exercise the handler compiler"),
@@ -666,47 +591,19 @@ fn unused(types: &Path, app: &Path) -> BTreeSet<String> {
         for method in methods {
             let reached = reaches.iter().any(|reach| match reach {
                 Reach::Builder => used.chain_calls.iter().any(|(m, root, called)| {
-                    m == module && called == method && declarations[module].builders.contains(root)
+                    m == module && called == method && (root == "f" || declarations[module].builders.contains(root))
                 }),
                 Reach::Chain(module, name) => used
                     .chain_calls
                     .iter()
                     .any(|(m, root, called)| m == module && root == name && called == method),
-                Reach::Member(module, name) => used
-                    .member_calls
-                    .iter()
-                    .any(|(m, n, path)| m == module && n == name && path.as_slice() == [method.clone()]),
-                Reach::MemberOf(module, name, prop) => used.member_calls.iter().any(|(m, n, path)| {
-                    m == module && n == name && path.len() == 3 && path[0] == *prop && path[2] == *method
-                }),
-                Reach::Import(module) => used
-                    .member_calls
-                    .iter()
-                    .any(|(m, _, path)| m == module && path.first() == Some(method)),
-                Reach::SystemOf(module) => used
-                    .member_calls
-                    .iter()
-                    .any(|(m, _, path)| m == module && path.len() == 2 && path[0] == "system" && path[1] == *method),
                 Reach::HookKey => used.hooks.contains(method),
                 Reach::ConfigKey => used.config.contains(method),
             });
-            // A property of an interface that only holds other objects (`db.query`, `db.globals`)
-            // is reached through its members, which their own interfaces require.
-            let container = *interface == "Database" && matches!(method.as_str(), "query" | "globals");
-            if !reached && !container {
+            if !reached {
                 missing.insert(format!("{label}.{method}"));
             }
         }
-    }
-
-    // `<kind>.system`: the kind API without the visitor's rules. It is a property of each kind, not
-    // an interface of its own, so it is required by name.
-    if !used
-        .member_calls
-        .iter()
-        .any(|(module, _, path)| module == "spacepress/server/db" && path.len() == 2 && path[0] == "system")
-    {
-        missing.insert("<kind>.system from spacepress/server/db".to_string());
     }
 
     // The files a sp/app/ tree may hold, and every export a page or route may have.
@@ -742,7 +639,6 @@ fn unused(types: &Path, app: &Path) -> BTreeSet<String> {
     }
     for (path, what) in [
         ("emails", "an emails/ template (mail.render)"),
-        ("sp/wp-hooks", "a sp/wp-hooks/ handler"),
         ("sp/plugins", "a plugin package under sp/plugins/"),
         ("content", "synced content/ files"),
     ] {
@@ -801,18 +697,18 @@ fn coverage_check_requires_a_real_use() {
     std::fs::write(
         app.join("sp/app/page.tsx"),
         r#"import { Html, Link, notFound } from "spacepress/app";
-import { text } from "spacepress";
-import { db, mail } from "spacepress/server";
+import { f } from "spacepress";
+import { db } from "spacepress/server";
 import styles from "./page.module.css";
-// mail.render(Template, props) and text().unique() in a comment are not uses.
-const note = "db.delete(rows) and .validate() in a string are not uses either";
+// f.text().unique() in a comment is not a use.
+const note = "db.notes.delete(1) and .validate() in a string are not uses either";
 export default function Page() {
   void Html;
   void styles;
-  void db.delete;
+  void db;
   notFound;
   const shortest = [note].map((entry) => entry.length).reduce((a, b) => Math.min(a, b));
-  return <Link href="/">{note}{text().optional() ? shortest : ""}{mail.send.name}</Link>;
+  return <Link href="/">{note}{f.text().optional() ? shortest : ""}</Link>;
 }
 "#,
     )
@@ -822,22 +718,18 @@ export default function Page() {
         "spacepress/app::Html",
         "spacepress/app::notFound",
         "spacepress/app::Probe",
-        "mail.render",
-        "mail.send",
-        "db.delete",
+        "spacepress/server::db",
         "ColumnBuilder.unique",
         "ColumnBuilder.validate",
         // `Math.min(a, b)` is no column modifier.
         "ColumnBuilder.min",
-        "db.insert().values",
-        "<kind>.system from spacepress/server/db",
         "a CSS module import whose classes are used",
     ] {
         assert!(missing.contains(name), "{name} should be reported: {missing:?}");
     }
     for name in [
         "spacepress/app::Link",
-        "spacepress::text",
+        "spacepress::f",
         "ColumnBuilder.optional",
         "page export default",
     ] {

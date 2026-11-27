@@ -1,12 +1,16 @@
-import { docs } from "spacepress/server/db";
-import { Content, Link, type PageProps } from "spacepress/app";
-import { nav, pager } from "spacepress/content";
+import { db } from "spacepress/server";
+import { Content, Link, notFound, type PageProps } from "spacepress/app";
 
-export const metadata = ({ item }: PageProps<"[...path]">) => ({ title: item.title });
+export const metadata = async ({ params }: PageProps<"[...path]">) => {
+  const item = await db.docs.get({ path: params.path });
+  return { title: item?.title ?? "Not found" };
+};
 
-export default async function Doc({ item }: PageProps<"[...path]">) {
-  const tree = await nav(docs, item);
-  const { next } = await pager(docs, item);
+export default async function Doc({ params }: PageProps<"[...path]">) {
+  const item = await db.docs.get({ path: params.path });
+  if (!item) notFound();
+  const tree = await db.docs.nav(item);
+  const { next } = await db.docs.pager(item);
   return (
     <article>
       <h1>{item.title}</h1>

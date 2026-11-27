@@ -1,4 +1,3 @@
-import { collection, text, defineConfig, table } from "spacepress";
-import { db } from "spacepress/server";
-export const a = table({ name: text() }).on({ async afterCreate(row) { db.insert(a).values({ name: "x" }); } });
+import { defineConfig, table, f } from "spacepress";
+export const a = table({ name: f.text() }).on({ async afterCreate({ db }) { db.a.create({ name: "x" }); } });
 export default defineConfig({});

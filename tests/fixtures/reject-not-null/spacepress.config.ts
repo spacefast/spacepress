@@ -1,3 +1,3 @@
-import { defineConfig, table, text, integer, json, select, group, blocks, media } from "spacepress";
-export const notes = table({ title: text().notNull() });
+import { defineConfig, table, f } from "spacepress";
+export const notes = table({ title: f.text().notNull() });
 export default defineConfig({});

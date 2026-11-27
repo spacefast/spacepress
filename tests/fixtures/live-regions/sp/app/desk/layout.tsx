@@ -1,6 +1,6 @@
 import type { LayoutProps } from "spacepress/app";
 
-export const guard = "editor";
+export const access = "editor";
 
 export default function Desk({ children }: LayoutProps) {
   return <section className="desk">{children}</section>;

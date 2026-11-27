@@ -77,7 +77,7 @@ fn commerce_is_declared_by_exports_and_rejects_unsupported_settings() {
             "read-only",
         ),
         (
-            "export const shop = store({currency:'EUR',country:'PL'}); export const inventory=table({name:text()},{storageName:'store'});",
+            "export const shop = store({currency:'EUR',country:'PL'}); export const inventory=table({name:f.text()},{storageName:'store'});",
             "store is reserved",
         ),
         (
@@ -89,7 +89,7 @@ fn commerce_is_declared_by_exports_and_rejects_unsupported_settings() {
             "needs a hierarchical kind",
         ),
     ] {
-        std::fs::write(project.path().join("spacepress.config.ts"), format!("import {{defineConfig,store,product,productTag,order,table,text}} from 'spacepress'; {exports} export default defineConfig({{name:'commerce'}});")).unwrap();
+        std::fs::write(project.path().join("spacepress.config.ts"), format!("import {{defineConfig,f,table}} from 'spacepress'; import {{store,product,productTag,order}} from 'spacepress/commerce'; {exports} export default defineConfig({{name:'commerce'}});")).unwrap();
         let out = cli("check", project.path());
         assert!(!out.status.success(), "accepted {exports}");
         assert!(
@@ -105,7 +105,7 @@ fn commerce_is_declared_by_exports_and_rejects_unsupported_settings() {
 fn an_app_cannot_declare_an_ability_the_store_adds() {
     let project = tempfile::tempdir().unwrap();
     let config = |exports: &str| {
-        std::fs::write(project.path().join("spacepress.config.ts"), format!("import {{defineConfig,store,product,order,mutation}} from 'spacepress'; export const shop = store({{currency:'EUR',country:'PL'}}); {exports} export default defineConfig({{name:'commerce'}});")).unwrap();
+        std::fs::write(project.path().join("spacepress.config.ts"), format!("import {{defineConfig,mutation}} from 'spacepress'; import {{store,product,order}} from 'spacepress/commerce'; export const shop = store({{currency:'EUR',country:'PL'}}); {exports} export default defineConfig({{name:'commerce'}});")).unwrap();
         cli("check", project.path())
     };
     let hijack = "export const completeOrder = mutation({ access:'anyone' }, async () => ({done:true}));";
@@ -150,7 +150,7 @@ fn an_app_cannot_declare_an_ability_the_store_adds() {
 fn a_taxonomy_cannot_declare_an_ability_twice() {
     let project = tempfile::tempdir().unwrap();
     let config = |exports: &str| {
-        std::fs::write(project.path().join("spacepress.config.ts"), format!("import {{defineConfig,store,taxonomy,mutation}} from 'spacepress'; export const shop = store({{currency:'EUR',country:'PL'}}); {exports} export default defineConfig({{name:'commerce'}});")).unwrap();
+        std::fs::write(project.path().join("spacepress.config.ts"), format!("import {{defineConfig,taxonomy,mutation}} from 'spacepress'; import {{store}} from 'spacepress/commerce'; export const shop = store({{currency:'EUR',country:'PL'}}); {exports} export default defineConfig({{name:'commerce'}});")).unwrap();
         cli("check", project.path())
     };
     let action = "export const shelvesGet = mutation({}, async () => 1);";
@@ -183,8 +183,8 @@ fn actions_that_reach_orders_are_marked_personal() {
     let project = tmp.path();
     std::fs::write(
         project.join("spacepress.config.ts"),
-        r#"import { mutation, defineConfig, order, product, store } from "spacepress";
-import { db } from "spacepress/server";
+        r#"import { mutation, defineConfig } from "spacepress";
+import { order, product, store } from "spacepress/commerce";
 import { abilities } from "spacepress/server/wp";
 export const shop = store({ currency: "EUR", country: "PL" });
 export const products = product({ inventory: true });
@@ -197,16 +197,16 @@ export const chainEnd = mutation({ access: "admin" }, async () => {
 export const chainMiddle = mutation({ access: "admin" }, async () => {
   return await abilities.call("commerce/lists-orders", {});
 });
-export const readsOrders = mutation({ access: "admin" }, async () => {
-  return (await db.query.orders.findMany({ limit: 1 })).length;
+export const readsOrders = mutation({ access: "admin" }, async ({ db }) => {
+  return (await db.orders.list({ limit: 1 })).length;
 });
 export const listsOrders = mutation({ access: "admin" }, async () => {
   return (await abilities.call("commerce/orders-list", {})).rows.length;
 });
-export const getsOrder = mutation({ access: "admin" }, async ({ id }: { id: number }) => {
+export const getsOrder = mutation({ access: "admin" }, async (_ctx, { id }: { id: number }) => {
   return (await abilities.call("commerce/orders-get", { id })).id;
 });
-export const completesOrder = mutation({ access: "admin" }, async ({ id }: { id: number }) => {
+export const completesOrder = mutation({ access: "admin" }, async (_ctx, { id }: { id: number }) => {
   return await abilities.call("commerce/complete-order", { id });
 });
 async function count() {
@@ -216,23 +216,23 @@ export const throughHelper = mutation({ access: "admin" }, async () => {
   return await count();
 });
 // Marked from the code, not from one call: the order read is on one branch only.
-export const onOneBranch = mutation({ access: "admin" }, async (i: { orders: boolean }) => {
+export const onOneBranch = mutation({ access: "admin" }, async ({ db }, i: { orders: boolean }) => {
   if (i.orders) {
-    return (await db.query.orders.findMany({ limit: 1 })).length;
+    return (await db.orders.list({ limit: 1 })).length;
   }
   return 0;
 });
 // Two actions that call each other and reach no order.
-export const ping = mutation({ access: "admin" }, async ({ n }: { n: number }): Promise<unknown> => {
+export const ping = mutation({ access: "admin" }, async (_ctx, { n }: { n: number }): Promise<unknown> => {
   return n > 0 ? await abilities.call("commerce/pong", { n: n - 1 }) : 0;
 });
-export const pong = mutation({ access: "admin" }, async ({ n }: { n: number }): Promise<unknown> => {
+export const pong = mutation({ access: "admin" }, async (_ctx, { n }: { n: number }): Promise<unknown> => {
   return n > 0 ? await abilities.call("commerce/ping", { n: n - 1 }) : 0;
 });
-export const restocks = mutation({ access: "admin" }, async ({ id }: { id: number }) => {
+export const restocks = mutation({ access: "admin" }, async (_ctx, { id }: { id: number }) => {
   return await abilities.call("commerce/increase-product-stock", { id, quantity: 1 });
 });
-export const callsRestocks = mutation({ access: "admin" }, async ({ id }: { id: number }) => {
+export const callsRestocks = mutation({ access: "admin" }, async (_ctx, { id }: { id: number }) => {
   return await abilities.call("commerce/restocks", { id });
 });
 export const listsProducts = mutation({ access: "admin" }, async () => {
@@ -282,9 +282,9 @@ export default defineConfig({ name: "commerce" });
 fn a_sql_table_cannot_become_a_commerce_kind_of_the_same_name() {
     let project = tempfile::tempdir().unwrap();
     let config = |exports: &str| {
-        std::fs::write(project.path().join("spacepress.config.ts"), format!("import {{defineConfig,store,product,table,text}} from 'spacepress'; {exports} export default defineConfig({{name:'commerce'}});")).unwrap();
+        std::fs::write(project.path().join("spacepress.config.ts"), format!("import {{defineConfig,f,table}} from 'spacepress'; import {{store,product}} from 'spacepress/commerce'; {exports} export default defineConfig({{name:'commerce'}});")).unwrap();
     };
-    config("export const products = table({name:text()});");
+    config("export const products = table({name:f.text()});");
     success(cli("build", project.path()));
     let ledger = project.path().join("sp/_generated/migrations");
     let deployed = std::fs::read_dir(&ledger).unwrap().count();
@@ -310,15 +310,15 @@ fn commerce_references_names_and_existing_store_scaffolding() {
     std::fs::write(
         project.path().join("spacepress.config.ts"),
         r#"
-import { defineConfig, store, product, productCategory, order, table, ref, text, query } from 'spacepress';
-import { db } from 'spacepress/server';
+import { defineConfig, f, table, query } from 'spacepress';
+import { store, product, productCategory, order } from 'spacepress/commerce';
 export const shop=store({currency:'USD',country:'PL',shipping:[{name:'Rest  of world',countries:'rest',methods:[]}]});
 export const catalogItems=product();
 export const categories=productCategory();
 export const orders=order();
-export const wooCarts=table({name:text()});
-export const links=table({product:ref(catalogItems),order:ref(()=>orders)});
-export const catalog=query({access:'anyone'},async()=>await db.query.categories.findMany({with:{catalogItems:true}}));
+export const wooCarts=table({name:f.text()});
+export const links=table({product:f.ref(catalogItems),order:f.ref(()=>orders)});
+export const catalog=query({access:'anyone'},async({db})=>await db.categories.list({with:{catalogItems:true}}));
 export default defineConfig({name:'commerce'});
 "#,
     )
@@ -441,8 +441,8 @@ fn added_shop_compiles_and_runs_on_native_woo_without_a_second_commerce_database
     )
     .unwrap();
     assert_eq!(manifest["requires"]["woocommerce"], ">=11.3.0");
-    std::fs::write(project.path().join("insert.ts"), "import type {RegisteredKinds} from 'spacepress'; const input:RegisteredKinds['products']['$inferInsert']={name:'New product'}; const name:string=input.name;").unwrap();
-    std::fs::write(project.path().join("tsconfig.json"), serde_json::to_vec(&serde_json::json!({"compilerOptions":{"target":"ES2022","module":"ESNext","moduleResolution":"bundler","strict":true,"noEmit":true,"types":[],"paths":{"spacepress":[Path::new(env!("CARGO_MANIFEST_DIR")).join("types/spacepress/index.d.ts")]}},"include":["insert.ts","sp/_generated/db.d.ts"]})).unwrap()).unwrap();
+    std::fs::write(project.path().join("insert.ts"), "import type {RegisteredSchema} from 'spacepress'; const input:RegisteredSchema['products']['$inferInsert']={name:'New product'}; const name:string=input.name; void name;").unwrap();
+    std::fs::write(project.path().join("tsconfig.json"), serde_json::to_vec(&serde_json::json!({"compilerOptions":{"target":"ES2022","module":"ESNext","moduleResolution":"bundler","strict":true,"noEmit":true,"types":[],"paths":{"spacepress":[Path::new(env!("CARGO_MANIFEST_DIR")).join("types/spacepress/index.d.ts")],"spacepress/commerce":[Path::new(env!("CARGO_MANIFEST_DIR")).join("types/spacepress/commerce.d.ts")],"spacepress/server":[Path::new(env!("CARGO_MANIFEST_DIR")).join("types/spacepress/server.d.ts")],"spacepress/app":[Path::new(env!("CARGO_MANIFEST_DIR")).join("types/spacepress/app.d.ts")],"spacepress/server/wp":[Path::new(env!("CARGO_MANIFEST_DIR")).join("types/spacepress/server-wp.d.ts")]}},"include":["insert.ts","sp/_generated/db.d.ts"]})).unwrap()).unwrap();
     success(
         Command::new(std::env::var("TSC").unwrap_or_else(|_| "tsc".into()))
             .arg("-p")

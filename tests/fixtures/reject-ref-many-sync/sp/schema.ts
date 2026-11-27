@@ -1,3 +1,3 @@
-import { collection, ref, text } from "spacepress";
-export const tags = collection({ title: text() }, { uid: true });
-export const notes = collection({ title: text(), tags: ref(tags).many() }, { sync: "content/notes/*.json" });
+import { collection, f } from "spacepress";
+export const tags = collection({ title: f.text() }, { uid: true });
+export const notes = collection({ title: f.text(), tags: f.ref(tags).many() }, { sync: "content/notes/*.json" });

@@ -1,4 +1,4 @@
-import { collection, defineConfig, text } from "spacepress";
-export const notes = collection({ title: text() }, { url: "/n/latest/:slug" });
-export const posts = collection({ title: text(), topic: text() }, { url: "/n/:topic/:id" });
-export default defineConfig({ name: "kindurlshape" });
+import { collection, defineConfig, f } from "spacepress";
+export const notes = collection({ title: f.text() });
+export const posts = collection({ title: f.text(), topic: f.text() });
+export default defineConfig({ name: "kindurlshape", permalinks: { notes: "/n/latest/:slug", posts: "/n/:topic/:id" } });

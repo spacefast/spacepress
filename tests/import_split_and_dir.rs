@@ -48,17 +48,16 @@ export default defineConfig({ name: "split-demo" });
     write(
         root,
         "sp/schema.ts",
-        r#"import { collection, mutation, text } from "spacepress";
-import { db, HttpError } from "spacepress/server";
+        r#"import { collection, f, mutation } from "spacepress";
+import { HttpError } from "spacepress/server";
 
 export const notes = collection({
-  title: text().min(1),
+  title: f.text().min(1),
 }, { access: { read: "anyone", create: "anyone" } });
 
-export const addNote = mutation({ access: "anyone" }, async ({ title }: { title: string }) => {
+export const addNote = mutation({ access: "anyone" }, async ({ db }, { title }: { title: string }) => {
   if (!title.trim()) throw new HttpError(400, "empty", "Title required", "/title");
-  const [row] = await db.insert(notes).values({ title }).returning();
-  if (!row) throw new HttpError(500, "insert_failed", "Failed to save note");
+  const row = await db.notes.create({ title });
   return { id: row.id, title: row.title };
 });
 "#,
@@ -78,7 +77,7 @@ export function Counter({ start }: { start: number }) {
   const [count, setCount] = useState(start);
   const [ready, setReady] = useState(false);
   const notes = useLive(api.notes.list({ limit: 10 }));
-  const add = useMutation(api.actions.addNote);
+  const add = useMutation(api.addNote);
   useMount(() => { setReady(true); });
   useEffect(() => {
     if (shared.clicks > 0) buttonRef.current?.focus();
@@ -103,15 +102,14 @@ export function Counter({ start }: { start: number }) {
     write(
         root,
         "sp/app/page.tsx",
-        r#"import { notes } from "spacepress/server/db";
-import { Link, useFormState } from "spacepress/app";
+        r#"import { Link, useFormState } from "spacepress/app";
 import type { PageProps } from "./$types";
 import { esc_html } from "spacepress/server/wp";
 import { addNote } from "../schema";
 import { Counter } from "../components/Counter";
 
-export default async function Home(_props: PageProps) {
-  const rows = await notes.list({ limit: 5 });
+export default async function Home({ db }: PageProps) {
+  const rows = await db.notes.list({ limit: 5 });
   const state = useFormState(addNote);
   return (
     <main>
@@ -169,9 +167,7 @@ export default async function Home(_props: PageProps) {
 fn use_client_refuses_direct_and_transitive_server_imports() {
     for server_spec in [
         "spacepress/server",
-        "spacepress/server/db",
         "spacepress/app",
-        "spacepress/content",
         "spacepress/server/wp",
     ] {
         let tmp = tempfile::tempdir().unwrap();
@@ -225,8 +221,8 @@ fn moved_and_legacy_specifiers_give_clear_diagnostics() {
     let cases = [
         ("import { db } from \"spacepress\";", "spacepress/server"),
         ("import { HttpError } from \"spacepress\";", "spacepress/server"),
-        ("import { mail } from \"spacepress\";", "spacepress/server"),
-        ("import { posts } from \"spacepress:db\";", "spacepress/server/db"),
+        ("import { mail } from \"spacepress\";", "on `ctx`"),
+        ("import { posts } from \"spacepress:db\";", "ctx.db"),
         ("import { esc_html } from \"php/wordpress\";", "spacepress/server/wp"),
         ("import { useState } from \"spacepress/client\";", "spacepress/client"),
     ];
@@ -268,7 +264,7 @@ fn moved_and_legacy_specifiers_give_clear_diagnostics() {
         write(
             root,
             "spacepress.config.ts",
-            "import { defineConfig, table, text } from \"spacepress\";\nexport const notes = table({ title: text() });\nexport default defineConfig({ name: \"client-diag\" });\n",
+            "import { defineConfig, f, table } from \"spacepress\";\nexport const notes = table({ title: f.text() });\nexport default defineConfig({ name: \"client-diag\" });\n",
         );
         write(root, "sp/components/A.tsx", &format!("\"use client\";\n{body}"));
         let msg = compile_err(root);
@@ -300,25 +296,18 @@ export default defineConfig({
     write(
         root,
         "cms/schema.ts",
-        r#"import { collection, mutation, text } from "spacepress";
-import { db } from "spacepress/server";
+        r#"import { collection, f, mutation } from "spacepress";
+import { wp } from "spacepress/server/wp";
 
 export const articles = collection({
-  title: text().min(1),
+  title: f.text().min(1),
 }, { access: { read: "anyone", create: "anyone" } });
 
-export const publishArticle = mutation({ access: "anyone" }, async ({ title }: { title: string }) => {
-  const [row] = await db.insert(articles).values({ title }).returning();
-  return row;
+export const publishArticle = mutation({ access: "anyone" }, async ({ db }, { title }: { title: string }) => {
+  return await db.articles.create({ title });
 });
-"#,
-    );
-    write(
-        root,
-        "cms/wp-hooks/excerpt_more.ts",
-        r#"import type { Handler } from "spacepress/server/wp";
-const more: Handler<"excerpt_more"> = () => "…";
-export default more;
+
+export const more = wp.filter("excerpt_more", () => "…");
 "#,
     );
     write(
@@ -335,11 +324,10 @@ export function Badge({ label }: { label: string }) {
     write(
         root,
         "cms/app/page.tsx",
-        r#"import { articles } from "spacepress/server/db";
-import { Badge } from "../components/Badge";
+        r#"import { Badge } from "../components/Badge";
 
-export default async function Home() {
-  const rows = await articles.list({ limit: 5 });
+export default async function Home({ db }) {
+  const rows = await db.articles.list({ limit: 5 });
   return <main><h1>{rows.length}</h1><Badge label="Info" /></main>;
 }
 "#,

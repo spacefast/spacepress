@@ -10,18 +10,46 @@ const builder = () => chain();
 // Each registered value carries `$first`, so run-node.mjs finds a config's kinds and actions
 // among its exports, as the compiler registers them (docs/spec/spec.md §1.1).
 const kind = (cols, options = {}) => ({ $first: "kind", cols, options, on() { return this; } });
-export const collection = kind, table = kind, userProjection = kind;
+export const collection = kind, table = kind, extend = (_target, options = {}) => kind(options.fields ?? {}, options);
 export const global = (fields, options = {}) => ({ $first: "global", fields, options });
-export const id = builder, integer = builder, real = builder, text = builder, boolean = builder;
-export const date = builder, timestamp = builder, json = builder, email = builder, url = builder;
-export const slug = builder, richText = builder, media = builder, select = builder;
-export const group = ({ fields }) => chain({ kind: "group", fields });
-export const repeater = ({ fields }) => chain({ kind: "repeater", fields });
-export const blocks = ({ layouts }) => chain({ kind: "blocks", layouts });
-export const defineRelations = () => ({});
+export const f = {
+  integer: builder,
+  number: builder,
+  text: builder,
+  boolean: builder,
+  date: builder,
+  timestamp: builder,
+  json: builder,
+  email: builder,
+  url: builder,
+  slug: builder,
+  richText: builder,
+  media: builder,
+  file: builder,
+  select: builder,
+  ref: builder,
+  terms: builder,
+  group: (fields) => chain({ kind: "group", fields }),
+  repeater: (fields) => chain({ kind: "repeater", fields }),
+  blocks: (layouts) => chain({ kind: "blocks", layouts }),
+};
 export const defineConfig = (c) => c;
+// Lane D: once() receipts and pending enqueue keys, in memory for one Node run.
+const receipts = new Map();
+let rollbackOnly = false;
+export const once = async (key, fn) => {
+  try {
+    if (receipts.has(key)) return structuredClone(receipts.get(key));
+    const result = (await fn()) ?? null;
+    receipts.set(key, structuredClone(result));
+    return result;
+  } catch (error) {
+    rollbackOnly = true;
+    throw error;
+  }
+};
 // A query or mutation keeps its handler; a job is queued through its own export.
-const fn = (options, handler) => Object.assign((input) => handler(input, { user: null }), { ...options, handler, $first: "action" });
+const fn = (options, handler) => Object.assign((input) => handler({ user: null, once }, input), { ...options, handler, $first: "action" });
 export const query = fn, mutation = fn;
 const pending = new Map();
 export const job = (options, handler) => {
@@ -37,9 +65,6 @@ export const job = (options, handler) => {
   return value;
 };
 export const cron = (schedule, handler) => ({ schedule, handler, $first: "job" });
-// Lane D: once() receipts and pending enqueue keys, in memory for one Node run.
-const receipts = new Map();
-let rollbackOnly = false;
 export const transaction = async (fn) => {
   const previousReceipts = new Map(receipts);
   const previousPending = new Map([...pending].map(([job, keys]) => [job, new Map(keys)]));
@@ -56,17 +81,6 @@ export const transaction = async (fn) => {
     throw error;
   } finally {
     rollbackOnly = false;
-  }
-};
-export const once = async (key, fn) => {
-  try {
-    if (receipts.has(key)) return structuredClone(receipts.get(key));
-    const result = (await fn()) ?? null;
-    receipts.set(key, structuredClone(result));
-    return result;
-  } catch (error) {
-    rollbackOnly = true;
-    throw error;
   }
 };
 export const db = new Proxy({}, { get() { throw new Error("db isn't available in differential tests"); } });

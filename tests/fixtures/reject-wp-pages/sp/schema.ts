@@ -1,2 +1,2 @@
-import { wp } from "spacepress";
-export const pages = wp.pages.extend({}, { url: "/:path" });
+import { extend } from "spacepress";
+export const comments = extend("comments");

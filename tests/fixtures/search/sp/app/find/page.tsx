@@ -1,7 +1,7 @@
-import { integer, text } from "spacepress";
+import { f } from "spacepress";
 import { Search, SearchResults, type PageProps } from "spacepress/app";
 
-export const search = { q: text().optional(), page: integer().default(1) };
+export const search = { q: f.text().optional(), page: f.integer().default(1) };
 
 // Every kind with a URL.
 export default function Find({ search }: PageProps) {

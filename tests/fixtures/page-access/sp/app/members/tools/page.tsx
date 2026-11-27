@@ -1,4 +1,4 @@
-export const guard = { page: "admin", handlers: "subscriber" };
+export const access = { page: "admin", handlers: "subscriber" };
 
 export async function POST() {
   return { body: "Accepted" };

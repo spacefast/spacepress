@@ -458,9 +458,9 @@ impl Drop for Served {
     }
 }
 
-const CONFIG: &str = r#"import { defineConfig, table, text, job } from "spacepress";
-const notes = table({ title: text() }, { access: { read: "anyone" } });
-export { notes }; export const stamp = job({}, async (_input: { n?: number }) => {}); export default defineConfig({ name: "clilane" });
+const CONFIG: &str = r#"import { defineConfig, table, f, job } from "spacepress";
+const notes = table({ title: f.text() }, { access: { read: "anyone" } });
+export { notes }; export const stamp = job({}, async (_ctx, _input: { n?: number }) => {}); export default defineConfig({ name: "clilane" });
 "#;
 
 /// `spacepress <site cmd> --site @lane` and `wp @lane spacepress <site cmd>` on one real WordPress: the same
@@ -1234,39 +1234,39 @@ fn mcp_schema_reports_page_and_handler_guards() {
         (
             "page-only",
             "page.tsx",
-            format!("export const guard = 'subscriber';\n{page}"),
+            format!("export const access = 'subscriber';\n{page}"),
         ),
         (
             "handler-only",
             "route.ts",
-            format!("export const guard = 'editor';\n{post}"),
+            format!("export const access = 'editor';\n{post}"),
         ),
         (
             "shared",
             "page.tsx",
-            format!("export const guard = 'author';\n{hybrid}"),
+            format!("export const access = 'author';\n{hybrid}"),
         ),
         (
             "split",
             "page.tsx",
-            format!("export const guard = {{ page: 'subscriber', handlers: 'admin' }};\n{hybrid}"),
+            format!("export const access = {{ page: 'subscriber', handlers: 'admin' }};\n{hybrid}"),
         ),
         (
             "callbacks",
             "page.tsx",
             format!(
-                "export const guard = {{ page: (ctx) => ctx.user !== null, handlers: (ctx) => ctx.user === null }};\n{hybrid}"
+                "export const access = {{ page: (ctx) => ctx.user !== null, handlers: (ctx) => ctx.user === null }};\n{hybrid}"
             ),
         ),
         (
             "public-page",
             "page.tsx",
-            format!("export const guard = {{ handlers: 'subscriber' }};\n{hybrid}"),
+            format!("export const access = {{ handlers: 'subscriber' }};\n{hybrid}"),
         ),
         (
             "signed",
             "page.tsx",
-            format!("import {{ env }} from 'spacepress';\nexport const guard = 'editor';\n{signature}\n{hybrid}"),
+            format!("import {{ env }} from 'spacepress';\nexport const access = 'editor';\n{signature}\n{hybrid}"),
         ),
     ] {
         let dir = project.path().join("sp/app").join(name);
@@ -1317,7 +1317,7 @@ fn mcp_check_returns_the_envelope_first_check_json_prints_and_sees_edits() {
     std::fs::write(&config, CONFIG).unwrap();
     let mut mcp = Mcp::initialized(project.path(), &[]);
     assert_eq!(mcp.ok("check", serde_json::json!({}))["ok"], true);
-    std::fs::write(&config, CONFIG.replace("title: text()", "title: nothing()")).unwrap();
+    std::fs::write(&config, CONFIG.replace("title: f.text()", "title: nothing()")).unwrap();
     // A project that does not compile is still a successful call: the diagnostics are the answer.
     let broken = mcp.ok("check", serde_json::json!({}));
     assert_eq!(broken["ok"], false);
@@ -1840,9 +1840,9 @@ fn add_api_reference_on_a_fresh_scaffold_checks_builds_and_type_checks() {
                 "paths": {
                     "spacepress": [root().join("types/spacepress/index.d.ts")],
                     "spacepress/server": [root().join("types/spacepress/server.d.ts")],
-                    "spacepress/server/db": [root().join("types/spacepress/server-db.d.cts")],
                     "spacepress/app": [root().join("types/spacepress/app.d.ts")],
-                    "spacepress/content": [root().join("types/spacepress/content.d.ts")],
+                    "spacepress/commerce": [root().join("types/spacepress/commerce.d.ts")],
+                    "spacepress/admin": [root().join("types/spacepress/admin.d.ts")],
                     "spacepress/server/wp": [root().join("types/spacepress/server-wp.d.ts")],
                     "spacepress/client": [root().join("packages/client/src/index.d.ts")],
                     "spacepress/react": [root().join("packages/client/src/react.d.ts")],
@@ -1882,8 +1882,8 @@ fn add_api_reference_exports_every_operation_in_a_static_site() {
     let project = tmp.path().to_path_buf();
     std::fs::write(
         project.join("spacepress.config.ts"),
-        r#"import { collection, defineConfig, text } from "spacepress";
-export const notes = collection({ title: text() }, { title: "title" });
+        r#"import { collection, defineConfig, f } from "spacepress";
+export const notes = collection({ title: f.text() }, { title: "title" });
 export default defineConfig({ name: "static-api", output: "static" });
 "#,
     )
@@ -1979,7 +1979,7 @@ fn add_api_reference_renders_per_request_under_a_guarded_layout() {
     .unwrap();
     std::fs::write(
         project.join("sp/app/api/layout.tsx"),
-        "import type { LayoutProps } from \"spacepress/app\";\nexport const guard = \"subscriber\";\nexport default function ApiLayout({ children }: LayoutProps) { return <div>{children}</div>; }\n",
+        "import type { LayoutProps } from \"spacepress/app\";\nexport const access = \"subscriber\";\nexport default function ApiLayout({ children }: LayoutProps) { return <div>{children}</div>; }\n",
     )
     .unwrap();
     let added = add(&project, &["api-reference"]);
@@ -2253,9 +2253,9 @@ fn add_db_on_a_fresh_scaffold_checks_builds_and_type_checks() {
                 "paths": {
                     "spacepress": [root().join("types/spacepress/index.d.ts")],
                     "spacepress/server": [root().join("types/spacepress/server.d.ts")],
-                    "spacepress/server/db": [root().join("types/spacepress/server-db.d.cts")],
                     "spacepress/app": [root().join("types/spacepress/app.d.ts")],
-                    "spacepress/content": [root().join("types/spacepress/content.d.ts")],
+                    "spacepress/commerce": [root().join("types/spacepress/commerce.d.ts")],
+                    "spacepress/admin": [root().join("types/spacepress/admin.d.ts")],
                     "spacepress/server/wp": [root().join("types/spacepress/server-wp.d.ts")],
                     "spacepress/client": [root().join("packages/client/src/index.d.ts")],
                     "spacepress/react": [root().join("packages/client/src/react.d.ts")],
@@ -2353,7 +2353,7 @@ fn add_db_leaves_out_the_example_where_the_project_has_its_own_tables() {
     let tmp = tempfile::tempdir().unwrap();
     let project = scaffold(tmp.path());
     std::fs::create_dir_all(project.join("sp")).unwrap();
-    let mine = "import { table, text } from \"spacepress\";\nexport const orders = table({ code: text().max(40) });\n";
+    let mine = "import { table, f } from \"spacepress\";\nexport const orders = table({ code: f.text().max(40) });\n";
     // At the module's own path first, then anywhere else under sp/.
     for (at, status) in [("sp/tables.ts", "kept"), ("sp/schema.ts", "skipped")] {
         std::fs::write(project.join(at), mine).unwrap();
@@ -2807,7 +2807,7 @@ fn init_writes_the_agent_files_from_the_project_and_a_rerun_replaces_only_its_ow
     let source = std::fs::read_to_string(&schema).unwrap();
     std::fs::write(
         &schema,
-        format!("{source}\nexport const recipes = table({{ title: text() }});\n"),
+        format!("{source}\nexport const recipes = table({{ title: f.text() }});\n"),
     )
     .unwrap();
     std::fs::write(project.join("AGENTS.md"), format!("{agents}\n## After\n\nMine too.\n")).unwrap();
@@ -2898,7 +2898,7 @@ fn init_refuses_what_it_cannot_describe_and_leaves_other_projects_without_a_hint
     // A project that does not compile has nothing to describe: the diagnostic, exit 1, no files.
     std::fs::write(
         dir.path().join("spacepress.config.ts"),
-        CONFIG.replace("title: text()", "title: nothing()"),
+        CONFIG.replace("title: f.text()", "title: nothing()"),
     )
     .unwrap();
     let broken = init(dir.path(), &[]);
@@ -3336,11 +3336,11 @@ fn init_github_writes_the_sync_workflow_and_keeps_it_in_step() {
             .iter()
             .enumerate()
             .map(|(i, d)| {
-                format!("export const k{i} = collection({{ title: text(), body: richText().optional() }}, {{ content: \"body\", sync: \"{d}/*.md\" }});\n")
+                format!("export const k{i} = collection({{ title: f.text(), body: f.richText().optional() }}, {{ content: \"body\", sync: \"{d}/*.md\" }});\n")
             })
             .collect();
         format!(
-            "import {{ defineConfig, collection, text, richText }} from \"spacepress\";\n{}export default defineConfig({{ name: \"gh\" }});\n",
+            "import {{ defineConfig, collection, f }} from \"spacepress\";\n{}export default defineConfig({{ name: \"gh\" }});\n",
             kinds.concat()
         )
     };
@@ -3503,7 +3503,7 @@ fn init_keeps_the_authors_files_as_they_wrote_them_and_writes_only_inside_the_pr
     std::fs::set_permissions(project.join("AGENTS.md"), std::fs::Permissions::from_mode(0o664)).unwrap();
     std::fs::write(
         project.join("sp/schema.ts"),
-        read("sp/schema.ts") + "\nexport const extra = table({ n: text() });\n",
+        read("sp/schema.ts") + "\nexport const extra = table({ n: f.text() });\n",
     )
     .unwrap();
     assert!(init(&project, &[]).status.success());

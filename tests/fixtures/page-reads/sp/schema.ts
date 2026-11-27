@@ -1,10 +1,10 @@
-import { collection, text, slug } from "spacepress";
+import { collection, f } from "spacepress";
 
 const STAFF = ["author", "editor", "admin"];
 
 export const notes = collection({
-  title: text(),
-  slug: slug({ source: "title" }).optional(),
+  title: f.text(),
+  slug: f.slug({ source: "title" }).optional(),
 }, {
   title: "title",
   access: {

@@ -1,8 +1,8 @@
-import { collection, text, slug, richText } from "spacepress";
+import { collection, f } from "spacepress";
 
 export const docs = collection({
-  title: text(),
-  slug: slug({ source: "title" }),
-  content: richText().optional(),
-  summary: text().optional(),
-}, { hierarchical: true, url: "/docs/:path", sync: "content/docs/**/*.md" });
+  title: f.text(),
+  slug: f.slug({ source: "title" }),
+  content: f.richText().optional(),
+  summary: f.text().optional(),
+}, { hierarchical: true, sync: "content/docs/**/*.md" });

@@ -24,22 +24,19 @@ fn widgets_dashboards_and_kind_ui_compile_into_schema_php() {
     std::fs::write(
         tmp.path().join("spacepress.config.ts"),
         r#"import {
-  adminDashboard,
-  adminWidget,
   collection,
   defineConfig,
+  f,
   global,
-  integer,
   query,
-  richText,
-  text,
 } from "spacepress";
+import { adminDashboard, adminWidget } from "spacepress/admin";
 
 export const docs = collection(
   {
-    title: text(),
-    body: richText().optional(),
-    summary: text().optional(),
+    title: f.text(),
+    body: f.richText().optional(),
+    summary: f.text().optional(),
   },
   {
     label: "Docs",
@@ -54,7 +51,7 @@ export const docs = collection(
 
 export const siteCopy = global(
   {
-    tagline: text().default("Hello"),
+    tagline: f.text().default("Hello"),
   },
   {
     label: "Site Copy",
@@ -127,7 +124,8 @@ fn rejects_non_readonly_widget_action_and_duplicate_home_dashboards() {
     let tmp = tempfile::tempdir().unwrap();
     std::fs::write(
         tmp.path().join("spacepress.config.ts"),
-        r#"import { mutation, adminWidget, defineConfig } from "spacepress";
+        r#"import { mutation, defineConfig } from "spacepress";
+import { adminWidget } from "spacepress/admin";
 
 export const mutate = mutation(
   { access: "editor" },
@@ -150,7 +148,8 @@ export default defineConfig({ name: "site" });
 
     std::fs::write(
         tmp.path().join("spacepress.config.ts"),
-        r#"import { adminDashboard, defineConfig } from "spacepress";
+        r#"import { defineConfig } from "spacepress";
+import { adminDashboard } from "spacepress/admin";
 
 export const one = adminDashboard({
   title: "One",

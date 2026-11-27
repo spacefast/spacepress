@@ -4,7 +4,7 @@ import { remove } from "../../../server";
 
 // One entry, with a form that deletes it and comes back here: then a 404.
 export default async function Entry({ params }: PageProps<"entries/[id]">) {
-  const entry = await db.query.entries.findFirst({ where: { id: Number(params.id) } });
+  const entry = await db.entries.get(Number(params.id));
   if (!entry) notFound();
   return (
     <main>

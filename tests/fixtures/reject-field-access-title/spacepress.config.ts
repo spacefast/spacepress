@@ -1,4 +1,4 @@
-import { collection, text, email, integer, boolean, richText, slug, group, repeater, json, media, file, files, job, env, global, defineConfig } from "spacepress";
-import { once, db } from "spacepress/server";
-export const notes = collection({ title: text().access({ read: false }) });
+import { collection, files, job, env, global, defineConfig, f } from "spacepress";
+import { db } from "spacepress/server";
+export const notes = collection({ title: f.text().access({ read: false }) });
 export default defineConfig({});

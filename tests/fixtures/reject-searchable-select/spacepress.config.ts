@@ -1,3 +1,3 @@
-import { defineConfig, select, table } from "spacepress";
-export const a = table({ mood: select(["calm", "busy"]).searchable() });
+import { defineConfig, table, f } from "spacepress";
+export const a = table({ mood: f.select(["calm", "busy"]).searchable() });
 export default defineConfig({});

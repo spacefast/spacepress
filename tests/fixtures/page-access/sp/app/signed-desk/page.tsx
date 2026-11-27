@@ -1,7 +1,7 @@
 import { env } from "spacepress";
 import type { RouteRequest } from "spacepress/app";
 
-export const guard = "admin";
+export const access = "admin";
 export const signature = { secret: env("APPROUTER_HOOK_SECRET"), header: "x-hook-signature", scheme: "hmac-sha256" };
 
 export default function SignedDesk() {

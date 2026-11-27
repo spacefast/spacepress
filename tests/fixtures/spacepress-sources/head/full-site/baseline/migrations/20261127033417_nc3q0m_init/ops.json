@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "id": "20261126183521_f9eqmj_init",
+  "id": "20261127033417_nc3q0m_init",
   "ops": [
     {
       "op": "createTable",
@@ -129,7 +129,6 @@
         },
         "softDelete": true,
         "queried": [
-          "id",
           "noteId"
         ]
       }

@@ -182,10 +182,10 @@ foreach ([['GET', ''], ['DELETE', ''], ['GET', '/compare']] as [$verb, $sub]) {
 [$sp] = facade('POST', "/posts/$apiId/staged/preview", null, 'bob');
 check('another author can\'t mint its preview link', in_array($sp, [404, 405], true), $sp);
 
-// wp.posts.clone(): its own post type, shaped like posts.
-[$s, $note] = $wp->call('POST', '/notes', ['title' => 'A note', 'excerpt' => 'Note excerpt', 'mood' => 'calm'], 'alice');
+// A separate collection shaped like posts, with its own post type and permalink.
+[$s, $note] = $wp->call('POST', '/notes', ['title' => 'A note', 'excerpt' => 'Note excerpt', 'mood' => 'calm'], 'ed');
 check('a clone is its own post type', $s === 201 && get_post_type((int) ($note['id'] ?? 0)) === 'sp_notes'
-    && get_post((int) $note['id'])->post_excerpt === 'Note excerpt' && ($note['mood'] ?? null) === 'calm', [$s, $note]);
+    && ($note['excerpt'] ?? null) === 'Note excerpt' && ($note['mood'] ?? null) === 'calm', [$s, $note]);
 check('a clone has comments on', comments_open((int) ($note['id'] ?? 0)), null);
 check('a clone item\'s URL follows its url', str_contains((string) get_permalink((int) ($note['id'] ?? 0)), '/notes/a-note'), get_permalink((int) ($note['id'] ?? 0)));
 check('posts are not in the clone', $db->findFirst('notes', ['where' => ['id' => $hello]]) === null, null);

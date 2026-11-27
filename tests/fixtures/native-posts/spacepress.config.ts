@@ -2,6 +2,7 @@
 // core's `post` type, and `wp.posts.clone()` makes another kind shaped like posts.
 import { defineConfig } from "spacepress";
 
-export * from "./sp/schema";
-
-export default defineConfig({ name: "nativeposts" });
+export default defineConfig({
+  name: "nativeposts",
+  permalinks: { posts: "/blog/:slug", notes: "/notes/:slug" },
+});

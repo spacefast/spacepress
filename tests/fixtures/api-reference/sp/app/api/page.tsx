@@ -1,5 +1,4 @@
-import { Html, Link } from "spacepress/app";
-import { apiReference } from "spacepress/content";
+import { Html, Link, apiReference } from "spacepress/app";
 
 export const metadata = { title: "API" };
 

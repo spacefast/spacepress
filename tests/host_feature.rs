@@ -110,7 +110,7 @@ fn host_capture_carries_markdown_pages() {
 fn synced_project(root: &Path) {
     fs::create_dir_all(root.join("content/posts")).unwrap();
     fs::create_dir_all(root.join("content/items")).unwrap();
-    fs::write(root.join("spacepress.config.ts"), "import { defineConfig, collection, table, text, richText } from 'spacepress'; const posts = collection({ title: text(), body: richText().optional() }, { title: 'title', content: 'body', sync: 'content/posts/*.md' }); const items = table({ title: text().optional() }, { sync: 'content/items/*.json' }); export { posts }; export { items }; export default defineConfig({});").unwrap();
+    fs::write(root.join("spacepress.config.ts"), "import { defineConfig, collection, f, table } from 'spacepress'; const posts = collection({ title: f.text(), body: f.richText().optional() }, { title: 'title', content: 'body', sync: 'content/posts/*.md' }); const items = table({ title: f.text().optional() }, { sync: 'content/items/*.json' }); export { posts }; export { items }; export default defineConfig({});").unwrap();
     fs::write(
         root.join("content/posts/hello.md"),
         "---\ntitle: Hello\n---\nA **seed**.\n",
@@ -359,7 +359,7 @@ fn app_routes_capture_and_compile_on_the_host() {
     .unwrap();
     fs::write(
         work.path().join("sp/app/api/[id]/feed.json/route.ts"),
-        "import type { RouteRequest } from 'spacepress';\nexport const guard = 'anyone';\nexport async function GET(req: RouteRequest) { return { body: req.params['id'] + (req.query.get('k') ?? '') + req.query.getAll('k').join(',') }; }\n",
+        "import type { RouteRequest } from 'spacepress';\nexport const access = 'anyone';\nexport async function GET(req: RouteRequest) { return { body: req.params['id'] + (req.query.get('k') ?? '') + req.query.getAll('k').join(',') }; }\n",
     )
     .unwrap();
     let out = work.path().join("src");

@@ -11,44 +11,44 @@ use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Output, Stdio};
 
-const CONFIG: &str = r#"import { collection, integer, richText, select, slug, text, defineConfig , table, ref } from "spacepress";
+const CONFIG: &str = r#"import { collection, defineConfig, f, table } from "spacepress";
 
 const people = table({
-  name: text(),
+  name: f.text(),
 }, { uid: true, access: { read: "anyone" } });
 
 const notes = table({
-  title: text(),
-  slug: slug({ source: "title" }).optional(),
-  body: richText().optional(),
-  level: select(["intro", "advanced"]).optional(),
-  authorId: ref(people).optional(),
+  title: f.text(),
+  slug: f.slug({ source: "title" }).optional(),
+  body: f.richText().optional(),
+  level: f.select(["intro", "advanced"]).optional(),
+  authorId: f.ref(people).optional(),
 }, { title: "title", content: "body", sync: "content/notes/*.md", access: { read: "anyone" } });
 
 // A JSON collection without a content column: `body` is an ordinary field.
 const snippets = table({
-  name: text(),
-  key: integer().unique().optional(),
-  body: text().optional(),
+  name: f.text(),
+  key: f.integer().unique().optional(),
+  body: f.text().optional(),
 }, { sync: "content/snippets/*.json", access: { read: "anyone" } });
 
 // Two collections that reference each other.
 const teams = table({
-  name: text(),
-  leadId: ref(() => players).optional(),
-  ownerId: ref(people),
+  name: f.text(),
+  leadId: f.ref(() => players).optional(),
+  ownerId: f.ref(people),
 }, { sync: "content/teams/*.json", access: { read: "anyone" } });
 const players = table({
-  name: text(),
-  teamId: ref(teams).optional(),
+  name: f.text(),
+  teamId: f.ref(teams).optional(),
 }, { sync: "content/players/*.json", access: { read: "anyone" } });
 
 // A chain of required references inside one collection, and a required cycle between two.
 const steps = table({
-  name: text(),
+  name: f.text(),
   // Required: a step can't be created before the one it follows, so a chain needs a pass per link.
-  prevId: ref(people),
-  afterId: ref(() => steps).optional().onDelete("restrict"),
+  prevId: f.ref(people),
+  afterId: f.ref(() => steps).optional().onDelete("restrict"),
 }, { sync: "content/steps/*.json", access: { read: "anyone" } });
 // A chain of required references across records of one collection.
 // A chain across three collections that must be created in order. Each requires (NOT NULL) a record
@@ -56,56 +56,56 @@ const steps = table({
 // reference makes one wait for another: the references go "backwards", against that order), so the
 // run meets the chain from its far end and needs a pass per link.
 const tops = table({
-  midId: ref(() => mids),
-  loopId: ref(() => bottoms).optional().onDelete("restrict"),
+  midId: f.ref(() => mids),
+  loopId: f.ref(() => bottoms).optional().onDelete("restrict"),
 }, { sync: "content/tops/*.json", access: { read: "anyone" } });
 const mids = table({
-  bottomId: ref(() => bottoms),
-  loopId: ref(tops).optional().onDelete("restrict"),
+  bottomId: f.ref(() => bottoms),
+  loopId: f.ref(tops).optional().onDelete("restrict"),
 }, { sync: "content/mids/*.json", access: { read: "anyone" } });
 const bottoms = table({
-  personId: ref(people),
-  loopId: ref(mids).optional().onDelete("restrict"),
+  personId: f.ref(people),
+  loopId: f.ref(mids).optional().onDelete("restrict"),
 }, { sync: "content/bottoms/*.json", access: { read: "anyone" } });
 const eggs = table({
-  chickenId: ref(() => chickens),
+  chickenId: f.ref(() => chickens),
 }, { sync: "content/eggs/*.json", access: { read: "anyone" } });
 const chickens = table({
-  eggId: ref(eggs),
+  eggId: f.ref(eggs),
 }, { sync: "content/chickens/*.json", access: { read: "anyone" } });
 // A head requires a rung; a rung requires the next rung and may name its head. The last rung of a
 // ladder points at a rung already on the site. Heads and rungs reference each other, so neither
 // collection is ordered first.
 const heads = table({
-  rungId: ref(() => rungs),
+  rungId: f.ref(() => rungs),
 }, { sync: "content/heads/*.json", access: { read: "anyone" } });
 const rungs = table({
-  nextId: ref(() => rungs),
-  headId: ref(heads).optional().onDelete("restrict"),
+  nextId: f.ref(() => rungs),
+  headId: f.ref(heads).optional().onDelete("restrict"),
 }, { sync: "content/rungs/*.json", access: { read: "anyone" } });
 // Content only admins may read (field access): editors sync these without a body.
 const dossiers = table({
-  title: text(),
-  slug: slug({ source: "title" }).optional(),
-  body: richText().access({ read: "admin" }).optional(),
+  title: f.text(),
+  slug: f.slug({ source: "title" }).optional(),
+  body: f.richText().access({ read: "admin" }).optional(),
 }, { title: "title", content: "body", sync: "content/dossiers/*.md", access: { read: "anyone" } });
 // A required reference to a target the syncing editor may not list (admins only), on a record whose
 // identity is pushed first because of an optional reference to a record not on the site yet.
 const safes = table({
-  vaultId: ref(() => vaults),
-  keeperId: ref(people).optional().onDelete("restrict"),
-  snippetId: ref(snippets).access({ read: "admin" }).optional(),
+  vaultId: f.ref(() => vaults),
+  keeperId: f.ref(people).optional().onDelete("restrict"),
+  snippetId: f.ref(snippets).access({ read: "admin" }).optional(),
 }, { sync: "content/safes/*.json", access: { read: "anyone" } });
 // A reference target the syncing editor may not read (admins only): knowing its UID grants no access.
 const vaults = table({
-  name: text(),
+  name: f.text(),
 }, { uid: true, access: { read: "admin" } });
 
 // A docs section: a hierarchical collection synced from a folder tree (content/docs/**/*.md).
 const docs = collection({
-  title: text(),
-  slug: slug({ source: "title" }),
-  body: richText().optional(),
+  title: f.text(),
+  slug: f.slug({ source: "title" }),
+  body: f.richText().optional(),
 }, { content: "body", hierarchical: true, sync: "content/docs/**/*.md", access: { read: "anyone" } });
 
 export { docs }; export { people }; export { notes }; export { snippets }; export { teams }; export { players }; export { steps }; export { tops }; export { mids }; export { bottoms }; export { eggs }; export { chickens }; export { vaults }; export { safes }; export { heads }; export { rungs }; export { dossiers }; export default defineConfig({ name: "notes" });

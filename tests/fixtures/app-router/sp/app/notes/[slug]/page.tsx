@@ -14,7 +14,7 @@ export const metadata = ({ params }: PageProps<"notes/[slug]">) => ({
 });
 
 export default async function Note({ params }: PageProps<"notes/[slug]">) {
-  const note = await db.query.notes.findFirst({ where: { slug: params.slug } });
+  const note = await db.notes.get({ slug: params.slug });
   if (!note) notFound();
   return (
     <article>
@@ -25,7 +25,7 @@ export default async function Note({ params }: PageProps<"notes/[slug]">) {
 }
 
 // The page's own form handler: POST to the page URL, for signed-in readers.
-export const guard = { page: undefined, handlers: "subscriber" };
+export const access = { page: undefined, handlers: "subscriber" };
 
 export async function POST(req: RouteRequest) {
   return { status: 303, headers: { location: `/notes/${req.params.slug}?sent=1` }, body: "" };

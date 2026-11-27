@@ -1,6 +1,6 @@
 import { redirect, type Guard, type LayoutProps } from "spacepress/app";
 
-export const guard: Guard = ({ user }) => {
+export const access: Guard = ({ user }) => {
   if (user === null) {
     redirect("/guest");
   }

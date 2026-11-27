@@ -1,4 +1,4 @@
-import { defineConfig, file, files, table } from "spacepress";
+import { defineConfig, files, table, f } from "spacepress";
 export const decks = files({ accept: ["application/pdf"], maxBytes: 10 });
-export const notes = table({ deck: file({ bucket: "decks" }).optional() });
+export const notes = table({ deck: f.file({ bucket: "decks" }).optional() });
 export default defineConfig({ name: "bucket-name" });

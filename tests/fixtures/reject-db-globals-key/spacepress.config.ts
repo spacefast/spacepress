@@ -1,7 +1,7 @@
-import { collection, text, global, defineConfig, table, mutation } from "spacepress";
+import { collection, global, defineConfig, table, mutation, f } from "spacepress";
 import { db } from "spacepress/server";
 export const n = table({  });
-export const settings = global({ title: text().optional() });
-export const a = mutation({}, async () => (await db.globals.setings.get()).title);
+export const settings = global({ title: f.text().optional() });
+export const a = mutation({}, async () => (await db.setings.get()).title);
 
 export default defineConfig({});

@@ -1,3 +1,3 @@
-import { ref, table, text } from "spacepress";
-export const notes = table({ title: text() });
-export const tags = table({ noteId: ref(notes).onDelete("setNull") });
+import { table, f } from "spacepress";
+export const notes = table({ title: f.text() });
+export const tags = table({ noteId: f.ref(notes).onDelete("setNull") });

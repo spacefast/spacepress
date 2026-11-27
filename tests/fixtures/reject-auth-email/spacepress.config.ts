@@ -1,4 +1,3 @@
-import { collection, text, email, integer, boolean, richText, slug, group, repeater, json, media, file, files, job, env, global, defineConfig, userProjection } from "spacepress";
-import { once, db } from "spacepress/server";
-export const notes = userProjection({ email: text().optional() });
+import { defineConfig, extend, f } from "spacepress";
+export const notes = extend("users", { fields: { email: f.text().optional() } });
 export default defineConfig({});

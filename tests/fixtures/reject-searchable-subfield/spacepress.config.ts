@@ -1,3 +1,3 @@
-import { defineConfig, group, table, text } from "spacepress";
-export const a = table({ meta: group({ note: text().searchable() }).optional() });
+import { defineConfig, table, f } from "spacepress";
+export const a = table({ meta: f.group({ note: f.text().searchable() }).optional() });
 export default defineConfig({});

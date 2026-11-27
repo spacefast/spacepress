@@ -1,3 +1,3 @@
-import { collection, text, defineConfig } from "spacepress";
-export const files = collection({ title: text() });
+import { collection, defineConfig, f } from "spacepress";
+export const files = collection({ title: f.text() });
 export default defineConfig({});

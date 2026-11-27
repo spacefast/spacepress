@@ -1,3 +1,3 @@
-import { defineConfig, email, userProjection } from "spacepress";
-const members = userProjection({ email: email().unique().max(191) });
+import { defineConfig, extend } from "spacepress";
+const members = extend("users");
 export default defineConfig({ users: { members } });

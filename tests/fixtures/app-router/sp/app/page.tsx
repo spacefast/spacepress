@@ -4,7 +4,7 @@ import { NoteList } from "../components/NoteList";
 export const metadata = { title: "Home" };
 
 export default async function Home() {
-  const notes = await db.query.notes.findMany({ orderBy: { id: "asc" } });
+  const notes = await db.notes.list({ orderBy: { id: "asc" } });
   return (
     <>
       <h1>Home</h1>

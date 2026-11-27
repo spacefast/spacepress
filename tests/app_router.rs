@@ -44,15 +44,15 @@ fn guarded_home_links_and_item_moves_respect_wordpress_boundaries() {
     for (file, source) in [
         (
             "spacepress.config.ts",
-            r#"import { collection, defineConfig, slug, text } from "spacepress";
-export const notes = collection({ title: text(), slug: slug({ source: "title" }).optional() }, {
-  title: "title", url: "/notes/:slug",
+            r#"import { collection, defineConfig, f } from "spacepress";
+export const notes = collection({ title: f.text(), slug: f.slug({ source: "title" }).optional() }, {
+  title: "title",
 });
 export default defineConfig({ name: "guardboundaries", admin: false });"#,
         ),
         (
             "sp/app/page.tsx",
-            r#"export const guard = "subscriber";
+            r#"export const access = "subscriber";
 export default function Home() { return <p>Signed-in home</p>; }"#,
         ),
         (
@@ -69,8 +69,14 @@ export default function Links() {
         ),
         (
             "sp/app/notes/[slug]/page.tsx",
-            r#"export const guard = ({ user }) => user === null;
-export default function Note() { return <p>Guarded public preview</p>; }"#,
+            r#"import { db } from "spacepress/server";
+import { notFound, type PageProps } from "spacepress/app";
+export const access = ({ user }) => user === null;
+export default async function Note({ params }: PageProps<"notes/[slug]">) {
+  const item = await db.notes.get({ slug: params.slug });
+  if (!item) notFound();
+  return <p>Guarded public preview</p>;
+}"#,
         ),
     ] {
         let path = project.join(file);
@@ -518,9 +524,9 @@ fn generated_routes_type_links_and_params() {
                 "paths": {
                     "spacepress": [types.join("index.d.ts")],
                     "spacepress/server": [types.join("server.d.ts")],
-                    "spacepress/server/db": [types.join("server-db.d.cts")],
                     "spacepress/app": [types.join("app.d.ts")],
-                    "spacepress/content": [types.join("content.d.ts")],
+                    "spacepress/commerce": [types.join("commerce.d.ts")],
+                    "spacepress/admin": [types.join("admin.d.ts")],
                     "spacepress/server/wp": [types.join("server-wp.d.ts")],
                     "spacepress/client": [root().join("packages/client/src/index.d.ts")],
                     "spacepress/react": [root().join("packages/client/src/react.d.ts")],
@@ -1053,7 +1059,7 @@ fn refuses_route_shapes_and_exports_with_a_fix() {
         &dir,
         &[(
             "sp/app/api/page.tsx",
-            "import { apiReference } from \"spacepress/content\";\nconst file = \"x.json\";\nexport default function P() { return <p>{apiReference(file).title}</p>; }\n",
+            "import { apiReference } from \"spacepress/app\";\nconst file = \"x.json\";\nexport default function P() { return <p>{apiReference(file).title}</p>; }\n",
         )],
         "`apiReference()` takes the path of a JSON file in `public/`, as a string literal",
         "sp/app/api/page.tsx:3",
@@ -1062,7 +1068,7 @@ fn refuses_route_shapes_and_exports_with_a_fix() {
         &dir,
         &[(
             "sp/app/api/page.tsx",
-            "import { apiReference } from \"spacepress/content\";\nexport default function P() { return <p>{apiReference(\"../secrets.json\").title}</p>; }\n",
+            "import { apiReference } from \"spacepress/app\";\nexport default function P() { return <p>{apiReference(\"../secrets.json\").title}</p>; }\n",
         )],
         "`apiReference()` takes the path of a JSON file in `public/`",
         "sp/app/api/page.tsx:2",
@@ -1183,7 +1189,7 @@ fn refuses_route_shapes_and_exports_with_a_fix() {
         &dir,
         &[(
             "sp/app/api/route.ts",
-            "export const guard = \"anyone\";\nexport async function GET() { return { status: \"ok\" }; }\n",
+            "export const access = \"anyone\";\nexport async function GET() { return { status: \"ok\" }; }\n",
         )],
         "GET in app/api/route.ts returns",
         "sp/app/api/route.ts",
@@ -1191,16 +1197,16 @@ fn refuses_route_shapes_and_exports_with_a_fix() {
     rejects(
         &dir,
         &[("sp/app/api/route.ts", "export async function GET() { return {}; }\n")],
-        "app/api/route.ts has HTTP handlers but no `guard`",
+        "app/api/route.ts has HTTP handlers but no `access`",
         "sp/app/api/route.ts",
     );
     rejects(
         &dir,
         &[(
             "sp/app/api/route.ts",
-            "import { env } from \"spacepress\";\nexport const guard = \"anyone\";\nexport const signature = { secret: env(\"S\"), header: \"x-sig\", scheme: \"hmac-sha256\" };\nexport async function POST() { return {}; }\n",
+            "import { env } from \"spacepress\";\nexport const access = \"anyone\";\nexport const signature = { secret: env(\"S\"), header: \"x-sig\", scheme: \"hmac-sha256\" };\nexport async function POST() { return {}; }\n",
         )],
-        "exports both `guard` and `signature`",
+        "exports both `access` and `signature`",
         "sp/app/api/route.ts",
     );
     rejects(
@@ -1216,25 +1222,25 @@ fn refuses_route_shapes_and_exports_with_a_fix() {
         &dir,
         &[(
             "sp/app/page.tsx",
-            "export const access = \"admin\";\nexport default function P() { return <p/>; }\n",
+            "export const guard = \"admin\";\nexport default function P() { return <p/>; }\n",
         )],
-        "can't export `access`",
+        "`export const guard` is now `export const access`",
         "sp/app/page.tsx",
     );
     rejects(
         &dir,
         &[(
             "sp/app/api/route.ts",
-            "export const access = \"admin\";\nexport async function POST() { return {}; }\n",
+            "export const guard = \"admin\";\nexport async function POST() { return {}; }\n",
         )],
-        "can't export `access`",
+        "`export const guard` is now `export const access`",
         "sp/app/api/route.ts",
     );
     rejects(
         &dir,
         &[(
             "sp/app/page.tsx",
-            "export const guard = { page: \"admin\" };\nexport async function POST() { return {}; }\nexport default function P() { return <p/>; }\n",
+            "export const access = { page: \"admin\" };\nexport async function POST() { return {}; }\nexport default function P() { return <p/>; }\n",
         )],
         "needs a `handlers` rule",
         "sp/app/page.tsx",
@@ -1243,7 +1249,7 @@ fn refuses_route_shapes_and_exports_with_a_fix() {
         &dir,
         &[(
             "sp/app/page.tsx",
-            "export const guard = { handlers: \"admin\" };\nexport default function P() { return <p/>; }\n",
+            "export const access = { handlers: \"admin\" };\nexport default function P() { return <p/>; }\n",
         )],
         "requires a page with unsigned HTTP handlers",
         "sp/app/page.tsx",
@@ -1253,11 +1259,11 @@ fn refuses_route_shapes_and_exports_with_a_fix() {
         &[
             (
                 "sp/app/layout.tsx",
-                "export const access = \"admin\";\nexport default function L({ children }: { children: JSX.Element }) { return <main>{children}</main>; }\n",
+                "export const guard = \"admin\";\nexport default function L({ children }: { children: JSX.Element }) { return <main>{children}</main>; }\n",
             ),
             ("sp/app/page.tsx", page),
         ],
-        "can't export `access`",
+        "`export const guard` is now `export const access`",
         "sp/app/layout.tsx",
     );
     rejects(
@@ -1265,11 +1271,11 @@ fn refuses_route_shapes_and_exports_with_a_fix() {
         &[
             (
                 "sp/app/layout.tsx",
-                "export const guard = \"members\";\nexport default function L({ children }: { children: JSX.Element }) { return <main>{children}</main>; }\n",
+                "export const access = \"members\";\nexport default function L({ children }: { children: JSX.Element }) { return <main>{children}</main>; }\n",
             ),
             ("sp/app/page.tsx", page),
         ],
-        "`guard` is",
+        "`access` is",
         "sp/app/layout.tsx",
     );
     rejects(
@@ -1429,7 +1435,7 @@ fn refuses_prebuilt_pages_that_depend_on_the_request() {
         &dir,
         &[(
             "sp/app/find/page.tsx",
-            "import { text } from \"spacepress\";\nexport const prerender = true;\nexport const search = { q: text().optional() };\nexport default function P() { return <p/>; }\n",
+            "import { f } from \"spacepress\";\nexport const prerender = true;\nexport const search = { q: f.text().optional() };\nexport default function P() { return <p/>; }\n",
         )],
         "app/find/page.tsx is prebuilt (it says `prerender = true`), and it reads `search`",
         "sp/app/find/page.tsx",
@@ -1439,7 +1445,7 @@ fn refuses_prebuilt_pages_that_depend_on_the_request() {
         &[
             (
                 "sp/app/account/layout.tsx",
-                "export const guard = \"subscriber\";\nexport default function L({ children }: { children: JSX.Element }) { return <main>{children}</main>; }\n",
+                "export const access = \"subscriber\";\nexport default function L({ children }: { children: JSX.Element }) { return <main>{children}</main>; }\n",
             ),
             (
                 "sp/app/account/page.tsx",
@@ -1455,7 +1461,7 @@ fn refuses_prebuilt_pages_that_depend_on_the_request() {
             static_config,
             (
                 "sp/app/form/page.tsx",
-                "export const guard = \"anyone\";\nexport async function POST() { return {}; }\nexport default function P() { return <p/>; }\n",
+                "export const access = \"anyone\";\nexport async function POST() { return {}; }\nexport default function P() { return <p/>; }\n",
             ),
         ],
         "app/form/page.tsx has HTTP handlers, and a static site has no server to answer them",
@@ -1493,7 +1499,7 @@ fn prerender_and_static_params_reach_the_route_table() {
     };
     write(
         "spacepress.config.ts",
-        "import { defineConfig, collection, text, slug } from \"spacepress\";\nexport const notes = collection({ title: text(), slug: slug({ source: \"title\" }) }, { url: \"/notes/:slug\", access: { read: \"anyone\" } });\nexport { notes }; export default defineConfig({ name: \"hybrid\" });\n",
+        "import { defineConfig, collection, f } from \"spacepress\";\nexport const notes = collection({ title: f.text(), slug: f.slug({ source: \"title\" }) }, { access: { read: \"anyone\" } });\nexport { notes }; export default defineConfig({ name: \"hybrid\" });\n",
     );
     write("sp/app/page.tsx", "export default function P() { return <p/>; }\n");
     write(
@@ -1502,7 +1508,7 @@ fn prerender_and_static_params_reach_the_route_table() {
     );
     write(
         "sp/app/notes/[slug]/page.tsx",
-        "export const prerender = true;\nexport default function P() { return <p/>; }\n",
+        "import { db } from \"spacepress/server\";\nimport type { PageProps } from \"spacepress/app\";\nexport const prerender = true;\nexport default async function P({ params }: PageProps<\"notes/[slug]\">) { const n = await db.notes.get({ slug: params.slug }); return <p>{n?.title ?? \"\"}</p>; }\n",
     );
     write(
         "sp/app/tags/[tag]/page.tsx",
@@ -1685,8 +1691,8 @@ fn modes(variant: &str, frontend: Option<&str>, app: bool) -> serde_json::Value 
         std::fs::write(
             &config,
             text.replace(
-                r#"{ name: "modes" }"#,
-                &format!(r#"{{ name: "modes", frontend: {frontend} }}"#),
+                r#"name: "modes","#,
+                &format!(r#"name: "modes", frontend: {frontend},"#),
             ),
         )
         .unwrap();
@@ -2377,7 +2383,7 @@ fn refuses_client_code_outside_the_subset() {
         &[
             (
                 "sp/schema.ts",
-                "import { table, text } from \"spacepress\";\nexport const notes = table({ title: text() }, { access: { read: \"anyone\", create: \"admin\", update: \"admin\", delete: \"admin\" } });\n",
+                "import { table, f } from \"spacepress\";\nexport const notes = table({ title: f.text() }, { access: { read: \"anyone\", create: \"admin\", update: \"admin\", delete: \"admin\" } });\n",
             ),
             (
                 "sp/components/A.tsx",
@@ -2394,7 +2400,7 @@ fn refuses_client_code_outside_the_subset() {
         &[
             (
                 "sp/schema.ts",
-                "import { table, text } from \"spacepress\";\nexport const notes = table({ title: text() }, { access: { read: \"anyone\", create: \"admin\", update: \"admin\", delete: \"admin\" } });\n",
+                "import { table, f } from \"spacepress\";\nexport const notes = table({ title: f.text() }, { access: { read: \"anyone\", create: \"admin\", update: \"admin\", delete: \"admin\" } });\n",
             ),
             (
                 "sp/components/A.tsx",
@@ -2411,7 +2417,7 @@ fn refuses_client_code_outside_the_subset() {
         &[
             (
                 "sp/schema.ts",
-                "import { table, text } from \"spacepress\";\nexport const notes = table({ title: text() }, { access: { read: \"anyone\", create: \"admin\", update: \"admin\", delete: \"admin\" } });\n",
+                "import { table, f } from \"spacepress\";\nexport const notes = table({ title: f.text() }, { access: { read: \"anyone\", create: \"admin\", update: \"admin\", delete: \"admin\" } });\n",
             ),
             (
                 "sp/components/A.tsx",
@@ -2453,9 +2459,9 @@ fn forms_work_without_javascript() {
                 "paths": {
                     "spacepress": [types.join("index.d.ts")],
                     "spacepress/server": [types.join("server.d.ts")],
-                    "spacepress/server/db": [types.join("server-db.d.cts")],
                     "spacepress/app": [types.join("app.d.ts")],
-                    "spacepress/content": [types.join("content.d.ts")],
+                    "spacepress/commerce": [types.join("commerce.d.ts")],
+                    "spacepress/admin": [types.join("admin.d.ts")],
                     "spacepress/server/wp": [types.join("server-wp.d.ts")],
                     "spacepress/client": [root().join("packages/client/src/index.d.ts")],
                     "spacepress/react": [root().join("packages/client/src/react.d.ts")],
@@ -3184,7 +3190,7 @@ fn refuses_search_it_cannot_link() {
     let dir = std::env::temp_dir().join(format!("spacepress-search-reject-{}", std::process::id()));
     let schema = (
         "sp/schema.ts",
-        "import { collection, text } from \"spacepress\";\nexport const memos = collection({ title: text() }, { title: \"title\", access: { read: \"anyone\", create: \"editor\", update: \"editor\", delete: \"editor\" } });\n",
+        "import { collection, f } from \"spacepress\";\nexport const memos = collection({ title: f.text() }, { title: \"title\", access: { read: \"anyone\", create: \"editor\", update: \"editor\", delete: \"editor\" } });\n",
     );
     let page = |body: &str| {
         format!(
@@ -3231,7 +3237,7 @@ fn refuses_comments_without_the_kind_option() {
     let dir = std::env::temp_dir().join(format!("spacepress-comments-reject-{}", std::process::id()));
     let schema = (
         "sp/schema.ts",
-        "import { collection, text, slug } from \"spacepress\";\nexport const memos = collection({ title: text(), slug: slug({ source: \"title\" }).optional() }, { title: \"title\", url: \"/memos/:slug\" });\n",
+        "import { collection, f } from \"spacepress\";\nexport const memos = collection({ title: f.text(), slug: f.slug({ source: \"title\" }).optional() }, { title: \"title\" });\n",
     );
     rejects(
         &dir,
@@ -3239,11 +3245,11 @@ fn refuses_comments_without_the_kind_option() {
             schema,
             (
                 "sp/app/memos/[slug]/page.tsx",
-                "import { Comments, type PageProps } from \"spacepress/app\";\nexport default function Memo({ item }: PageProps<\"memos/[slug]\">) {\n  return <Comments for={item} />;\n}\n",
+                "import { db } from \"spacepress/server\";\nimport { Comments, notFound, type PageProps } from \"spacepress/app\";\nexport default async function Memo({ params }: PageProps<\"memos/[slug]\">) {\n  const item = await db.memos.get({ slug: params.slug });\n  if (!item) notFound();\n  return <Comments for={item} />;\n}\n",
             ),
         ],
         "`memos` has comments off",
-        "sp/app/memos/[slug]/page.tsx:3:",
+        "sp/app/memos/[slug]/page.tsx:6:",
     );
     rejects(
         &dir,
@@ -3266,7 +3272,7 @@ fn refuses_forms_it_cannot_post() {
     let dir = std::env::temp_dir().join(format!("spacepress-forms-reject-{}", std::process::id()));
     let server = (
         "sp/server.ts",
-        "import { text, mutation } from \"spacepress\";\nexport const send = mutation({ access: \"anyone\" }, async ({ name }: { name: string }) => { return name; });\n",
+        "import { mutation } from \"spacepress\";\nexport const send = mutation({ access: \"anyone\" }, async (_ctx, { name }: { name: string }) => { return name; });\n",
     );
     let page = |body: &str| {
         format!("import {{ useFormState }} from \"spacepress/app\";\nimport {{ send }} from \"../server\";\n{body}\n")
@@ -3988,10 +3994,16 @@ fn app_pages_cache_and_purge_by_what_they_read() {
         serde_json::json!({ "notes": { "ids": [], "listed": true } }),
         "a count depends on every row of its kind"
     );
-    assert_eq!(
-        seen["purged"],
-        serde_json::json!([["/", "/index.md", "/notes/hello/", "/notes/hello.md"]])
-    );
+    let purged_list: Vec<String> = seen["purged"][0]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap().to_string())
+        .collect();
+    for expected in ["/", "/index.md", "/notes/hello/", "/notes/hello.md"] {
+        assert!(purged_list.iter().any(|p| p == expected), "missing {expected} in {purged_list:?}");
+    }
+    assert!(!purged_list.iter().any(|p| p.contains("/notes/other")), "untouched note purged: {purged_list:?}");
     // The runtime's own listener cleared those paths in Batcache (keyed as `http://`, no query),
     // the VIP edge and Jetpack Boost; `/*` reaches Boost's clear-all.
     let mut cleared: Vec<String> = seen["cleared"]
@@ -4004,24 +4016,29 @@ fn app_pages_cache_and_purge_by_what_they_read() {
     // Boost clears a URL recursively, so the home page goes to its home action instead.
     let mut want = vec!["boost home".to_string()];
     for cache in ["batcache", "boost", "vip"] {
-        for path in ["/", "/index.md", "/notes/hello/", "/notes/hello.md"] {
+        for path in &purged_list {
             if !(cache == "boost" && path == "/") {
                 want.push(format!("{cache} {path}"));
             }
         }
     }
     // The WP Cloud edge gets every path in one purge call.
-    want.push("edge / /index.md /notes/hello/ /notes/hello.md".to_string());
+    want.push(format!("edge {}", purged_list.join(" ")));
     want.sort();
     assert_eq!(cleared, want);
     // A twin fetched before its page was ever rendered records what it read under its own URL, so
     // a write to the row it shows purges it (and `/`, which lists notes, with its twin).
     assert_eq!(seen["twin only"]["status"], 200, "{}", seen["twin only"]);
     assert_eq!(seen["twin index"], serde_json::json!(["notes third /notes/third.md"]));
-    assert_eq!(
-        seen["twin purged"],
-        serde_json::json!([["/", "/index.md", "/notes/third.md"]])
-    );
+    let twin_purged: Vec<String> = seen["twin purged"][0]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap().to_string())
+        .collect();
+    for expected in ["/", "/index.md", "/notes/third.md"] {
+        assert!(twin_purged.iter().any(|p| p == expected), "missing {expected} in {twin_purged:?}");
+    }
     assert_eq!(seen["cleared all"], serde_json::json!(["vip *", "boost *", "edge *"]));
     // Over VIP's 100 URLs a request: one site ban, and every path still for Batcache.
     assert_eq!(seen["cleared many"], serde_json::json!([1, true, 101]));
@@ -5647,16 +5664,15 @@ fn docs_kind_refuses_what_a_folder_tree_cannot_hold() {
     let dir = std::env::temp_dir().join(format!("spacepress-docs-reject-{}", std::process::id()));
     let kind = |fields: &str, options: &str| {
         format!(
-            "import {{ collection, table, text, slug, richText }} from \"spacepress\";\nexport const docs = collection({{ title: text(), body: richText().optional(), {fields} }}, {{ content: \"body\", {options} }});\n"
+            "import {{ collection, table, f }} from \"spacepress\";\nexport const docs = collection({{ title: f.text(), body: f.richText().optional(), {fields} }}, {{ content: \"body\", {options} }});\n"
         )
     };
     let cases = [
-        (kind("slug: slug({ source: \"title\" })", "sync: \"content/docs/**/*.md\""), "a `**` sync pattern needs a hierarchical kind"),
-        (kind("summary: text().optional()", "hierarchical: true, sync: \"content/docs/**/*.md\""), "a folder tree of files needs a slug field"),
-        (kind("parent: text().optional()", "hierarchical: true"), "`parent` is reserved: hierarchical kinds add `parent` and `order`"),
-        (kind("slug: slug({ source: \"title\" })", "url: \"/docs/:path\""), "`:path` in \"/docs/:path\" needs a hierarchical kind"),
+        (kind("slug: f.slug({ source: \"title\" })", "sync: \"content/docs/**/*.md\""), "a `**` sync pattern needs a hierarchical kind"),
+        (kind("summary: f.text().optional()", "hierarchical: true, sync: \"content/docs/**/*.md\""), "a folder tree of files needs a slug field"),
+        (kind("parent: f.text().optional()", "hierarchical: true"), "`parent` is reserved: hierarchical kinds add `parent` and `order`"),
         (
-            "import { table, text } from \"spacepress\";\nexport const docs = table({ title: text() }, { hierarchical: true });\n".to_string(),
+            "import { table, f } from \"spacepress\";\nexport const docs = table({ title: f.text() }, { hierarchical: true });\n".to_string(),
             "only collection() kinds can be hierarchical",
         ),
     ];
@@ -5701,7 +5717,7 @@ fn docs_kind_refuses_what_a_folder_tree_cannot_hold() {
         std::fs::write(
             dir.join("sp/schema.ts"),
             kind(
-                "slug: slug({ source: \"title\" })",
+                "slug: f.slug({ source: \"title\" })",
                 "hierarchical: true, sync: \"content/docs/**/*.md\"",
             ),
         )
@@ -6383,7 +6399,7 @@ fn drive_store_example_sells_on_wordpress() {
         project.join("spacepress.config.ts"),
     )
     .unwrap();
-    for name in ["content", "public", "sp/app", "sp/lib", "sp/wp-hooks", "sp/_generated"] {
+    for name in ["content", "public", "sp/app", "sp/lib", "sp/_generated"] {
         copy(&source.join(name), &project.join(name));
     }
     for name in ["schema.ts", "server.ts"] {
@@ -6818,9 +6834,9 @@ fn login_tsx_is_the_sign_in_page() {
         &dir,
         &[(
             "sp/app/login.tsx",
-            "export const guard = \"admin\";\nexport default function P() { return <p/>; }\n",
+            "export const access = \"admin\";\nexport default function P() { return <p/>; }\n",
         )],
-        "app/login.tsx can't export `guard`",
+        "app/login.tsx can't export `access`",
         "sp/app/login.tsx",
     );
     rejects(

@@ -1,7 +1,7 @@
-import { integer, text } from "spacepress";
+import { f } from "spacepress";
 import { Pagination, type PageProps } from "spacepress/app";
 
-export const search = { page: integer().default(1), q: text().optional() };
+export const search = { page: f.integer().default(1), q: f.text().optional() };
 export const metadata = { title: "Notes", robots: { index: false } };
 
 export default function Notes({ search }: PageProps) {

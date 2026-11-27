@@ -4,7 +4,7 @@ import { Link } from "spacepress/app";
 export const metadata = { title: "Home", canonical: "/" };
 
 export default async function Home() {
-  const notes = await db.query.notes.findMany({ orderBy: { id: "asc" } });
+  const notes = await db.notes.list({ orderBy: { id: "asc" } });
   return (
     <main className="home">
       <h1>Home</h1>

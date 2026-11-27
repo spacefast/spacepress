@@ -3,11 +3,11 @@ import type { Code, CodeInsert, Guide, GuideInsert, GuidePatch, Locale, LocaleRo
 import { db } from "spacepress/server";
 
 async function registryTranslations() {
-  for (const row of await db.query.guides.findMany()) {
+  for (const row of await db.guides.list()) {
     const translations: Partial<Record<"en" | "de", number>> = row.translations;
     void translations;
   }
-  for (const row of await db.query.codes.findMany()) {
+  for (const row of await db.codes.list()) {
     const translations: Partial<Record<"en" | "de", number>> = row.translations;
     void translations;
   }

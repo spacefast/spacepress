@@ -1,6 +1,5 @@
-import { docs } from "spacepress/server/db";
-import { Content, Link, type PageProps, type ReactNode } from "spacepress/app";
-import { nav, pager, headings, type NavItem } from "spacepress/content";
+import { db } from "spacepress/server";
+import { Content, Link, headings, notFound, type NavItem, type PageProps, type ReactNode } from "spacepress/app";
 
 /** The tree, one level per call: `children` is empty below the last level nav() reads. */
 function Tree({ items }: { items: NavItem[] }): ReactNode {
@@ -16,11 +15,17 @@ function Tree({ items }: { items: NavItem[] }): ReactNode {
   );
 }
 
-export const metadata = ({ item }: PageProps<"docs/[[...path]]">) => ({ title: item.title, description: item.summary ?? undefined });
+export const metadata = async ({ params }: PageProps<"docs/[[...path]]">) => {
+  const item = await db.docs.get({ path: params.path });
+  if (!item) return { title: "Not found" };
+  return { title: item.title, description: item.summary ?? undefined };
+};
 
-export default async function Doc({ item }: PageProps<"docs/[[...path]]">) {
-  const tree = await nav(docs, item);
-  const { prev, next } = await pager(docs, item);
+export default async function Doc({ params }: PageProps<"docs/[[...path]]">) {
+  const item = await db.docs.get({ path: params.path });
+  if (!item) notFound();
+  const tree = await db.docs.nav(item);
+  const { prev, next } = await db.docs.pager(item);
   const toc = headings(item);
   return (
     <div className="docs">

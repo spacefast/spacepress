@@ -1,3 +1,3 @@
-import { collection, defineConfig, text } from "spacepress";
-const notes = collection({ title: text() });
+import { collection, defineConfig, f } from "spacepress";
+const notes = collection({ title: f.text() });
 export default defineConfig({ collections: { notes } });

@@ -1,8 +1,7 @@
-import { boolean, email, mutation } from "spacepress";
-import { db, HttpError } from "spacepress/server";
-import { entries } from "./schema";
+import { mutation } from "spacepress";
+import { HttpError } from "spacepress/server";
 
-export const subscribe = mutation({ access: "anyone" }, async ({ email, seats, weekly, note }: { email: string; seats: number; weekly: boolean; note?: string; password?: string }) => {
+export const subscribe = mutation({ access: "anyone" }, async (_ctx, { email, seats, weekly, note }: { email: string; seats: number; weekly: boolean; note?: string; password?: string }) => {
   if (!Number.isInteger(seats)) throw new HttpError(422, "invalid_input", "seats must be an integer", "/seats");
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new HttpError(422, "invalid_input", "email must be an email address", "/email");
   if (seats > 5) throw new HttpError(422, "too_many", "Five seats at most");
@@ -10,39 +9,39 @@ export const subscribe = mutation({ access: "anyone" }, async ({ email, seats, w
 });
 
 // Only a signed-in user may run it: a signed-out form post comes back with the refusal.
-export const members = mutation({ access: "subscriber" }, async ({ name }: { name: string }, ctx) => {
+export const members = mutation({ access: "subscriber" }, async (ctx, { name }: { name: string }) => {
   return `${name} by ${ctx.user?.id ?? 0}`;
 });
 
 // Two buttons with one name (one of them outside the form, with `form="vote"`): the pressed one's
 // value is the input.
-export const vote = mutation({ access: "anyone" }, async ({ choice }: { choice: string }) => {
+export const vote = mutation({ access: "anyone" }, async (_ctx, { choice }: { choice: string }) => {
   return choice;
 });
 
 // Adds an entry: the `<Live>` list on /live shows it.
-export const sign = mutation({ access: "anyone" }, async ({ name }: { name: string }) => {
-  await db.insert(entries).values({ name });
+export const sign = mutation({ access: "anyone" }, async ({ db }, { name }: { name: string }) => {
+  await db.system.entries.create({ name });
   return name;
 });
 
 // Removes the entry the page at /entries/:id shows: the page the form comes back to is a 404 now.
-export const remove = mutation({ access: "anyone" }, async ({ id }: { id: number }) => {
+export const remove = mutation({ access: "anyone" }, async ({ db }, { id }: { id: number }) => {
   if (!Number.isInteger(id)) throw new HttpError(422, "invalid_input", "id must be an integer", "/id");
-  await db.delete(entries).where({ id });
+  await db.system.entries.delete(id);
   return id;
 });
 
 // Closes the poll: the page it comes back to renders its button disabled.
-export const close = mutation({ access: "anyone" }, async () => {
-  await db.insert(entries).values({ name: "closed" });
+export const close = mutation({ access: "anyone" }, async ({ db }) => {
+  await db.system.entries.create({ name: "closed" });
   return true;
 });
 
 // Renames an entry: one form per row on /rows, each filled from the stored name, with a choice of
 // tags (a list) and a size (a radio group with a default). An empty name is refused.
-export const rename = mutation({ access: "anyone" }, async ({ id, name, tags, size }: { id: number; name: string; tags?: ("red" | "blue" | "green")[]; size?: string }) => {
+export const rename = mutation({ access: "anyone" }, async ({ db }, { id, name, tags, size }: { id: number; name: string; tags?: ("red" | "blue" | "green")[]; size?: string }) => {
   if (name.trim().length < 2) throw new HttpError(422, "invalid_input", "name must be two characters or more", "/name");
-  await db.update(entries).set({ name }).where({ id });
+  await db.system.entries.update(id, { name });
   return { name, tags: (tags ?? []).join(","), size: size ?? "m" };
 });

@@ -55,7 +55,7 @@ function classStaticNext(): number { classStaticBuild.count++; return classStati
 class ClassStaticSeed { static first = classStaticNext(); }
 class ClassDatabase {
   static allowed = true;
-  async rows() { return await db.query.n.findMany(); }
+  async rows() { return await db.n.list(); }
 }
 
 export const n = table({  }, { access: { read: () => ClassDatabase.allowed } });

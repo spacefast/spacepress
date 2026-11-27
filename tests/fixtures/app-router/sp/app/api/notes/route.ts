@@ -1,8 +1,8 @@
 import { db } from "spacepress/server";
 
-export const guard = "anyone";
+export const access = "anyone";
 
 export async function GET() {
-  const notes = await db.query.notes.findMany({});
-  return { status: 200, headers: { "content-type": "application/json" }, body: JSON.stringify(notes.map((n) => n.title)) };
+  const notes = await db.notes.list();
+  return Response.json(notes.map((n) => n.title));
 }

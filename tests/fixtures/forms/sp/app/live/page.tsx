@@ -1,4 +1,4 @@
-import { entries } from "spacepress/server/db";
+import { db } from "spacepress/server";
 import { Live, useFormState } from "spacepress/app";
 import { sign } from "../../server";
 
@@ -6,7 +6,7 @@ import { sign } from "../../server";
 // undo the page the post comes back to.
 export default async function Signing() {
   const signed = useFormState(sign);
-  const all = await entries.list({ orderBy: { id: "asc" } });
+  const all = await db.entries.list({ orderBy: { id: "asc" } });
   return (
     <main>
       <Live id="entries">

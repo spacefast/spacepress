@@ -15,7 +15,7 @@ fn captured_installed_sources_compile_after_the_checkout_is_gone_and_keep_versio
     write(
         &project,
         "spacepress.config.ts",
-        "import { defineConfig, global, text, mutation } from 'spacepress'; import { message } from './sp/message'; import { suffix } from 'shared'; const __settings = global({ label: text().default('Ready') }); export { __settings as settings }; const __version = mutation({ access: 'anyone' }, () => { return message + suffix; }); export { __version as version }; export default defineConfig({});",
+        "import { defineConfig, f, global, mutation } from 'spacepress'; import { message } from './sp/message'; import { suffix } from 'shared'; const __settings = global({ label: f.text().default('Ready') }); export { __settings as settings }; const __version = mutation({ access: 'anyone' }, () => { return message + suffix; }); export { __version as version }; export default defineConfig({});",
     );
     write(&project, "sp/message.ts", "export const message = 'v1';");
     write(

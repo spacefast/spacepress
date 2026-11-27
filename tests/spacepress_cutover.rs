@@ -1,5 +1,5 @@
 //! Verifies SpacePress config, built-in module specifiers and their compatibility aliases,
-//! `spacepress.source-bundle.v1` capture/compile, and `connectors.call()` compilation.
+//! `spacepress.source-bundle.v1` capture/compile, and `ctx.connectors.call()` compilation.
 
 #[cfg(feature = "host")]
 #[test]
@@ -11,16 +11,15 @@ fn spacepress_config_and_connectors_compile_to_store() {
     std::fs::write(
         project.join("spacepress.config.ts"),
         r#"
-import { defineConfig, collection, text, mutation } from "spacepress";
-import { connectors } from "spacepress/server";
+import { defineConfig, collection, f, mutation } from "spacepress";
 
 export const posts = collection({
-    title: text(),
+    title: f.text(),
 });
 
 export const notify = mutation(
     { access: "anyone" },
-    async ({ message }: { message: string }) => {
+    async ({ connectors }, { message }: { message: string }) => {
         return await connectors.call("slack", "post_message", { text: message });
     },
 );
@@ -72,11 +71,11 @@ fn spacefast_module_aliases_compile_from_captured_sources() {
     std::fs::write(
         project.join("spacepress.config.ts"),
         r#"
-import { defineConfig, collection, text } from "spacefast/app";
+import { defineConfig, collection, f } from "spacefast/app";
 
 export const notes = collection({
-    title: text(),
-    body: text(),
+    title: f.text(),
+    body: f.text(),
 });
 
 export default defineConfig({ name: "notes-app" });
@@ -88,12 +87,11 @@ export default defineConfig({ name: "notes-app" });
         project.join("sp/actions.ts"),
         r#"
 import { query } from "@spacefast/spacepress";
-import { notes } from "@spacefast/spacepress/server/db";
 
 export const countNotes = query(
     { access: "anyone" },
-    async () => {
-        const rows = await notes.list({ limit: 5 });
+    async ({ db }) => {
+        const rows = await db.notes.list({ limit: 5 });
         return { count: rows.length };
     },
 );
@@ -135,12 +133,11 @@ fn compile_config(config: &str) -> Result<String, String> {
 fn connectors_enqueue_compiles_to_the_queued_runtime_call() {
     let php = compile_config(
         r#"
-import { defineConfig, collection, text, mutation } from "spacepress";
-import { connectors } from "spacepress/server";
+import { defineConfig, collection, f, mutation } from "spacepress";
 
-export const orders = collection({ title: text() });
+export const orders = collection({ title: f.text() });
 
-export const ship = mutation({ access: "anyone" }, async ({ order }: { order: string }) => {
+export const ship = mutation({ access: "anyone" }, async ({ connectors }, { order }: { order: string }) => {
     const queued = await connectors.enqueue("fulfilment", "create_shipment", { order }, { key: `ship-${order}`, delay: 30 });
     const bare = await connectors.enqueue("fulfilment", "ping");
     const now = await connectors.call("crm", "find", { q: order });
@@ -169,10 +166,9 @@ fn connectors_enqueue_refuses_what_it_cannot_queue() {
     let app = |handler: &str, kind: &str| {
         format!(
             r#"
-import {{ defineConfig, collection, text, mutation, query }} from "spacepress";
-import {{ connectors }} from "spacepress/server";
-export const orders = collection({{ title: text() }});
-export const run = {kind}({{ access: "anyone" }}, async ({{ order }}: {{ order: string }}) => {{
+import {{ defineConfig, collection, f, mutation, query }} from "spacepress";
+export const orders = collection({{ title: f.text() }});
+export const run = {kind}({{ access: "anyone" }}, async (ctx, {{ order }}: {{ order: string }}) => {{
     {handler}
     return {{ ok: true }};
 }});
@@ -182,32 +178,32 @@ export default defineConfig({{ name: "outbox-app" }});
     };
     for (handler, kind, expected) in [
         (
-            r#"await connectors.enqueue("fulfilment", "create_shipment", { order });"#,
+            r#"await ctx.connectors.enqueue("fulfilment", "create_shipment", { order });"#,
             "query",
-            "queues a connector call",
+            "connectors",
         ),
         (
-            r#"await connectors.enqueue("fulfilment", "create_shipment", { order }, { retries: 3 });"#,
+            r#"await ctx.connectors.enqueue("fulfilment", "create_shipment", { order }, { retries: 3 });"#,
             "mutation",
             "connectors.enqueue() options are",
         ),
         (
-            r#"await connectors.enqueue("fulfilment", "create_shipment", { order }, {}, 1);"#,
+            r#"await ctx.connectors.enqueue("fulfilment", "create_shipment", { order }, {}, 1);"#,
             "mutation",
             "connectors.enqueue() takes a connector role, a tool name, optional args and optional options",
         ),
         (
-            r#"await connectors.call("crm", "find", { q: order }, { key: "x" });"#,
+            r#"await ctx.connectors.call("crm", "find", { q: order }, { key: "x" });"#,
             "mutation",
             "connectors.call() takes a connector role, a tool name, and optional args",
         ),
         (
-            r#"await connectors.enqueue(42, "create_shipment");"#,
+            r#"await ctx.connectors.enqueue(42, "create_shipment");"#,
             "mutation",
             "connectors.enqueue() role must be a string",
         ),
         (
-            r#"await connectors.publish("fulfilment", "create_shipment");"#,
+            r#"await ctx.connectors.publish("fulfilment", "create_shipment");"#,
             "mutation",
             "`connectors` has no function `publish`",
         ),

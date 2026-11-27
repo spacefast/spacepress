@@ -1,3 +1,3 @@
-import { collection, text } from "spacepress";
+import { collection, f } from "spacepress";
 
-export const notes = collection({ title: text() }, { title: "title" });
+export const notes = collection({ title: f.text() }, { title: "title" });

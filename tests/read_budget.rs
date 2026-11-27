@@ -65,6 +65,11 @@ fn build(work: &Path, source: &str, seeded: bool) -> (PathBuf, Option<PathBuf>) 
         copy(&root().join(source), &project);
     }
     if source == "www" {
+        // Install workspace @spacepress/docs so www's sp/schema.ts resolves it cleanly.
+        copy(
+            &root().join("packages/docs"),
+            &project.join("node_modules/@spacepress/docs"),
+        );
         // The guide's pages import the text of www/examples/ from a generated module.
         run(Command::new("node").arg(project.join("scripts/sources.mjs")));
     }
@@ -178,8 +183,9 @@ fn website_reads_stay_within_budget() {
             ("doc/signed-in", 2, 30, 36),
             ("route-handler/anonymous", 1, 15, 18),
             ("route-handler/signed-in", 1, 17, 21),
-            ("api-list/anonymous", 6, 32, 29),
-            ("api-list/signed-in", 6, 35, 32),
+            // Nested docs folders trigger WordPress's `update_post_parent_caches` (2 cache reads: posts + post_meta).
+            ("api-list/anonymous", 6, 34, 31),
+            ("api-list/signed-in", 6, 37, 34),
         ],
     );
     assert_eq!(report["api-list/anonymous"]["rows"], 24, "{report:#}");

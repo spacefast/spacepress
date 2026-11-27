@@ -3,4 +3,7 @@
 // (tests/app_router.rs `search_pages_answer_as_the_visitor`).
 import { defineConfig } from "spacepress";
 
-export default defineConfig({ name: "searchy" });
+export default defineConfig({
+  name: "searchy",
+  permalinks: { notes: "/notes/:slug", guides: "/guides/:slug" },
+});

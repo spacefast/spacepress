@@ -144,8 +144,8 @@ fn a_new_filter_plans_an_inferred_index_and_stores_the_same() {
     let mut app = json(&fixture.join("sources/app.spacepress.json"));
     let config = app["files"]["spacepress.config.ts"].as_str().unwrap();
     let filtered = config.replace(
-        "findFirst({ where: { id: itemId } })",
-        "findFirst({ where: { id: itemId, opened: false } })",
+        "db.system.items.get(itemId)",
+        "db.system.items.get({ id: itemId, opened: false })",
     );
     assert_ne!(config, filtered, "the fixture edit applies");
     app["files"]["spacepress.config.ts"] = filtered.into();

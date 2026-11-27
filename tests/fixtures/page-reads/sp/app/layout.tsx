@@ -6,7 +6,7 @@ import type { LayoutProps } from "spacepress/app";
 export const template = "blank";
 
 export default async function Root({ children }: LayoutProps) {
-  const count = (await db.query.notes.findMany({})).length;
+  const count = (await db.notes.list()).length;
   return (
     <div>
       <p className="layout-count">layout {count}</p>

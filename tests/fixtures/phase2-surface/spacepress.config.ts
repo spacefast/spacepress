@@ -1,5 +1,5 @@
-import { collection, text, email, media, boolean, richText, slug, group, repeater, blocks, json, select, file, files, job, env, global, defineConfig, table, userProjection, ref, mutation } from "spacepress";
-import { db, HttpError } from "spacepress/server";
+import { collection, extend, files, job, env, global, defineConfig, table, mutation, f } from "spacepress";
+import { HttpError } from "spacepress/server";
 import type { FieldAccessCtx as FieldContext, JobCtx } from "spacepress";
 function deny(): never { throw new Error("denied"); }
 async function yes() { return true; }
@@ -89,28 +89,31 @@ function visibleField(ctx: FieldContext): boolean { switch (ctx.op) { case "read
 function maybeFirst() { const values = ["a"]; values.unshift("b"); switch (values[0]) { case "a": return true; } }
 function maybeDefault() { const { words = ["a"] } = { words: undefined }; words.unshift("b"); switch (words[0]) { case "a": return true; } }
 function maybeFunction() { const predicates = [() => true]; predicates.unshift(() => false); const flag = predicates[0]!(); switch (flag) { case true: return true; } }
-export const audit = table({ note: text() }, { agents: false });
-export const authors = collection({ name: text(), email: email().access({ read: "editor", create: true, update: ctx => ctx.user !== null }).optional(), avatar: media().access({ read: "authenticated" }).optional() }, { title: "name", uid: true });
+export const audit = table({ note: f.text() }, { agents: false });
+export const authors = collection({ name: f.text(), email: f.email().access({ read: "editor", create: true, update: ctx => ctx.user !== null }).optional(), avatar: f.media().access({ read: "authenticated" }).optional() }, { title: "name", uid: true });
 export const decks = files({ accept: ["application/pdf", "image/*"], maxBytes: 20000000, access: { read: "owner", create: ctx => ctx.user !== null, delete: "owner" } });
 
 export const posts = collection({
-  title: text().localized(), content: richText().localized().optional(), slug: slug({ source: "title" }).optional(),
-  authorId: ref(authors).optional().onDelete("restrict"), deck: file(decks).optional(),
-  seo: group({ kind: select(["a", "b"]).optional(), enabled: boolean().optional(), label: text().access({ read: visibleField }).showIf({ OR: [{ kind: { in: ["a", "b"] } }, { enabled: { eq: true } }] }).optional() }).showIf({ status: "published" }).optional(),
-  items: repeater({ enabled: boolean().optional(), label: text().showIf({ enabled: true }).optional() }).optional(),
-  sections: blocks({ hero: { kind: text().optional(), label: text().access({ update: ctx => { switch (ctx.op) { case "read": throw new Error("not an update"); case "create": return false; case "update": return visibleRole(ctx); } } }).showIf({ kind: { ne: "hidden" } }).optional() } }).optional(),
-  tags: select(["news", "guide"]).many().localized().optional(), meta: json().localized().optional(),
+  title: f.text().localized(), content: f.richText().localized().optional(), slug: f.slug({ source: "title" }).optional(),
+  authorId: f.ref(authors).optional().onDelete("restrict"), deck: f.file(decks).optional(),
+  seo: f.group({ kind: f.select(["a", "b"]).optional(), enabled: f.boolean().optional(), label: f.text().access({ read: visibleField }).showIf({ OR: [{ kind: { in: ["a", "b"] } }, { enabled: { eq: true } }] }).optional() }).showIf({ status: "published" }).optional(),
+  items: f.repeater({ enabled: f.boolean().optional(), label: f.text().showIf({ enabled: true }).optional() }).optional(),
+  sections: f.blocks({ hero: { kind: f.text().optional(), label: f.text().access({ update: ctx => { switch (ctx.op) { case "read": throw new Error("not an update"); case "create": return false; case "update": return visibleRole(ctx); } } }).showIf({ kind: { ne: "hidden" } }).optional() } }).optional(),
+  tags: f.select(["news", "guide"]).many().localized().optional(), meta: f.json().localized().optional(),
 }, { sync: "content/./posts/*.md", agents: true });
-export const members = userProjection({ email: email().unique().max(191), name: text().optional() }, { access: { read: "self", create: "anyone", update: "self", delete: "admin" } });
+export const members = extend("users", {
+  fields: { name: f.text().optional() },
+  access: { read: "self", create: "anyone", update: "self", delete: "admin" },
+});
 export const collections = { authors, posts };
 export const tables = { audit };
 export const users = { members };
 export const entities = { ...collections, ...tables, ...users };
-export const settings = global({ title: text().default("Hello").optional() }, { agents: false });
+export const settings = global({ title: f.text().default("Hello").optional() }, { agents: false });
 
-export const sendWelcome = job({ retries: 5, agents: true }, async (input: { email: string; payload: { message: string }; data?: { label?: string; payload?: { suffix: string } } }, ctx: JobCtx) => { if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(input.email)) throw new HttpError(422, "invalid_input", "email must be an email address", "/email"); let choose = yes; choose = no; if (visible(input.email) && !(await choose())) { await db.insert(audit).values({ note: input.payload.message + ":" + ctx.jobId + ":" + ctx.attempt + ":" + (input.data?.payload?.suffix ?? "") }); } });
+export const sendWelcome = job({ retries: 5, agents: true }, async (ctx: JobCtx, input: { email: string; payload: { message: string }; data?: { label?: string; payload?: { suffix: string } } }) => { if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(input.email)) throw new HttpError(422, "invalid_input", "email must be an email address", "/email"); let choose = yes; choose = no; if (visible(input.email) && !(await choose())) { await ctx.db.audit.create({ note: input.payload.message + ":" + ctx.jobId + ":" + ctx.attempt + ":" + (input.data?.payload?.suffix ?? "") }); } });
 
-export const inbound = mutation({ idempotent: true, agents: false, signature: { secret: env("STRIPE_WEBHOOK_SECRET"), header: "stripe-signature", scheme: "hmac-sha256" } }, ({ allow = true }: { allow?: boolean }, ctx): boolean => { if (ctx.user === null) return false; switch (ctx.user.role) { case "guest": case "subscriber": return false; case "author": case "editor": case "admin": return allowed(allow) && !allowed(null); } });
+export const inbound = mutation({ idempotent: true, agents: false, signature: { secret: env("STRIPE_WEBHOOK_SECRET"), header: "stripe-signature", scheme: "hmac-sha256" } }, (ctx, { allow = true }: { allow?: boolean }): boolean => { if (ctx.user === null) return false; switch (ctx.user.role) { case "guest": case "subscriber": return false; case "author": case "editor": case "admin": return allowed(allow) && !allowed(null); } });
 
 export const widened = mutation({}, () => {
   const values = ["a"]; values.unshift("b");

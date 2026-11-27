@@ -5,7 +5,7 @@
 import { register } from "node:module";
 import { pathToFileURL } from "node:url";
 register(new URL("./resolve-spacepress.mjs", import.meta.url));
-const { transaction } = await import("./spacepress-shim.mjs");
+const { once, transaction } = await import("./spacepress-shim.mjs");
 const mod = await import(pathToFileURL(process.argv[2]).href);
 // Kinds and actions register by export name, as the compiler reads them (docs/spec/spec.md §1.1).
 const exported = (what) => Object.fromEntries(Object.entries(mod).filter(([, v]) => v?.$first === what));
@@ -17,9 +17,9 @@ const run = async (name, fn) => {
     out[name] = { error: e.message };
   }
 };
-const hookCtx = { user: null };
+const hookCtx = { user: null, once };
 for (const [name, a] of Object.entries(exported("action"))) {
-  await run(name, () => transaction(() => a.handler({}, hookCtx)));
+  await run(name, () => transaction(() => a.handler(hookCtx, {})));
 }
 function* columns(fields, prefix = [], dataPath = []) {
   for (const [name, b] of Object.entries(fields)) {

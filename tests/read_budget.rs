@@ -70,8 +70,13 @@ fn build(work: &Path, source: &str, seeded: bool) -> (PathBuf, Option<PathBuf>) 
             &root().join("packages/docs"),
             &project.join("node_modules/@spacepress/docs"),
         );
-        // The guide's pages import the text of www/examples/ from a generated module.
+        // The guide's pages import the text of www/examples/ from a generated module, and the docs
+        // route the Markdown of each doc from another (sp/data/doc-sources.ts), both written by the build.
         run(Command::new("node").arg(project.join("scripts/sources.mjs")));
+        run(Command::new("node")
+            .args(["--input-type=module", "-e"])
+            .arg("import { generateAiAssets } from './scripts/generate-ai-assets.mjs'; generateAiAssets();")
+            .current_dir(&project));
     }
     run(spacepress().arg("build").arg(&project).arg("--quiet"));
     let seed = seeded.then(|| {

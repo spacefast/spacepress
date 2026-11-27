@@ -207,7 +207,13 @@ store("sp/router", {
       // Counted before anything waits: a submit whose answer comes in after this click drops it.
       forms.navigations++;
       const { actions } = yield import("@wordpress/interactivity-router");
-      yield actions.navigate(ref.href);
+      const href = ref.href;
+      yield actions.navigate(href);
+      // A page load starts at the top, or at the link's fragment, which the router scrolls to. The
+      // router only swaps the region, so the window stays where the click was: it is put at the top
+      // here, as a load would. Not when a later click took over (the URL is then that page's), and
+      // instantly, past a page's `scroll-behavior: smooth`.
+      if (window.location.href === href && new URL(href).hash === "") window.scrollTo({ top: 0, left: 0, behavior: "instant" });
     }),
     *prefetch() {
       const { ref } = getElement();

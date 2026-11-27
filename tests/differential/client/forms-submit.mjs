@@ -212,6 +212,28 @@ try {
     await page.close();
   }
 
+  // A `<Link>` clicked far down a page (a sticky sidebar's, here fixed so it stays in view): the
+  // next page starts at the top, as a page load does, and in the same document.
+  {
+    const { page } = await open(`${url}/?ref=nav`);
+    await page.evaluate(() => {
+      window.spMarker = "same document";
+      document.body.style.padding = "0 0 3000px";
+      Object.assign(document.querySelector("a.other").style, { position: "fixed", top: "8px", left: "8px" });
+      window.scrollTo(0, document.documentElement.scrollHeight);
+    });
+    const before = await page.evaluate(() => window.scrollY);
+    await page.click("a.other");
+    await page.waitForSelector(".other-page", { timeout: 15000 });
+    await page.waitForTimeout(300);
+    out.linkScroll = {
+      scrolledBefore: before > 500,
+      after: await page.evaluate(() => window.scrollY),
+      marker: await page.evaluate(() => window.spMarker ?? null),
+    };
+    await page.close();
+  }
+
   // Two forms sent at once, the older answer last: the newer page stays, and the older form says
   // its result isn't shown.
   {

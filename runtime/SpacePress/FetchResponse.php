@@ -93,14 +93,9 @@ final class FetchResponse implements \JsonSerializable, \Stringable
     /** Raw body + headers array for App::routeResponse(). */
     public function toRouteArray(): array
     {
-        $headers = [];
-        foreach ($this->headers->entries() as $entry) {
-            $headers[$entry->a[0]] = $entry->a[1];
-        }
-
         return [
             'status' => $this->status,
-            'headers' => $headers,
+            'headers' => $this->headers->sorted(),
             'body' => $this->body,
         ];
     }

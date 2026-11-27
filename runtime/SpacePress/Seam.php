@@ -348,11 +348,14 @@ final class Seam
         $db = Db::instance();
         $viewer = self::as($trusted);
         $parsedOpts = self::query($collection, $opts);
+        $normalizedSelector = array_key_exists('id', $selector)
+            ? ['where' => [$db->schema()->collection($collection)['primaryKey'] => self::toPhp($selector['id'])]]
+            : $selector;
         $cacheKey = null;
         try {
             $cacheKey = json_encode([
                 $collection,
-                $selector,
+                $normalizedSelector,
                 $parsedOpts,
                 $trusted,
                 $viewer === null ? 'sys' : ($viewer->user['id'] ?? 'anon') . ':' . ($viewer->user['role'] ?? ''),
@@ -366,17 +369,20 @@ final class Seam
             return $cached === null ? null : self::rowToJs($collection, $cached);
         }
 
-        if (array_key_exists('path', $selector)) {
-            $row = self::kindGetByPath($db, $collection, $selector['path'], $parsedOpts, $viewer);
+        if (array_key_exists('path', $normalizedSelector)) {
+            $row = self::kindGetByPath($db, $collection, $normalizedSelector['path'], $parsedOpts, $viewer);
         } else {
-            $where = array_key_exists('id', $selector)
-                ? [$db->schema()->collection($collection)['primaryKey'] => self::toPhp($selector['id'])]
-                : $selector['where'];
-            $row = $db->findFirst($collection, ['where' => $where] + $parsedOpts, $viewer);
+            $row = $db->findFirst($collection, ['where' => $normalizedSelector['where']] + $parsedOpts, $viewer);
         }
 
         if ($cacheKey !== null) {
             self::$getCache[$cacheKey] = $row;
+        }
+        if ($row !== null && !$trusted && $viewer !== null) {
+            $spec = $db->schema()->collection($collection);
+            if (($spec['wp']['postType'] ?? null) !== null && Extensions::constraintReadsSafe()) {
+                \SpacePress\Wp\CoreAccess::readable($collection, [(int) ($row[$spec['primaryKey']] ?? 0)], $viewer);
+            }
         }
 
         return $row === null ? null : self::rowToJs($collection, $row);

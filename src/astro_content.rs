@@ -72,9 +72,9 @@ pub fn module(
 }
 
 fn write(collections: &[Collection]) -> String {
-    // The builders under names no collection can take (a collection may be called `text`).
+    // The builders under names no collection can take (a collection may be called `f`).
     let mut out = String::from(
-        "// Generated from src/content.config.ts: each Astro content collection as a SpacePress kind.\nimport { collection as __collection, text as __text, slug as __slug, richText as __richText, number as __number, integer as __integer, boolean as __boolean, date as __date, url as __url, email as __email, json as __json, select as __select } from \"spacepress\";\n",
+        "// Generated from src/content.config.ts: each Astro content collection as a SpacePress kind.\nimport { collection as __collection, f as __f } from \"spacepress\";\n",
     );
     for c in collections {
         let mut fields: Vec<String> = c
@@ -85,11 +85,11 @@ fn write(collections: &[Collection]) -> String {
         // A folder tree's file name is its slug; a flat folder's slug follows the title, as
         // `spacepress sync` names its files by slug.
         fields.push(if c.nested {
-            "slug: __slug()".into()
+            "slug: __f.slug()".into()
         } else {
-            format!("slug: __slug({{ source: {:?} }})", c.title)
+            format!("slug: __f.slug({{ source: {:?} }})", c.title)
         });
-        fields.push("body: __richText().optional()".into());
+        fields.push("body: __f.richText().optional()".into());
         let _ = writeln!(
             out,
             "export const {} = __collection({{ {} }}, {{ title: {:?}, content: \"body\", hierarchical: {}, sync: {:?}, access: {{ read: \"anyone\", create: \"editor\", update: \"editor\", delete: \"editor\" }} }});",
@@ -674,13 +674,13 @@ impl<'s> Reader<'s> {
         let mut extra = String::new();
         let mut enum_values: Option<Vec<String>> = None;
         let (mut builder, text) = match base.as_str() {
-            "string" => ("__text()".to_string(), true),
-            "number" | "coerce.number" => ("__number()".to_string(), false),
-            "boolean" | "coerce.boolean" => ("__boolean()".to_string(), false),
+            "string" => ("__f.text()".to_string(), true),
+            "number" | "coerce.number" => ("__f.number()".to_string(), false),
+            "boolean" | "coerce.boolean" => ("__f.boolean()".to_string(), false),
             // Astro's own example: a date written `2022-07-08` or `'Jul 08 2022'` in front matter.
             // SpacePress stores a calendar date and reads `YYYY-MM-DD`; a sync with another form is refused
             // at the file, by the field's own check.
-            "date" | "coerce.date" => ("__date()".to_string(), false),
+            "date" | "coerce.date" => ("__f.date()".to_string(), false),
             "enum" => {
                 let values = match args
                     .first()
@@ -730,8 +730,8 @@ impl<'s> Reader<'s> {
                     ));
                 }
                 match item_base.as_str() {
-                    "string" => ("__json<string[]>()".to_string(), false),
-                    "number" => ("__json<number[]>()".to_string(), false),
+                    "string" => ("__f.json<string[]>()".to_string(), false),
+                    "number" => ("__f.json<number[]>()".to_string(), false),
                     "enum" => {
                         let Some(a::Expression::ArrayExpression(arr)) = item_args
                             .first()
@@ -759,7 +759,7 @@ impl<'s> Reader<'s> {
                                 }
                             }
                         }
-                        (format!("__select([{}]).many()", values.join(", ")), false)
+                        (format!("__f.select([{}]).many()", values.join(", ")), false)
                     }
                     other => {
                         return Err(refuse(
@@ -858,12 +858,12 @@ impl<'s> Reader<'s> {
                 }
                 "url" if base == "string" => is_url = true,
                 "email" if base == "string" => is_email = true,
-                "int" if base.ends_with("number") => builder = "__integer()".into(),
+                "int" if base.ends_with("number") => builder = "__f.integer()".into(),
                 "min" | "max" if base.ends_with("number") || base == "string" => {
                     let _ = write!(extra, ".{m}({})", number()?);
                 }
                 // Above zero is at least one only for whole numbers.
-                "positive" if base.ends_with("number") && builder == "__integer()" => extra.push_str(".min(1)"),
+                "positive" if base.ends_with("number") && builder == "__f.integer()" => extra.push_str(".min(1)"),
                 "nonnegative" if base.ends_with("number") => extra.push_str(".min(0)"),
                 "describe" => {}
                 other => {
@@ -876,14 +876,14 @@ impl<'s> Reader<'s> {
             }
         }
         if is_url {
-            builder = "__url()".into();
+            builder = "__f.url()".into();
         }
         if is_email {
-            builder = "__email()".into();
+            builder = "__f.email()".into();
         }
         if let Some(values) = enum_values {
             builder = format!(
-                "__select([{}])",
+                "__f.select([{}])",
                 values.iter().map(|v| format!("{v:?}")).collect::<Vec<_>>().join(", ")
             );
         }

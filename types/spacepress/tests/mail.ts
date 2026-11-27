@@ -1,15 +1,11 @@
-// mail.send and mail.render (docs/config-api.md, "Email").
-import { type MailMessage } from "spacepress";
-import { mail } from "spacepress/server";
+// mail.send and mail.render via MutationCtx.
+import { mutation, type MailMessage } from "spacepress";
 
 declare const replyTo: string | null;
 declare const name: string | undefined;
 
-// An optional column reads as `string | null`: it goes into the message as it is, and a field
-// holding null or undefined is a field left out.
 export const fromSettings: MailMessage = { to: "a@example.test", subject: "Hello", text: "Hi", replyTo };
 export const absent: MailMessage = { to: { email: "a@example.test", name }, subject: "Hello", html: "<p>Hi</p>", from: undefined, cc: null };
-export const queued: Promise<{ id: string }> = mail.send(fromSettings);
 
 // @ts-expect-error a message needs someone to send to
 export const noRecipient: MailMessage = { subject: "Hello", text: "Hi" };
@@ -17,6 +13,12 @@ export const noRecipient: MailMessage = { subject: "Hello", text: "Hi" };
 export const wrongAddress: MailMessage = { to: 3, subject: "Hello", text: "Hi" };
 
 const Welcome = (props: { name: string }) => props.name;
-export const rendered: { html: string; text: string } = mail.render(Welcome, { name: "Ada" });
-// @ts-expect-error the props are the template's
-export const wrongProps = mail.render(Welcome, { title: "Ada" });
+
+export const sendEmail = mutation({ access: "admin" }, async ({ mail }) => {
+  const queued: Promise<{ id: string }> = mail.send(fromSettings);
+  const rendered: { html: string; text: string } = mail.render(Welcome, { name: "Ada" });
+  // @ts-expect-error the props are the template's
+  const wrongProps = mail.render(Welcome, { title: "Ada" });
+  void [queued, rendered, wrongProps];
+  return await queued;
+});

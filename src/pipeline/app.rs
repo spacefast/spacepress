@@ -480,22 +480,23 @@ pub fn apply_permalinks(ext: &mut extract::Extracted, span: Span) -> Result<(), 
     }
     let mut url_shapes: Vec<(String, Vec<crate::kind_url::Segment>)> = Vec::new();
     for (kind_key, pattern) in permalinks {
+        let pspan = ext.permalink_spans.get(&kind_key).copied().unwrap_or(span);
         ext.schema.ensure_builtin(&kind_key);
         let Some(table) = ext.schema.by_key(&kind_key).map(|c| c.table.clone()) else {
             return Err(Diag::new(
-                span,
+                pspan,
                 format!("`permalinks.{kind_key}` names no collection, taxonomy, or built-in kind"),
             )
             .help("use the export name of a collection, taxonomy, or built-in kind (`posts`, `pages`)"));
         };
-        let shape = check_kind_url(&ext.schema, &table, &pattern, span)?;
+        let shape = check_kind_url(&ext.schema, &table, &pattern, pspan)?;
         let root = |s: &[crate::kind_url::Segment]| matches!(s, [crate::kind_url::Segment::Path]);
         if let Some((other, _)) = url_shapes
             .iter()
             .find(|(_, s)| crate::kind_url::overlaps(s, &shape) && root(s) == root(&shape))
         {
             return Err(Diag::new(
-                span,
+                pspan,
                 format!("\"{pattern}\" can match the same URLs as `{other}`'s permalink"),
             )
             .help("give one of them a different literal prefix, e.g. \"/blog/[slug]\" and \"/docs/[slug]\""));
@@ -521,6 +522,18 @@ fn check_kind_url(
                 coll.key
             ),
         ));
+    }
+    if coll.taxonomy.is_some()
+        && let Some(bad) = pattern
+            .split('/')
+            .filter_map(|s| s.strip_prefix(':'))
+            .find(|p| !matches!(*p, "slug" | "id" | "path"))
+    {
+        return Err(Diag::new(
+            span,
+            format!("`:{bad}` in \"{pattern}\" isn't a term placeholder"),
+        )
+        .help("a term URL takes `:slug`, `:id` and, on a hierarchical taxonomy, `:path`"));
     }
     let public_slug = |target: &str| {
         schema.collections.get(target).is_some_and(|c| {

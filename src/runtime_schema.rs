@@ -1383,9 +1383,9 @@ mod tests {
     fn a_lock_field_named_like_a_relation_of_its_kind_is_refused() {
         let project = PathBuf::from("/rtschema");
         // `ref(articles)` on a table gives `articles` the reverse relation `votes`.
-        let schema = "import { collection, table, text, ref } from \"spacepress\";\n\
-            export const articles = collection({ title: text() });\n\
-            export const votes = table({ article: ref(articles) });\n";
+        let schema = "import { collection, f, table } from \"spacepress\";\n\
+            export const articles = collection({ title: f.text() });\n\
+            export const votes = table({ article: f.ref(articles) });\n";
         let config = "import { defineConfig } from \"spacepress\";\n\
             export default defineConfig({ name: \"rtschema\", runtimeSchema: true });\n";
         let lock = lock_of("articles", "votes", &serde_json::json!({ "type": "text" }));

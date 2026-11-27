@@ -1,11 +1,11 @@
 // adminScreen(): a SpacePress Admin screen declared in TypeScript (docs/admin-screens.md).
-import { adminScreen, boolean, item, number, query, mutation } from "spacepress";
+import { query, mutation } from "spacepress";
+import { adminScreen, item } from "spacepress/admin";
 
-const listPending = query({}, (_input: { limit?: number }) => ({ rows: [{ id: 1, total: 3, shipped: false }] }));
-const markShipped = mutation({}, ({ id }: { id: number; note?: string }) => ({ id }));
-const rename = mutation({}, (_input: { id: number; patch: string }) => null);
-const readOne = query({}, (_input: { id: number }) => ({ total: 1 }));
-void number; void boolean;
+const listPending = query({}, (_ctx, _input: { limit?: number }) => ({ rows: [{ id: 1, total: 3, shipped: false }] }));
+const markShipped = mutation({}, (_ctx, { id }: { id: number; note?: string }) => ({ id }));
+const rename = mutation({}, (_ctx, _input: { id: number; patch: string }) => null);
+const readOne = query({}, (_ctx, _input: { id: number }) => ({ total: 1 }));
 
 export const pendingOrders = adminScreen({
   title: "Pending orders",

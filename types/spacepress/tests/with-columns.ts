@@ -1,12 +1,12 @@
-// `with` on media and file columns (docs/config-api.md, "Database API"): the row in the id's place.
-import { collection, file, files, media, text, type FileRow, type MediaRow, type QueryRow, type WithConfig } from "spacepress";
+// `with` on media and file columns: the row in the id's place.
+import { collection, f, files, type FileRow, type MediaRow, type QueryRow, type WithConfig } from "spacepress";
 
 const decks = files({ accept: ["application/pdf"], maxBytes: 5_000_000 });
 const talks = collection({
-  title: text(),
-  cover: media({ accept: "image" }).optional(),
-  slides: media().many().default([]),
-  deck: file(decks).optional(),
+  title: f.text(),
+  cover: f.media({ accept: "image" }).optional(),
+  slides: f.media().many().default([]),
+  deck: f.file(decks).optional(),
 });
 type S = { talks: typeof talks };
 // No relations between kinds: only the media and file columns can be loaded.

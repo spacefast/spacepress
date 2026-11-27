@@ -1,22 +1,32 @@
-import { collection, text, email, integer, boolean, richText, slug, group, repeater, blocks, json, select, file, files, job, cron, env, global, defineConfig, table, userProjection, ref, mutation } from "spacepress";
+import { collection, cron, defineConfig, env, extend, f, files, global, job, mutation, table } from "spacepress";
+import { type JobCtx, type FieldAccessCtx, type Locale, type LocalizedColumns } from "spacepress";
 import { db } from "spacepress/server";
-export const audit = table({ note: text() }, { agents: false });
-export const authors = collection({ name: text(), email: email().optional().access({ read: "editor", create: true, update: ctx => ctx.user !== null }) }, { title: "name", uid: true, access: { create: ctx => ctx.data?.uid !== "reserved" } });
+import { expectType, type Equal } from "./inference";
+
+export const audit = table({ note: f.text() }, { agents: false });
+export const authors = collection({ name: f.text(), email: f.email().optional().access({ read: "editor", create: true, update: ctx => ctx.user !== null }) }, { title: "name", uid: true, access: { create: ctx => ctx.data?.uid !== "reserved" } });
 export const decks = files({ accept: ["application/pdf", "image/*"], maxBytes: 20000000, access: { read: "owner", create: ctx => ctx.user !== null, delete: "owner" } });
 
 export const posts = collection({
-  title: text().localized(), content: richText().localized().optional(), slug: slug({ source: "title" }).optional(),
-  authorId: ref(authors).optional().onDelete("restrict"), deck: file(decks).optional(),
-  seo: group({ kind: select(["a", "b"]).optional(), enabled: boolean().optional(), label: text().optional().access({ read: ctx => ctx.data.label !== "private" }).showIf({ OR: [{ kind: { in: ["a", "b"] } }, { enabled: { eq: true } }] }) }).optional().showIf({ status: "published" }),
-  items: repeater({ enabled: boolean().optional(), label: text().optional().showIf({ enabled: true }) }).optional(),
-  sections: blocks({ hero: { kind: text().optional(), label: text().optional().access({ update: ctx => ctx.op === "update" }).showIf({ kind: { ne: "hidden" } }) } }).optional(),
-  tags: select(["news", "guide"]).many().localized().optional(), meta: json().localized().optional(),
+  title: f.text().localized(), content: f.richText().localized().optional(), slug: f.slug({ source: "title" }).optional(),
+  authorId: f.ref(authors).optional().onDelete("restrict"), deck: f.file(decks).optional(),
+  seo: f.group({ kind: f.select(["a", "b"]).optional(), enabled: f.boolean().optional(), label: f.text().optional().access({ read: ctx => ctx.data.label !== "private" }).showIf({ OR: [{ kind: { in: ["a", "b"] } }, { enabled: { eq: true } }] }) }).optional().showIf({ status: "published" }),
+  items: f.repeater({ enabled: f.boolean().optional(), label: f.text().optional().showIf({ enabled: true }) }).optional(),
+  sections: f.blocks({ hero: { kind: f.text().optional(), label: f.text().optional().access({ update: ctx => ctx.op === "update" }).showIf({ kind: { ne: "hidden" } }) } }).optional(),
+  tags: f.select(["news", "guide"]).many().localized().optional(), meta: f.json().localized().optional(),
 }, { sync: "content/./posts/*.md", agents: true, access: { create: ctx => ctx.data?.locale === "en" && ctx.data.uid !== "reserved" } });
-export const members = userProjection({ email: email().unique().max(191), name: text().optional() }, { uid: true, access: { read: "self", create: ctx => ctx.data?.uid !== "reserved", update: "self", delete: "admin" } });
-export const settings = global({ title: text().default("Hello") }, { agents: false });
-export const sendWelcome = job({ retries: 5, agents: true }, async (input: { email: string; data?: { label?: string } }, ctx) => { await db.insert(audit).values({ note: input.email + ":" + ctx.jobId + ":" + ctx.attempt }); });
+export const members = extend("users", { fields: { displayBio: f.text().optional() }, uid: true, access: { read: "self", create: ctx => ctx.data?.uid !== "reserved", update: "self", delete: "admin" } });
+export const settings = global({ title: f.text().default("Hello") }, { agents: false });
+export const sendWelcome = job({ retries: 5, agents: true }, async (ctx, input: { email: string; data?: { label?: string } }) => {
+  await ctx.db.posts.list();
+  const id = await ctx.once("key", async () => 42);
+  expectType<Equal<typeof id, number>>();
+  // @ts-expect-error once keys are strings
+  await ctx.once(42, () => true);
+  void (input.email + ":" + ctx.jobId + ":" + ctx.attempt);
+});
 export const hourly = job({ every: "1h" }, async () => {});
-export const nightly = cron("0 3 * * *", async (_input, ctx) => { void ctx.attempt; });
+export const nightly = cron("0 3 * * *", async (ctx) => { void ctx.attempt; });
 // @ts-expect-error a repeat is a number and a unit
 job({ every: "hourly" }, async () => {});
 export const inbound = mutation({ idempotent: true, agents: false, signature: { secret: env("STRIPE_WEBHOOK_SECRET"), header: "stripe-signature", scheme: "hmac-sha256" } }, () => true);
@@ -26,22 +36,24 @@ export default defineConfig({
   webhooks: [{ url: env("HOOK_URL"), secret: env("HOOK_SECRET"), events: ["posts.created", "posts.updated", "posts.deleted", "*"] }, { url: "https://example.com/hook", secret: env("OTHER_SECRET"), events: ["members.created"] }],
 });
 
-import { type JobCtx, type FieldAccessCtx, type Locale, type LocalizedColumns } from "spacepress";
-import { once } from "spacepress/server";
-import { expectType, type Equal } from "./inference";
-
 const localizedBlocks = table({
-  sections: blocks({ hero: { heading: text().localized().optional() }, quote: { body: text().optional() } }).optional(),
+  sections: f.blocks({ hero: { heading: f.text().localized().optional() }, quote: { body: f.text().optional() } }).optional(),
 }, { uid: true, access: { create: ctx => ctx.data?.locale === "en" && ctx.data.uid !== "reserved" } });
 type LocalizedBlockRow = typeof localizedBlocks.$inferSelect;
 expectType<Equal<LocalizedBlockRow["locale"], Locale>>();
 expectType<Equal<LocalizedBlockRow["translations"], LocalizedColumns["translations"]>>();
 
 // A required synced column (price): translations may omit it, fresh rows may not.
-const priced = table({ title: text().localized(), price: integer(), handle: slug() });
+const priced = table({ title: f.text().localized(), price: f.integer(), handle: f.slug() });
+const pricedTrans: typeof priced.$inferInsert = { title: "Preis", locale: "de", translationOf: 1, handle: "preis" };
+// @ts-expect-error a fresh row must give its required synced column
+const pricedMissing: typeof priced.$inferInsert = { title: "Price", handle: "price" };
+// @ts-expect-error a slug is per row: a translation must give its own
+const pricedNoSlug: typeof priced.$inferInsert = { title: "Prix", locale: "de", translationOf: 1 };
+void [pricedTrans, pricedMissing, pricedNoSlug];
 
-const roles = table({ role: text().optional(), password: text().optional() });
-const roleNames = table({ role: text().optional() });
+const roles = table({ role: f.text().optional(), password: f.text().optional() });
+const roleNames = table({ role: f.text().optional() });
 const roleInsert: typeof roles.$inferInsert = { role: "item", password: null };
 // @ts-expect-error ordinary role columns do not enable a virtual password input
 const unsupportedPassword: typeof roleNames.$inferInsert = { role: "item", password: "secret" };
@@ -54,35 +66,23 @@ async function surface() {
   // @ts-expect-error enqueue options are delay and key
   await sendWelcome.enqueue({ email: "a@example.com" }, { at: 30 });
   await nightly.enqueue({});
-  const id = await once("key", async () => 42);
-  expectType<Equal<typeof id, number>>();
-  // @ts-expect-error once keys are strings
-  await once(42, () => true);
-  const row = (await db.insert(posts).values({ title: "Hallo", locale: "de", translationOf: 1 }).returning())[0];
-  // A translation copies synced columns (authorId here), a fresh row still needs its required ones.
-  await db.insert(priced).values({ title: "Preis", locale: "de", translationOf: 1, handle: "preis" });
-  // @ts-expect-error a fresh row must give its required synced column
-  await db.insert(priced).values({ title: "Price", handle: "price" });
-  // @ts-expect-error a slug is per row: a translation must give its own
-  await db.insert(priced).values({ title: "Prix", locale: "de", translationOf: 1 });
-  expectType<Equal<typeof row.locale, Locale>>();
-  expectType<Equal<typeof row.translations, LocalizedColumns["translations"]>>();
-  expectType<Equal<typeof row.uid, string>>();
-  const member = (await db.insert(members).values({ email: "a@example.com", password: "long password" }).returning())[0];
-  expectType<Equal<typeof member.role, import("spacepress").Role>>();
-  // @ts-expect-error locale is immutable after create
-  await db.update(posts).set({ locale: "de" });
-  await db.query.posts.findMany({ locale: "de" });
-  await db.query.posts.findFirst({ locale: "*" });
+  const postRow: typeof posts.$inferSelect = null!;
+  expectType<Equal<typeof postRow.locale, Locale>>();
+  expectType<Equal<typeof postRow.translations, LocalizedColumns["translations"]>>();
+  expectType<Equal<typeof postRow.uid, string>>();
+  const memberRow: typeof members.$inferSelect = null!;
+  expectType<Equal<typeof memberRow.role, import("spacepress").Role>>();
+  await db.posts.list({ locale: "de" });
+  await db.posts.get(1, { locale: "*" });
   // @ts-expect-error locale is narrowed through the registered config
-  await db.query.posts.findMany({ locale: "fr" });
+  await db.posts.list({ locale: "fr" });
 }
 // @ts-expect-error values cannot be translated
-integer().localized();
+f.integer().localized();
 // @ts-expect-error fields are required by default and `.notNull()` is gone
-text().notNull();
+f.text().notNull();
 // @ts-expect-error every kind has an integer id; there is no primary-key modifier
-text().primaryKey();
+f.text().primaryKey();
 const field: import("spacepress").FieldRule = ctx => {
   expectType<Equal<typeof ctx, FieldAccessCtx>>();
   return ctx.op === "read" && ctx.data.visible === true;

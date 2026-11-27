@@ -12,7 +12,7 @@ export { title, src };
 
 // A server action, called from a "use client" component, takes the action's own input.
 import { mutation } from "spacepress";
-const cheer = mutation({ access: "anyone" }, async ({ noteId }: { noteId: number }) => { return { count: noteId }; });
+const cheer = mutation({ access: "anyone" }, async (_ctx, { noteId }: { noteId: number }) => { return { count: noteId }; });
 export async function clientCall(): Promise<number> {
   // @ts-expect-error the input is the action's own
   await cheer({ note: 1 });

@@ -1,8 +1,7 @@
-// Positive checks: inferred types are exactly what the spec says.
-import { defineConfig, text, job, email, type AccessCtx, type BlockValue, type BeforeHookCtx, type HookCtx, type InferInsertModel, type InferSelectModel, type User, type ValidateCtx, mutation } from "spacepress";
+// Positive checks: inferred types are exactly what the 1.0 spec says.
+import { defineConfig, f, job, mutation, type AccessCtx, type BlockValue, type InferInsertModel, type InferSelectModel, type MutationCtx, type User, type ValidateCtx } from "spacepress";
 import { db } from "spacepress/server";
-import { authors, comments, items, locations, notes, posts, entities, settings, shoppingList } from "./schema";
-import type { AppRelations } from "./register";
+import { authors, comments, items, locations, notes, posts, settings, shoppingList } from "./schema";
 
 export type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
 export declare function expectType<T extends true>(): void;
@@ -28,7 +27,7 @@ expectType<Equal<Item, (typeof items)["$inferSelect"]>>();
 expectType<Equal<RequiredKeys<ItemInsert>, "name">>();
 expectType<Equal<keyof ItemInsert, keyof Item>>();
 
-// v1 builders (design §1.1)
+// Field builders
 type Post = InferSelectModel<typeof posts>;
 type Author = InferSelectModel<typeof authors>;
 type Comment = InferSelectModel<typeof comments>;
@@ -45,7 +44,7 @@ expectType<Equal<Post["gallery"], { image: number; caption: string | null }[] | 
 expectType<
   Equal<Post["sections"], ({ layout: "hero"; heading: string; image: number | null } | { layout: "quote"; text: string; cite: string | null })[] | null>
 >();
-type Hero = Extract<BlockValue<{ hero: { heading: ReturnType<typeof text> } }>, { layout: "hero" }>;
+type Hero = Extract<BlockValue<{ hero: { heading: ReturnType<typeof f.text> } }>, { layout: "hero" }>;
 expectType<Equal<Hero, { layout: "hero"; heading: string }>>();
 
 // Collections gain status/publishedAt; tables don't.
@@ -62,25 +61,25 @@ expectType<Equal<(typeof settings)["$inferSelect"], { siteTitle: string; postsPe
 expectType<Equal<(typeof settings)["$inferUpdate"]["postsPerPage"], number | undefined>>();
 
 async function queries() {
-  // A loaded `ref()` field holds the row in place of its id; without `with` it holds the id.
-  const withLocation = await db.query.items.findMany({ with: { locationId: true } });
+  // A loaded `f.ref()` field holds the row in place of its id; without `with` it holds the id.
+  const withLocation = await db.items.list({ with: { locationId: true } });
   expectType<Equal<(typeof withLocation)[number]["locationId"], Location | null>>();
-  const plain = await db.query.items.findFirst();
+  const plain = await db.items.get(1);
   expectType<Equal<NonNullable<typeof plain>["locationId"], number | null>>();
 
   // A many-ref holds its ids; `with` loads the rows in their place; filters take `has` or the rows'.
-  const post = await db.query.posts.findFirst({ where: { related: { has: 3 } } });
+  const post = await db.posts.get({ related: { has: 3 } });
   expectType<Equal<NonNullable<typeof post>["related"], number[] | null>>();
-  const withRelated = await db.query.posts.findFirst({
-    where: { related: { title: "x" }, relatedFrom: { status: "published" } },
-    with: { related: { columns: { title: true }, limit: 3 }, relatedFrom: true },
-  });
+  const withRelated = await db.posts.get(
+    { related: { title: "x" }, relatedFrom: { status: "published" } },
+    { with: { related: { columns: { title: true }, limit: 3 }, relatedFrom: true } },
+  );
   expectType<Equal<NonNullable<typeof withRelated>["related"], { title: string }[]>>();
   expectType<Equal<NonNullable<typeof withRelated>["relatedFrom"][number]["related"], number[] | null>>();
-  await db.update(posts).set({ related: [1, 2] }).where({ id: 1 });
+  await db.posts.update(1, { related: [1, 2] });
 
-  // A term row (ruling 27): its own fields and the authored ones; `with` both ways (ruling 28).
-  const topic = await db.query.topics.findFirst({ where: { posts: { title: "x" } }, with: { posts: { columns: { title: true } } } });
+  // A term row: its own fields and the authored ones; `with` both ways.
+  const topic = await db.topics.get({ posts: { title: "x" } }, { with: { posts: { columns: { title: true } } } });
   expectType<Equal<NonNullable<typeof topic>["name"], string>>();
   expectType<Equal<NonNullable<typeof topic>["slug"], string>>();
   expectType<Equal<NonNullable<typeof topic>["parent"], number | null>>();
@@ -88,54 +87,54 @@ async function queries() {
   expectType<Equal<NonNullable<typeof topic>["url"], string | null>>();
   expectType<Equal<NonNullable<typeof topic>["color"], string | null>>();
   expectType<Equal<NonNullable<typeof topic>["posts"], { title: string }[]>>();
-  const label = await db.query.labels.findFirst();
+  const label = await db.labels.get(1);
   expectType<Equal<"parent" extends keyof NonNullable<typeof label> ? true : false, false>>();
   // The item field is the term ids; `with` puts the term rows in their place.
-  const tagged = await db.query.notes.findFirst({ where: { labelIds: { has: 2 } } });
+  const tagged = await db.notes.get({ labelIds: { has: 2 } });
   expectType<Equal<NonNullable<typeof tagged>["labelIds"], number[]>>();
-  const withTerms = await db.query.notes.findFirst({ with: { labelIds: { columns: { name: true } } } });
+  const withTerms = await db.notes.get(1, { with: { labelIds: { columns: { name: true } } } });
   expectType<Equal<NonNullable<typeof withTerms>["labelIds"], { name: string }[]>>();
-  await db.insert(notes).values({ title: "n" });
-  await db.update(notes).set({ labelIds: [1, 2] }).where({ id: 1 });
+  await db.notes.create({ title: "n" });
+  await db.notes.update(1, { labelIds: [1, 2] });
 
   // A required ref -> not nullable once loaded.
-  const comment = await db.query.comments.findFirst({ with: { postId: true } });
+  const comment = await db.comments.get(1, { with: { postId: true } });
   expectType<Equal<NonNullable<typeof comment>["postId"]["id"], number>>();
 
   // columns pick + nested with
-  const loc = await db.query.locations.findFirst({
+  const loc = await db.locations.get(1, {
     columns: { name: true },
     with: { items: { columns: { id: true }, with: { locationId: true }, limit: 5 } },
   });
-  expectType<Equal<typeof loc, { name: string; items: { id: number; locationId: Location | null }[] } | undefined>>();
+  expectType<Equal<typeof loc, { name: string; items: { id: number; locationId: Location | null }[] } | null>>();
 
   // columns omit
-  const lists = await db.query.shoppingList.findMany({
+  const lists = await db.shoppingList.list({
     columns: { done: false },
     where: { itemId: { locationId: { kind: "fridge" } }, OR: [{ done: true }, { itemId: 3 }, { itemId: { in: [1, 2] } }] },
     orderBy: { name: "asc" },
   });
   expectType<Equal<keyof (typeof lists)[number], "id" | "itemId" | "name" | "author" | "createdAt" | "updatedAt" | "deletedAt" | "deletedBy">>();
 
-  const inserted = await db.insert(items).values([{ name: "a" }, { name: "b", unit: "kg" }]).returning();
-  expectType<Equal<typeof inserted, Item[]>>();
-  const updated = await db.update(items).set({ quantity: 2 }).where({ id: { in: [1, 2] } }).returning();
-  expectType<Equal<typeof updated, Item[]>>();
-  await db.delete(shoppingList).where({ done: true, itemId: { isNull: true } });
+  const inserted = await db.items.create({ name: "a" });
+  expectType<Equal<typeof inserted, Item>>();
+  const updated = await db.items.update(1, { quantity: 2 });
+  expectType<Equal<typeof updated, Item>>();
+  await db.shoppingList.delete(1);
 
-  // `has` on list columns; JSON-valued columns compare whole values; trusted reads see every status.
-  const news = await db.query.posts.findMany({
+  // `has` on list columns; JSON-valued columns compare whole values; system reads see every status.
+  const news = await db.system.posts.list({
     where: { tags: { has: "news" }, photos: { isNull: true }, seo: { isNotNull: true }, status: { in: ["draft", "scheduled"] } },
     orderBy: { publishedAt: "desc" },
     with: { authorId: true },
   });
   expectType<Equal<(typeof news)[number]["authorId"], Author | null>>();
-  await db.update(posts).set({ status: "published", sections: [{ layout: "quote", text: "hi" }] }).where({ tags: { eq: [] } });
+  await db.posts.update(1, { status: "published", sections: [{ layout: "quote", text: "hi" }] });
 
-  // db.globals is typed from the registration spacepress build writes (./register.ts).
-  const s = await db.globals.settings.get();
+  // Flattened globals on db.
+  const s = await db.settings.get();
   expectType<Equal<typeof s.postsPerPage, number>>();
-  await db.globals.settings.update({ postsPerPage: 20 });
+  await db.settings.update({ postsPerPage: 20 });
 }
 
 // Access rule functions see a typed ctx; read/update may return filters (with relation keys).
@@ -148,51 +147,51 @@ void (0 as unknown as PostAccess);
 declare const vctx: ValidateCtx;
 expectType<Equal<typeof vctx.user, User | null>>();
 
-export const sendWelcome = job({}, async (input: { email: string; name?: string }, ctx) => { expectType<Equal<typeof input.name, string | undefined>>(); void [input.email, ctx.attempt, ctx.jobId]; });
+export const sendWelcome = job({}, async (ctx, input: { email: string; name?: string }) => {
+  expectType<Equal<typeof input.name, string | undefined>>();
+  void [input.email, ctx.attempt, ctx.jobId];
+});
 expectType<Equal<Parameters<typeof sendWelcome.enqueue>[0], { email: string; name?: string }>>();
 
-// Hooks are declared on the kind (spec §2.8); each handler is typed by its own kind.
+// Hooks are declared on the kind; each handler takes an object ctx typed by its own kind.
 posts.on({
-  // Hooks get a trailing ctx: who's writing, and where.
-  async beforeCreate(data, ctx) {
-    expectType<Equal<typeof ctx, BeforeHookCtx<typeof data>>>();
-    expectType<Equal<typeof ctx.data, typeof data>>();
-    if (data.authorId == null && ctx.user) {
-      const author = await db.query.authors.findFirst({ where: { userId: ctx.user.id } });
+  async beforeCreate({ data, user, db: hdb }) {
+    if (data.authorId == null && user) {
+      const author = await hdb.authors.get({ userId: user.id });
       if (author) data.authorId = author.id;
     }
   },
-  afterUpdate(row, previous, ctx) {
+  afterUpdate({ row, previous, user }) {
     expectType<Equal<[typeof row, typeof previous], [Post, Post]>>();
-    if (previous.status !== "published" && row.status === "published") void ctx.user;
+    if (previous.status !== "published" && row.status === "published") void user;
   },
 });
 items.on({
-  beforeCreate(data) {
+  beforeCreate({ data }) {
     expectType<Equal<typeof data, ItemInsert>>();
     data.name = data.name.trim();
   },
-  async beforeUpdate(patch, existing) {
+  async beforeUpdate({ patch, existing }) {
     expectType<Equal<typeof patch, Partial<ItemInsert>>>();
     return { ...patch, name: existing.name };
   },
-  afterUpdate(row, previous) {
+  afterUpdate({ row, previous }) {
     expectType<Equal<typeof row | typeof previous, Item>>();
   },
 });
 
-export const consume = mutation({}, ({ itemId, amount = 1 }: { itemId: number; amount?: number; note?: string }) => {
+export const consume = mutation({}, (_ctx, { itemId, amount = 1 }: { itemId: number; amount?: number; note?: string }) => {
   expectType<Equal<typeof amount, number>>();
   return itemId * amount;
 });
 // The client calls a function with its handler's input type and gets its result.
 expectType<Equal<Parameters<typeof consume>[0], { itemId: number; amount?: number; note?: string }>>();
 expectType<Equal<Awaited<ReturnType<typeof consume>>, number>>();
-export const whoami = mutation({ access: (ctx) => ctx.user !== null }, (_input: {}, ctx) => {
-  expectType<Equal<typeof ctx, HookCtx>>();
+export const whoami = mutation({ access: (ctx) => ctx.user !== null }, (ctx, _input: {}) => {
+  expectType<Equal<typeof ctx, MutationCtx>>();
   return ctx.user?.name ?? "anonymous";
 });
-export const publish = mutation({ access: "editor" }, ({ id }: { id: number }) => id);
+export const publish = mutation({ access: "editor" }, (_ctx, { id }: { id: number }) => id);
 
 export default defineConfig({
   locales: { default: "en", all: ["en", "de"] },

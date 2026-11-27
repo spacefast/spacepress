@@ -110,6 +110,8 @@ pub struct Extracted {
     pub plugins: Option<crate::wp_plugins::Config>,
     /// `defineConfig({ use })`: plugin packages, in registration order.
     pub uses: Vec<crate::plugins::Plugin>,
+    /// Source spans for each entry in `defineConfig({ permalinks })`.
+    pub permalink_spans: IndexMap<String, Span>,
     /// `ref()` fields, for their relations once every kind is extracted.
     refs: Vec<RefField>,
 }
@@ -322,6 +324,7 @@ pub fn extract(config: &Value, ev: &mut Evaluator<'_>, config_span: Span, defaul
         refs: Vec::new(),
         plugins: None,
         uses: Vec::new(),
+        permalink_spans: IndexMap::new(),
     };
 
     out.schema.name = match cfg_map.get("name") {
@@ -4815,6 +4818,7 @@ fn extract_permalinks(v: &Value, span: Span, ev: &Evaluator<'_>, out: &mut Extra
             ));
         };
         let pattern = normalize_permalink(&raw);
+        out.permalink_spans.insert(kind.clone(), kspan);
         out.schema.permalinks.insert(kind, pattern);
     }
     Ok(())

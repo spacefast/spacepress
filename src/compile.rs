@@ -3582,32 +3582,30 @@ impl<'a, 'p> Compiler<'a, 'p> {
             ExprKind::Logical(op @ (LogOp::And | LogOp::Or), l, r) if (*op == LogOp::And) != negate => {
                 let start = out.len();
                 self.collect_narrowing(l, negate, out);
-                // The right side is checked with the left side's narrowing applied.
-                let left: Vec<_> = out[start..].to_vec();
+                let after_left = out.len();
+                // The right side is checked with only the left-side refinements that `r` cannot
+                // mutate; otherwise a later comparison inside `r` would read a stale narrowing.
+                let left: Vec<_> = out[start..after_left]
+                    .iter()
+                    .filter(|fact| self.refinement_survives(r, &fact.path))
+                    .cloned()
+                    .collect();
                 self.fx().scopes.push(HashMap::new());
                 self.apply_narrowing(&left, true);
                 self.collect_narrowing(r, negate, out);
                 self.fx().scopes.pop();
-                let right = out.split_off(start + left.len());
+                let right = out.split_off(after_left);
                 out.truncate(start);
                 let mut left_by_path = HashMap::new();
                 let mut right_by_path = HashMap::new();
                 let mut order = Vec::new();
-                // A comparison may read a type computed before a write elsewhere in the logical
-                // test. Drop facts on paths that the test can change.
-                for fact in left
-                    .into_iter()
-                    .filter(|fact| self.refinement_survives(test, &fact.path))
-                {
+                for fact in left {
                     if !left_by_path.contains_key(&fact.path) {
                         order.push(fact.path.clone());
                     }
                     left_by_path.insert(fact.path, (fact.yes, fact.no));
                 }
-                for fact in right
-                    .into_iter()
-                    .filter(|fact| self.refinement_survives(test, &fact.path))
-                {
+                for fact in right {
                     if !left_by_path.contains_key(&fact.path) && !right_by_path.contains_key(&fact.path) {
                         order.push(fact.path.clone());
                     }
@@ -11492,6 +11490,9 @@ impl<'a, 'p> Compiler<'a, 'p> {
                         format!("['where' => {}]", self.filter(table, target, true)?)
                     }
                 } else {
+                    if let Some(pk) = self.schema.collections[table].primary_key() {
+                        self.queried.insert((table.to_string(), pk.name.clone()));
+                    }
                     format!("['id' => {}]", id(self, target)?)
                 };
                 let (opts, row_ty) = match plain.get(1) {

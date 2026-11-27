@@ -1,13 +1,13 @@
-import { collection, defineConfig, definePlugin, text, type Plugin, mutation } from "spacepress";
+import { collection, defineConfig, definePlugin, f, type Plugin, mutation } from "spacepress";
 import { destructiveMigrations } from "spacepress/danger";
 
-const posts = collection({ title: text(), summary: text().optional() }, { title: "title" });
+const posts = collection({ title: f.text(), summary: f.text().optional() }, { title: "title" });
 
 // A package's export: options in, a plugin out. No capability list.
 function seo(options: { suffix: string }): Plugin {
   return definePlugin<{ posts: typeof posts }>({
     name: "seo",
-    hooks: { posts: { beforeCreate(data) { data.summary = data.title + options.suffix; } } },
+    hooks: { posts: { beforeCreate({ data }) { data.summary = data.title + options.suffix; } } },
     actions: {
       ping: mutation({ access: "anyone" }, () => { return "pong"; }),
     },

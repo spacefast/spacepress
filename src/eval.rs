@@ -4382,7 +4382,7 @@ impl<'p> Evaluator<'p> {
                     return err_help(
                         span,
                         format!(".on() takes one object of hooks, not {}", handlers.describe()),
-                        "write `.on({ beforeCreate(data, ctx) { ... } })`",
+                        "write `.on({ beforeCreate({ data, user, db }) { ... } })`",
                     );
                 }
                 // Ruling 18: hooks belong to the declaration, so another file can't add them.

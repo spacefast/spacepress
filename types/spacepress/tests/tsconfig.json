@@ -13,17 +13,17 @@
       "spacepress": [
         "../index.d.ts"
       ],
+      "spacepress/commerce": [
+        "../commerce.d.ts"
+      ],
+      "spacepress/admin": [
+        "../admin.d.ts"
+      ],
       "spacepress/server": [
         "../server.d.ts"
       ],
-      "spacepress/server/db": [
-        "../server-db.d.cts"
-      ],
       "spacepress/app": [
         "../app.d.ts"
-      ],
-      "spacepress/content": [
-        "../content.d.ts"
       ],
       "spacepress/server/wp": [
         "../server-wp.d.ts"

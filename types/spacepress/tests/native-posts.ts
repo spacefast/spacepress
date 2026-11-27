@@ -1,9 +1,18 @@
-// `wp.posts.extend()` and `wp.posts.clone()`: posts' own fields are typed, the app's fields are
-// added, `url` is required on WordPress's posts, and posts' own field names can't be redeclared.
-import { wp, integer, media, text, type InferSelectModel, type InferInsertModel } from "spacepress";
+// `extend("posts" | "pages" | "users", options?)`: built-in kinds' own fields are typed,
+// the app's extra fields are added, and built-in field names can't be redeclared.
+import { extend, f, type InferSelectModel, type InferInsertModel } from "spacepress";
 
-export const posts = wp.posts.extend({ cover: media({ accept: "image" }).optional(), minutes: integer().optional() }, { url: "/blog/:slug", sync: "content/posts/*.md" });
-export const notes = wp.posts.clone({ mood: text().optional() }, { url: "/notes/:slug", access: { create: "author" } });
+export const posts = extend("posts", {
+  fields: { cover: f.media({ accept: "image" }).optional(), minutes: f.integer().optional() },
+  sync: "content/posts/*.md",
+});
+export const pages = extend("pages", {
+  fields: { subtitle: f.text().optional() },
+});
+export const users = extend("users", {
+  fields: { bio: f.text().optional() },
+  access: { read: "self", update: "self" },
+});
 
 type Post = InferSelectModel<typeof posts>;
 const title: string = ({} as Post).title;
@@ -12,13 +21,15 @@ const minutes: number | null = ({} as Post).minutes;
 const uid: string = ({} as Post).uid;
 const status: "draft" | "published" | "scheduled" = ({} as Post).status;
 export const insert: InferInsertModel<typeof posts> = { title: "Hello" };
-type Note = InferSelectModel<typeof notes>;
-const mood: string | null = ({} as Note).mood;
-void [title, excerpt, minutes, uid, status, mood];
+type Page = InferSelectModel<typeof pages>;
+const subtitle: string | null = ({} as Page).subtitle;
+type UserRow = InferSelectModel<typeof users>;
+const bio: string | null = ({} as UserRow).bio;
+void [title, excerpt, minutes, uid, status, subtitle, bio];
 
-// @ts-expect-error WordPress's posts need a url
-wp.posts.extend({}, {});
+// @ts-expect-error only "posts" | "pages" | "users" can be extended
+extend("comments");
 // @ts-expect-error posts already have an excerpt
-wp.posts.extend({ excerpt: text() }, { url: "/blog/:slug" });
-// @ts-expect-error not an option of a post kind
-wp.posts.clone({}, { hierarchical: true });
+extend("posts", { fields: { excerpt: f.text() } });
+// @ts-expect-error not an option of extend("posts")
+extend("posts", { hierarchical: true });

@@ -977,35 +977,6 @@ export type QueryRow<TSchema extends Schema, TRels, K extends keyof TSchema, TCo
     WithResult<TSchema, TRels, K, TWith>
 >;
 
-export interface CollectionQuery<TSchema extends Schema, TRels, K extends keyof TSchema> {
-  findMany<
-    TCols extends ColumnsSelection<TSchema[K]> = {},
-    TWith extends WithConfig<TSchema, TRels, K> = {},
-  >(config?: {
-    locale?: Locale | "*";
-    deleted?: DeletedMode;
-    where?: RelationsFilter<TSchema, TRels, K>;
-    orderBy?: OrderBy<TSchema[K]>;
-    limit?: number;
-    offset?: number;
-    columns?: TCols;
-    with?: TWith;
-  }): Promise<QueryRow<TSchema, TRels, K, TCols, TWith>[]>;
-
-  findFirst<
-    TCols extends ColumnsSelection<TSchema[K]> = {},
-    TWith extends WithConfig<TSchema, TRels, K> = {},
-  >(config?: {
-    locale?: Locale | "*";
-    deleted?: DeletedMode;
-    where?: RelationsFilter<TSchema, TRels, K>;
-    orderBy?: OrderBy<TSchema[K]>;
-    offset?: number;
-    columns?: TCols;
-    with?: TWith;
-  }): Promise<QueryRow<TSchema, TRels, K, TCols, TWith> | undefined>;
-}
-
 // ---------------------------------------------------------------------------
 // 7. Registry
 // ---------------------------------------------------------------------------
@@ -1248,6 +1219,7 @@ export interface MutationCtx {
   mail: Mail;
   connectors: Connectors;
   files: Files;
+  once: Once;
 }
 
 /** Context passed as the second argument to `route.ts` / page HTTP handlers. */
@@ -1598,8 +1570,14 @@ export interface RouteQuery {
   has(name: string): boolean;
   entries(): [string, string][];
 }
+/** Structural shape of a Web `Response` (`Response.json(...)` / `new Response(...)`) without requiring DOM lib. */
+export interface WebResponse {
+  readonly status: number;
+  readonly ok: boolean;
+  readonly headers: unknown;
+}
 /** What a route handler returns: a Web `Response` (`Response.json(...)` / `new Response(...)`) or `{ status?, headers?, body? }`. */
-export type RouteResponse = Response | { status?: number; headers?: Record<string, string>; body?: string };
+export type RouteResponse = WebResponse | { status?: number; headers?: Record<string, string>; body?: string };
 
 export type MailAddress = string | { email: string; name?: string | null };
 /**

@@ -822,6 +822,7 @@ pub fn mutation_ctx() -> Ty {
         ("mail", Ty::Mail),
         ("connectors", Ty::Connectors),
         ("files", Ty::Files),
+        ("once", Ty::Once),
     ])
 }
 

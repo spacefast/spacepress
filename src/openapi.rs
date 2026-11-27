@@ -2033,9 +2033,9 @@ mod tests {
     #[test]
     fn names_shared_with_wordpress_kinds_leave_no_dangling_reference() {
         let doc = document(
-            "import { collection, global, text } from \"spacepress\";\n\
-             export const categories = collection({ title: text() }, { title: \"title\" });\n\
-             export const posts = global({ motto: text().default(\"x\") });\n",
+            "import { collection, f, global } from \"spacepress\";\n\
+             export const categories = collection({ title: f.text() }, { title: \"title\" });\n\
+             export const posts = global({ motto: f.text().default(\"x\") });\n",
         );
         assert_eq!(dangling(&doc), Vec::<String>::new());
         assert_eq!(doc["paths"]["/tags"]["get"]["operationId"], "tags.list");

@@ -21,17 +21,17 @@ export const wrongPage = SearchResults({ q: "bread", page: "2" });
 export const wrongKind = SearchResults({ q: "bread", kind: { name: "events" } });
 
 // `.searchable()` on a collection's text fields: which fields `search` matches.
-import { collection, email, integer, richText, text } from "spacepress";
+import { collection, f } from "spacepress";
 
 export const recipes = collection({
-  title: text(),
-  intro: richText().searchable(),
-  author: email().searchable(),
-  internalNotes: text().optional().searchable(false),
-  servings: integer(),
+  title: f.text(),
+  intro: f.richText().searchable(),
+  author: f.email().searchable(),
+  internalNotes: f.text().optional().searchable(false),
+  servings: f.integer(),
 });
-export const explicitOn = text().searchable(true);
+export const explicitOn = f.text().searchable(true);
 // @ts-expect-error a number isn't searched: filter it with `where`
-export const countSearch = integer().searchable();
+export const countSearch = f.integer().searchable();
 // @ts-expect-error the flag is a boolean
-export const wrongFlag = text().searchable("yes");
+export const wrongFlag = f.text().searchable("yes");

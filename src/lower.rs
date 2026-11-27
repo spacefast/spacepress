@@ -2160,7 +2160,7 @@ impl Lowerer {
         Ok(match t {
             T::TSNumberKeyword(_) => TyAnn::Num,
             T::TSBigIntKeyword(_) => TyAnn::BigInt,
-            T::TSStringKeyword(_) => TyAnn::Str,
+            T::TSStringKeyword(_) | T::TSTemplateLiteralType(_) => TyAnn::Str,
             T::TSBooleanKeyword(_) => TyAnn::Bool,
             T::TSNullKeyword(_) => TyAnn::Null,
             T::TSUndefinedKeyword(_) => TyAnn::Undefined,

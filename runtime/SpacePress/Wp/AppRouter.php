@@ -800,7 +800,7 @@ final class AppRouter
             if ($status === 404) {
                 $this->document(404, ['title' => __('Page not found')], '<h1>' . esc_html__('Page not found') . '</h1>');
             }
-            $this->notFound($missingItem && $moved === null && $this->shareableItemMiss($route, $params, $viewer, $uri));
+            $this->notFound(($missingItem || ($route['kind'] ?? null) !== null) && $moved === null && $this->shareableItemMiss($route, $params, $viewer, $uri));
         } catch (\SpacePress\HttpError $error) {
             // A read the visitor may not make (a guarded query) is not found for them.
             if ($error->status === 401 || $error->status === 403 || $error->status === 404) {
@@ -914,7 +914,7 @@ final class AppRouter
         $locale = \SpacePress\Locale\Module::localized($name) ? ['locale' => '*'] : [];
         try {
             // The row this URL names: the page depends on that row, not on a listing of its kind.
-            $row = Reads::named($name, static fn () => Seam::findFirst($name, ['where' => $where] + $locale));
+            $row = Reads::named($name, static fn () => Seam::kindGet($name, ['where' => $where], $locale, false));
         } catch (\SpacePress\HttpError) {
             return null;
         }

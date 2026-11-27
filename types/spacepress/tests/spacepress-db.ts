@@ -1,51 +1,52 @@
-// `import { … } from "spacepress/server/db"` gives each registered kind by name (docs/spec/spec.md §2.1), typed
-// from the registration in register.ts, and refuses a name the app doesn't register.
-import { posts, items } from "spacepress/server/db";
+// Unified `db.<kind>.*` API and capability enforcement (`ReadOnlyDb` vs `Db` vs `SystemDb`).
+import { f, query, mutation, table } from "spacepress";
 import { db } from "spacepress/server";
-import { posts as declared } from "./schema";
 
-// The same kind the module declared: usable wherever the declaration is.
-const same: typeof declared = posts;
-// @ts-expect-error: a kind is not a number
-const wrong: number = posts;
-void wrong;
-void same;
 export async function bump(id: number) {
-  await db.update(items).set({ quantity: 2 }).where({ id });
+  await db.items.update(id, { quantity: 2 });
   // @ts-expect-error: not a column of items
-  await db.update(items).set({ nope: 1 }).where({ id });
+  await db.items.update(id, { nope: 1 });
 }
 
-// @ts-expect-error: not a registered kind
-import { missing } from "spacepress/server/db";
-void missing;
-
-// The query API (spec §3): each kind lists, pages, gets, counts and writes as the visitor.
+// Each kind lists, pages, gets, counts and writes as the visitor; `db.system.<kind>` bypasses access.
 export async function queries(id: number) {
-  const rows = await items.list({ where: { quantity: { gt: 1 } }, orderBy: { quantity: "desc" }, limit: 10, columns: { quantity: true } });
+  const rows = await db.items.list({ where: { quantity: { gt: 1 } }, orderBy: { quantity: "desc" }, limit: 10, columns: { quantity: true } });
   const q: number = rows[0]!.quantity;
-  const page = await items.paginate({ limit: 20, cursor: null });
+  const page = await db.items.paginate({ limit: 20, cursor: null });
   const next: string | null = page.cursor;
-  const one = await items.get(id);
+  const one = await db.items.get(id);
   const maybe: number | undefined = one?.quantity;
-  const n: number = await items.count({ where: { quantity: 2 } });
-  const created = await items.create({ name: "Nails", quantity: 3 });
-  const changed = await items.update(created.id, { quantity: 4 });
-  const removed = await items.delete(changed.id);
-  const trusted = await items.system.list();
+  const n: number = await db.items.count({ where: { quantity: 2 } });
+  const created = await db.items.create({ name: "Nails", quantity: 3 });
+  const changed = await db.items.update(created.id, { quantity: 4 });
+  const removed = await db.items.delete(changed.id);
+  const trusted = await db.system.items.list();
   void q; void next; void maybe; void n; void removed; void trusted;
   // @ts-expect-error: not a column of items
-  await items.list({ where: { nope: 1 } });
+  await db.items.list({ where: { nope: 1 } });
   // @ts-expect-error: paginate takes a cursor, not an offset
-  await items.paginate({ offset: 5 });
-  // @ts-expect-error: a kind has no findMany; that is db.query's
-  await items.findMany();
+  await db.items.paginate({ offset: 5 });
+  // @ts-expect-error: findMany is gone
+  await db.items.findMany();
+  // @ts-expect-error: not a registered kind
+  await db.missing.list();
 }
 
+// Capability enforcement: `query()` gets ReadOnlyDb (no writes); `mutation()` gets full Db.
+export const readOnlyCheck = query({ access: "anyone" }, async ({ db: qdb }) => {
+  const rows = await qdb.items.list();
+  // @ts-expect-error: query() db is read-only
+  await qdb.items.create({ name: "nope" });
+  return rows;
+});
+
+export const writeCheck = mutation({ access: "editor" }, async ({ db: mdb }) => {
+  return await mdb.items.create({ name: "ok" });
+});
+
 // `.index(fields, { unique? })` declares a compound index on the kind's own fields.
-import { table, integer } from "spacepress";
-export const pairs = table({ a: integer(), b: integer() }).index(["a", "b"], { unique: true });
+export const pairs = table({ a: f.integer(), b: f.integer() }).index(["a", "b"], { unique: true });
 // @ts-expect-error: not a field of this kind
-export const wrongPair = table({ a: integer() }).index(["nope"]);
+export const wrongPair = table({ a: f.integer() }).index(["nope"]);
 // @ts-expect-error: at least one field
-export const emptyPair = table({ a: integer() }).index([]);
+export const emptyPair = table({ a: f.integer() }).index([]);

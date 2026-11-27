@@ -647,7 +647,8 @@ final class KindUrls
             return;
         }
         $want = $this->path($kind, $post);
-        $have = '/' . trim((string) wp_parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH), '/');
+        $rawPath = strtok((string) ($_SERVER['REQUEST_URI'] ?? '/'), '?');
+        $have = '/' . trim(is_string($rawPath) ? $rawPath : '/', '/');
         $home = rtrim((string) wp_parse_url(home_url('/'), PHP_URL_PATH), '/');
         if ($home !== '' && str_starts_with($have, $home)) {
             $have = substr($have, strlen($home)) ?: '/';

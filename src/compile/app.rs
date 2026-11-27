@@ -291,7 +291,9 @@ impl Compiler<'_, '_> {
 
     /// `notFound()` and `redirect(url, status?)`: they never return.
     pub(super) fn app_call(&mut self, name: &str, args: &[ArrEl], span: Span) -> Result<Out> {
-        self.route_opaque(name);
+        if !matches!(name, "notFound" | "headings" | "apiReference") {
+            self.route_opaque(name);
+        }
         match name {
             "useFormState" => self.use_form_state(args, span),
             "headings" | "apiReference" => self.content_call(name, args, span),

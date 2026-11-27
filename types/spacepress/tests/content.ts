@@ -1,12 +1,12 @@
-// "spacepress/content" types: what nav(), pager() and headings() give a docs page.
-import { nav, pager, headings, type NavItem, type Heading } from "spacepress/content";
+// "spacepress/app" content helpers: headings(), apiReference(), and hierarchical db.<kind>.nav()/pager().
+import { headings, apiReference, type NavItem, type Heading, type ApiField, type ApiOperation } from "spacepress/app";
+import { db } from "spacepress/server";
 
-declare const docs: unknown;
 declare const item: { id: number; content: string | null };
 
 export async function docsPage(): Promise<string[]> {
-  const tree: NavItem[] = await nav(docs, item);
-  const { prev, next } = await pager(docs, item.id);
+  const tree: NavItem[] = await db.topics.nav(item);
+  const { prev, next } = await db.topics.pager(item.id);
   const toc: Heading[] = headings(item);
   const out: string[] = tree.flatMap((a) => [a.title, ...a.children.map((b) => b.href)]);
   if (prev) out.push(prev.href);
@@ -21,9 +21,6 @@ export async function docsPage(): Promise<string[]> {
   void headings(item).then;
   return out;
 }
-
-// apiReference(): an OpenAPI document as tags, operations and fields a page maps over.
-import { apiReference, type ApiField, type ApiOperation } from "spacepress/content";
 
 export function reference(): string[] {
   const api = apiReference();

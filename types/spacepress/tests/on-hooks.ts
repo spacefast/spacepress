@@ -1,32 +1,31 @@
-// `.on()` hooks (spec §2.8): each handler is typed by its own kind, also when two kinds sit side by
-// side and one refers to the other. Compiles only.
-import { collection, table, text, integer, ref } from "spacepress";
+// `.on()` hooks: object-style ctx, typed by its own kind.
+import { collection, f, table } from "spacepress";
 
-export const authors = collection({ name: text() }).on({
-  beforeCreate(data) {
+export const authors = collection({ name: f.text() }).on({
+  beforeCreate({ data }) {
     data.name = data.name.trim();
   },
-  afterPublish(row) {
+  onPublish({ row }) {
     const name: string = row.name;
     void name;
   },
 });
 
-export const notes = table({ body: text(), stars: integer().default(0), author: ref(authors).optional() })
+export const notes = table({ body: f.text(), stars: f.integer().default(0), author: f.ref(authors).optional() })
   .on({
-    beforeCreate(data) {
+    beforeCreate({ data }) {
       const body: string = data.body;
       void body;
       // @ts-expect-error a note has no `name`: the handler sees notes, not authors
       void data.name;
     },
-    afterUpdate(row, previous) {
+    afterUpdate({ row, previous }) {
       const stars: number = row.stars + previous.stars;
       void stars;
     },
   })
   .on({
-    afterCreate(row) {
+    afterCreate({ row }) {
       // @ts-expect-error `stars` is a number
       const s: string = row.stars;
       void s;

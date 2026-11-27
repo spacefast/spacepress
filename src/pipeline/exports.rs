@@ -134,7 +134,7 @@ fn removed_key(ev: &Evaluator<'_>, program: &Program, config: &Value, key: &str)
     if key == "hooks" {
         let kind = entries.first().map_or("posts", |(k, _)| k.as_str());
         return Some(d.help(format!(
-            "declare them where the kind is exported: `export const {kind} = collection({{ ... }}).on({{ beforeCreate(data) {{ ... }} }})`; handler functions may come from anywhere"
+            "declare them where the kind is exported: `export const {kind} = collection({{ ... }}).on({{ beforeCreate({{ data }}) {{ ... }} }})`; handler functions may come from anywhere"
         )));
     }
     // An entry listed under another name than its binding's: the fix keeps the entry's key.

@@ -198,11 +198,11 @@ mod tests {
         std::fs::write(
             root.join("spacepress.config.ts"),
             r#"
-import { defineConfig, table, text } from "spacepress";
+import { defineConfig, f, table } from "spacepress";
 import { destructiveMigrations } from "spacepress/danger";
 
 export const notes = table({
-  body: text(),
+  body: f.text(),
 });
 
 export default defineConfig({

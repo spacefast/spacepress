@@ -1,9 +1,9 @@
-// Feature 6 config surface (phase 2 §7.2): media sizes and private file buckets. Compiles only.
-import { collection, defineConfig, file, files, text, env, type PrivateFileInfo } from "spacepress";
+// Feature 6 config surface: media sizes and private file buckets. Compiles only.
+import { collection, defineConfig, f, files, env, type PrivateFileInfo } from "spacepress";
 
 export const decks = files({ accept: ["application/pdf", "image/*"], maxBytes: 20_000_000, access: { read: "owner", create: "author", delete: (ctx) => ctx.user?.role === "admin" } });
 export const shared = files({ accept: ["text/plain"], maxBytes: 1_000 });
-export const talks = collection({ title: text(), deck: file(decks).optional() });
+export const talks = collection({ title: f.text(), deck: f.file(decks).optional() });
 type TalkRow = typeof talks.$inferSelect;
 const deckId: TalkRow["deck"] = 1;
 const noDeck: TalkRow["deck"] = null;
@@ -18,10 +18,10 @@ defineConfig({
 files({ accept: ["application/pdf"] });
 // @ts-expect-error fit is cover or inside
 defineConfig({ name: "x", media: { sizes: { a: { width: 1, fit: "fill" } } } });
-// @ts-expect-error file() needs a bucket
-file().optional();
-// @ts-expect-error file() takes the exported bucket, not its name
-file({ bucket: "decks" }).optional();
+// @ts-expect-error f.file() needs a bucket
+f.file().optional();
+// @ts-expect-error f.file() takes the exported bucket, not its name
+f.file({ bucket: "decks" }).optional();
 void deckId, noDeck;
 
 // @ts-expect-error credentials must be runtime environment references

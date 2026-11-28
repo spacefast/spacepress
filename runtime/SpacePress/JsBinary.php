@@ -140,6 +140,14 @@ final class JsBinary {
 			return $own; }
 		if ( $value instanceof JsBlob && null === $value->name && in_array( $key, array( 'name', 'lastModified' ), true ) ) {
 			return JsUndefined::Value; }
+		if ( $value instanceof JsTypedArray && $value->node_buffer && Node\Buffer::has( $key ) ) {
+			return Node\Module::method(
+				'Buffer:' . $key,
+				static fn ( mixed $receiver, array $args ): mixed => Node\Buffer::isBuffer( $receiver )
+					? Node\Buffer::call( $receiver, $key, $args )
+					: throw new JsError( 'Illegal invocation', 'TypeError' )
+			);
+		}
 		if ( self::has_method( $value, $key ) || 'toString' === $key || 'valueOf' === $key ) {
 			return self::method( $value, $key ); }
 		return JsUndefined::Value;
@@ -166,6 +174,9 @@ final class JsBinary {
 	}
 
 	public static function call( object $value, string $name, array $a ): mixed {
+		if ( $value instanceof JsTypedArray && $value->node_buffer && Node\Buffer::has( $name ) ) {
+			return Node\Buffer::call( $value, $name, $a );
+		}
 		if ( 'valueOf' === $name ) {
 			return $value; }
 		if ( 'toString' === $name && ! $value instanceof JsTypedArray ) {
@@ -195,8 +206,11 @@ final class JsBinary {
 		throw new JsError( self::tag( $value ) . ' is not iterable', 'TypeError' );
 	}
 
-	/** JSON.stringify: a typed array is an object of indexes; the others are `{}`. */
+	/** JSON.stringify exposes Buffer data and indexes of other typed arrays. */
 	public static function json( object $value ): \stdClass {
+		if ( $value instanceof JsTypedArray && $value->node_buffer ) {
+			return Node\Buffer::json( $value );
+		}
 		$out = new \stdClass();
 		if ( $value instanceof JsTypedArray ) {
 			foreach ( $value->values() as $i => $item ) {

@@ -1295,14 +1295,14 @@ fn returns_body_read(e: &Expr) -> bool {
 /// and a comparison that answers false for inputs of different byte lengths, where Node throws.
 const CRYPTO_PRELUDE: &str = r#"import { createHash as __z08Hash, createHmac as __z08Hmac, timingSafeEqual as __z08Equal } from "node:crypto";
 function __z08Sha256(data: string): string {
-  return __z08Hash("sha256").update(data).digest("hex");
+  return __z08Hash("sha256").update(data).digest("hex") as string;
 }
 function __z08InlineKey(key: string | undefined): string {
   if (key === undefined) throw new TypeError("crypto.hmacSha256 key must be a variable name or { value }");
   return key;
 }
 function __z08TimingSafeEqual(a: string, b: string): boolean {
-  return Buffer.byteLength(a) === Buffer.byteLength(b) && __z08Equal(Buffer.from(a), Buffer.from(b));
+  return (Buffer.byteLength(a) as number) === (Buffer.byteLength(b) as number) && (__z08Equal(Buffer.from(a), Buffer.from(b)) as boolean);
 }
 "#;
 
@@ -1313,7 +1313,7 @@ function __z08TimingSafeEqual(a: string, b: string): boolean {
 /// error did; an upstream failure answers where 0.8's broker refused.
 const GRAVATAR: &str = r#"function __z08GravatarId(email: string): string {
   if (typeof email !== "string" || email.trim() === "") throw new __z08HttpError(422, "service_payload_invalid", "An email address is required.");
-  return __z08GravatarHash("sha256").update(email.trim().toLowerCase()).digest("hex");
+  return __z08GravatarHash("sha256").update(email.trim().toLowerCase()).digest("hex") as string;
 }
 function __z08GravatarUrl(email: string, options?: { size?: number; default?: string; rating?: string; forceDefault?: boolean }): string {
   const hash = __z08GravatarId(email);
@@ -2435,7 +2435,9 @@ impl Rewrite<'_> {
             _ => return Err(manual()),
         };
         let data = self.render(data)?;
-        Ok(format!("__z08Hmac(\"sha256\", {key}).update({data}).digest(\"hex\")"))
+        Ok(format!(
+            "(__z08Hmac(\"sha256\", {key}).update({data}).digest(\"hex\") as string)"
+        ))
     }
 
     fn render(&mut self, e: &Expr) -> Result<String, Failure> {

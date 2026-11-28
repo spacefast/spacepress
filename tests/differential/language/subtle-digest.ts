@@ -2,8 +2,7 @@
 // or { name }, over an ArrayBuffer, a typed array, a subarray or a DataView, resolving to an
 // ArrayBuffer; an unknown algorithm or non-binary data rejects (NotSupportedError, TypeError).
 // files-sdk 3.1.2's sha256Hex is included verbatim. Every action runs under Node and as compiled
-// PHP; the JSON results must be byte-identical. Typed TypeScript refuses crypto.subtle
-// (tests/fixtures/reject-crypto-subtle).
+// PHP; the JSON results must be byte-identical.
 import { defineConfig, mutation } from "spacepress";
 import { digests as digestsImpl } from "./subtle-digest-helpers.mjs";
 

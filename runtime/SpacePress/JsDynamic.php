@@ -174,6 +174,9 @@ trait JsDynamic {
 			return JsBinary::get( $value, $key ); }
 		if ( $value instanceof JsConstructor ) {
 			return JsBinary::constructorGet( $value, $key ); }
+		if ( $value instanceof Node\Dispatch ) {
+			return $value->read( $key );
+		}
 		if ( $value instanceof JsNamespace && 'AbortSignal' === $value->name ) {
 			return in_array( $key, array( 'abort', 'any', 'timeout' ), true ) ? self::dynamicMethodValue( $value, $key ) : JsUndefined::Value;
 		}
@@ -195,7 +198,7 @@ trait JsDynamic {
 		}
 		if ( $value instanceof JsError ) {
 			return match ( $key ) {
-				'name' => $value->jsName, 'message' => $value->getMessage(), 'errors' => $value->errors ?? JsUndefined::Value, 'stack' => self::str( $value ), 'cause' => JsUndefined::Value, default => self::dynamicMethodValue( $value, $key ) }; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+				'name' => $value->jsName, 'message' => $value->getMessage(), 'errors' => $value->errors ?? JsUndefined::Value, 'stack' => self::str( $value ), 'cause' => JsUndefined::Value, 'code' => $value->node_code ?? JsUndefined::Value, default => self::dynamicMethodValue( $value, $key ) }; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		}
 		if ( $value instanceof JsArray || $value instanceof JsArguments ) {
 			if ( $value instanceof JsArguments && 'callee' === $key ) {
@@ -297,6 +300,9 @@ trait JsDynamic {
 			return JsBinary::set( $target, $key, $value ); }
 		if ( $target instanceof JsConstructor ) {
 			throw new JsError( 'Cannot assign to ' . $key . ' on a built-in constructor in compiled code', 'TypeError' ); }
+		if ( $target instanceof Node\Dispatch ) {
+			throw new JsError( 'Cannot assign to ' . $key . ' on a built-in object in compiled code', 'TypeError' );
+		}
 		if ( $target instanceof JsArray ) {
 			self::writable( $target ); }
 		if ( $target instanceof JsArray || $target instanceof JsArguments ) {
@@ -476,7 +482,10 @@ trait JsDynamic {
 			return new JsArray( 0 === $length ? array() : array_map( 'strval', range( 0, $length - 1 ) ) ); }
 		if ( JsBinary::is( $value ) ) {
 			return new JsArray( JsBinary::keys( $value ) ); }
-		if ( $value instanceof JsConstructor ) {
+		if ( $value instanceof Node\Module ) {
+			return new JsArray( $value->keys() );
+		}
+		if ( $value instanceof JsConstructor || $value instanceof Node\Dispatch ) {
 			return new JsArray(); }
 		if ( $value instanceof RegExp || $value instanceof JsSet || $value instanceof JsMap || $value instanceof JsIterator || $value instanceof JsAbortSignal || $value instanceof JsAbortController || $value instanceof JsTimeout || $value instanceof JsUrl || $value instanceof JsUrlSearchParams || $value instanceof JsWeakMap || $value instanceof JsWeakSet || $value instanceof JsSymbol || $value instanceof JsDate || $value instanceof JsNamespace || $value instanceof JsError || is_scalar( $value ) || $value instanceof \Closure ) {
 			return new JsArray(); }
@@ -585,9 +594,13 @@ trait JsDynamic {
 			$value instanceof JsUrl => 'URL', $value instanceof JsUrlSearchParams => 'URLSearchParams',
 			$value instanceof JsWeakMap => 'WeakMap', $value instanceof JsWeakSet => 'WeakSet', $value instanceof JsSymbol => 'Symbol',
 			$value instanceof JsNamespace => $value->name,
+			$value instanceof Node\Module => 'Module',
+			$value instanceof Node\Subtle => 'SubtleCrypto',
+			$value instanceof Node\CryptoKey => 'CryptoKey',
+			$value instanceof Node\KeyObject => 'KeyObject',
 			is_object( $value ) && JsBinary::is( $value ) => JsBinary::tag( $value ),
 			$value instanceof JsError, $value instanceof JsObject && $value->class?->builtinRoot() !== null => 'Error',
-			$value instanceof \Closure, $value instanceof JsClass, $value instanceof JsConstructor => 'Function', default => 'Object',
+			$value instanceof \Closure, $value instanceof JsClass, $value instanceof JsConstructor, $value instanceof Node\Ctor => 'Function', default => 'Object',
 		};
 		return '[object ' . $tag . ']';
 	}
@@ -639,6 +652,9 @@ trait JsDynamic {
 			return JsClass::instanceOf( $value, $constructor ); }
 		if ( $constructor instanceof JsConstructor ) {
 			return JsBinary::instanceOf( $value, $constructor->name ); }
+		if ( $constructor instanceof Node\Ctor ) {
+			return $constructor->isInstance( $value );
+		}
 		if ( in_array( $constructor, Builtins::ERROR_CONSTRUCTORS, true ) ) {
 			return self::isError( $value, $constructor ); }
 		if ( $constructor instanceof \Closure ) {
@@ -743,6 +759,9 @@ trait JsDynamic {
 			return JsBinary::call( $receiver, $name, $a ); }
 		if ( $receiver instanceof JsConstructor && ! in_array( $name, array( 'call', 'apply', 'toString', 'valueOf' ), true ) ) {
 			return JsBinary::staticCall( $receiver->name, $name, $a ); }
+		if ( $receiver instanceof Node\Dispatch ) {
+			return $receiver->invoke( $name, $a );
+		}
 		$surface = match ( true ) {
 			is_string( $receiver ) => 'string', is_int( $receiver ), is_float( $receiver ) => 'number',
 			$receiver instanceof JsArray => 'array', $receiver instanceof RegExp => 'regex',
@@ -1253,6 +1272,9 @@ trait JsDynamic {
 		$a = $args->a;
 		if ( $constructor instanceof JsClass ) {
 			return $constructor->construct( ...$a ); }
+		if ( $constructor instanceof Node\Ctor ) {
+			return $constructor->construct( $a );
+		}
 		if ( $constructor instanceof JsConstructor ) {
 			$constructor = $constructor->name; }
 		if ( is_string( $constructor ) ) {

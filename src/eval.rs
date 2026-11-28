@@ -447,6 +447,7 @@ const GLOBALS: &[&str] = &[
     "TransformStream",
     "setTimeout",
     "crypto",
+    "CryptoKey",
     "Symbol",
     "WeakMap",
     "WeakSet",
@@ -463,7 +464,7 @@ const GLOBALS: &[&str] = &[
     "FormData",
     "Blob",
     "AbortController",
-    // Bytes and text encoding (runtime/SpacePress/JsBinary.php). Imported JavaScript only.
+    // Bytes and text encoding (runtime/SpacePress/JsBinary.php).
     "ArrayBuffer",
     "SharedArrayBuffer",
     "DataView",
@@ -486,8 +487,7 @@ const GLOBALS: &[&str] = &[
     "btoa",
 ];
 
-/// Byte globals, compiled only in imported JavaScript through checked runtime dispatch
-/// (runtime/SpacePress/JsBinary.php). See docs/decisions/2026-11-07-binary-data.md.
+/// Byte globals, compiled through checked runtime dispatch (runtime/SpacePress/JsBinary.php).
 pub const BINARY_GLOBALS: &[&str] = &[
     "ArrayBuffer",
     "SharedArrayBuffer",
@@ -509,6 +509,11 @@ pub const BINARY_GLOBALS: &[&str] = &[
     "BigInt64Array",
     "BigUint64Array",
 ];
+
+/// The byte globals typed TypeScript may use, as checked JavaScript values (with the global
+/// `Buffer`, compile/host.rs). The other typed arrays, DataView, Blob and File stay in imported
+/// JavaScript.
+pub const TYPED_BINARY_GLOBALS: &[&str] = &["ArrayBuffer", "Uint8Array", "TextEncoder", "TextDecoder"];
 
 /// `globalThis` members that host-globals work owns. Detecting them stays refused
 /// until that work defines what SpacePress provides.
@@ -1046,8 +1051,8 @@ impl<'p> Evaluator<'p> {
             return err(span, "require() needs one string literal");
         };
         // Node built-ins resolve through the same lookup as `import` (`builtins::module`).
-        if crate::builtins::module(spec).is_some() {
-            return Ok(Value::Builtin(Builtin::NodeCrypto(None)));
+        if let Some(module) = crate::builtins::module(spec) {
+            return Ok(node_default(module));
         }
         let Some(&target) = self.program.resolved.get(&(from, spec.to_string())) else {
             return err(
@@ -1187,7 +1192,11 @@ impl<'p> Evaluator<'p> {
             return server_export(name, span);
         }
         if let Some(module) = crate::builtins::module(source) {
-            return node_crypto_export(module, source, name, span);
+            return if name == "default" {
+                Ok(node_default(module))
+            } else {
+                node_export(module, name, span)
+            };
         }
         if source == WORDPRESS_MODULE {
             return wordpress_export(name, span);
@@ -1328,9 +1337,7 @@ impl<'p> Evaluator<'p> {
             }
             let value = match &spec.imported {
                 ImportName::Named(n) => self.import_value(id, source, n, spec.span)?,
-                ImportName::Default if crate::builtins::module(source).is_some() => {
-                    Value::Builtin(Builtin::NodeCrypto(None))
-                }
+                ImportName::Default if let Some(module) = crate::builtins::module(source) => node_default(module),
                 ImportName::Default => {
                     if crate::loader::builtin_module(source) {
                         return err_help(
@@ -1341,8 +1348,8 @@ impl<'p> Evaluator<'p> {
                     }
                     self.import_value(id, source, "default", spec.span)?
                 }
-                ImportName::Namespace if crate::builtins::module(source).is_some() => {
-                    Value::Builtin(Builtin::NodeCrypto(None))
+                ImportName::Namespace if let Some(module) = crate::builtins::module(source) => {
+                    Value::Builtin(Builtin::NodeModule(module, None))
                 }
                 ImportName::Namespace => {
                     if source == "react-email"
@@ -1423,17 +1430,23 @@ impl<'p> Evaluator<'p> {
                 self.initialize_pattern(inner, v, scope, declaration)
             }
             Pat::Obj { props, rest, span } => {
-                if let Value::Builtin(Builtin::NodeCrypto(None)) = &value {
-                    // `const { createHash } = require("node:crypto")`: each name is that function.
+                if let Value::Builtin(
+                    Builtin::NodeModule(module, None)
+                    | Builtin::NodeModule(module @ crate::builtins::BuiltinModule::Events, Some("EventEmitter")),
+                ) = &value
+                {
+                    // `const { createHash } = require("node:crypto")`: each name is that export.
                     if rest.is_some() {
                         return err(
                             *span,
-                            "list the node:crypto functions you use; a rest binding isn't supported",
+                            format!(
+                                "list the {} exports you use; a rest binding isn't supported",
+                                module.specifier()
+                            ),
                         );
                     }
                     for (key, p) in props {
-                        let f =
-                            node_crypto_export(crate::builtins::BuiltinModule::NodeCrypto, "node:crypto", key, *span)?;
+                        let f = node_export(*module, key, *span)?;
                         self.initialize_pattern(p, f, scope, declaration)?;
                     }
                     return Ok(());
@@ -1948,6 +1961,20 @@ impl<'p> Evaluator<'p> {
                         Value::Class(c) => Some(c),
                         Value::Builtin(Builtin::Global(g)) if crate::builtins::ERROR_CONSTRUCTORS.contains(&g) => {
                             builtin_base = Some(g);
+                            None
+                        }
+                        Value::Builtin(Builtin::NodeModule(
+                            crate::builtins::BuiltinModule::Events,
+                            Some("EventEmitter"),
+                        )) => {
+                            if !self.program.modules[scope.module].dynamic {
+                                return err_help(
+                                    e.span,
+                                    "extending EventEmitter in typed TypeScript is not supported",
+                                    "use it from a JavaScript helper",
+                                );
+                            }
+                            builtin_base = Some("EventEmitter");
                             None
                         }
                         _ => {
@@ -2740,8 +2767,11 @@ impl<'p> Evaluator<'p> {
                     Err(Ctl::Err(d))
                 }
             }
-            Value::Builtin(Builtin::NodeCrypto(None)) => {
-                node_crypto_export(crate::builtins::BuiltinModule::NodeCrypto, "node:crypto", prop, span)
+            Value::Builtin(Builtin::NodeModule(module, None)) => node_export(*module, prop, span),
+            Value::Builtin(Builtin::NodeModule(crate::builtins::BuiltinModule::Events, Some("EventEmitter")))
+                if matches!(prop, "EventEmitter" | "once") =>
+            {
+                node_export(crate::builtins::BuiltinModule::Events, prop, span)
             }
             Value::Builtin(Builtin::Db) => err(
                 span,
@@ -3404,9 +3434,9 @@ impl<'p> Evaluator<'p> {
             | Builtin::Connectors
             | Builtin::Abilities
             | Builtin::WpFunction(_)
-            | Builtin::NodeCrypto(_) => err_help(
+            | Builtin::NodeModule(..) => err_help(
                 span,
-                "once(), jobs, mail, connectors, abilities, WordPress functions and node:crypto only work inside hooks, actions, routes and jobs, which run in PHP at request time",
+                "once(), jobs, mail, connectors, abilities, WordPress functions and Node built-ins only work inside hooks, actions, routes and jobs, which run in PHP at request time",
                 "move the call into a handler",
             ),
             Builtin::Query | Builtin::Mutation | Builtin::Cron => {
@@ -4827,20 +4857,22 @@ fn client_sdk_export(source: &str, name: &str, span: Span) -> R<Value> {
     )
 }
 
-fn node_crypto_export(module: crate::builtins::BuiltinModule, source: &str, name: &str, span: Span) -> R<Value> {
-    let exports = module.exports();
-    if let Some(f) = exports.iter().find(|f| **f == name) {
-        return Ok(Value::Builtin(Builtin::NodeCrypto(Some(f))));
+fn node_default(module: crate::builtins::BuiltinModule) -> Value {
+    let export = (module == crate::builtins::BuiltinModule::Events).then_some("EventEmitter");
+    Value::Builtin(Builtin::NodeModule(module, export))
+}
+
+fn node_export(module: crate::builtins::BuiltinModule, name: &str, span: Span) -> R<Value> {
+    let f = module.export(name, span).map_err(Ctl::Err)?;
+    if module == crate::builtins::BuiltinModule::Path {
+        match f {
+            "sep" => return Ok(Value::str("/")),
+            "delimiter" => return Ok(Value::str(":")),
+            "posix" => return Ok(Value::Builtin(Builtin::NodeModule(module, None))),
+            _ => {}
+        }
     }
-    let mut d = Diag::new(span, format!("\"{source}\" has no `{name}` in SpacePress code"));
-    d = match suggest(name, exports.iter().copied()) {
-        Some(s) => d.help(format!("did you mean `{s}`?")),
-        None => d.help(format!(
-            "SpacePress compiles {} from node:crypto to PHP; other functions, keys, ciphers and streams aren't available",
-            exports.join(", ")
-        )),
-    };
-    Err(Ctl::Err(d))
+    Ok(Value::Builtin(Builtin::NodeModule(module, Some(f))))
 }
 
 /// Names exported by `"php/wordpress"`.

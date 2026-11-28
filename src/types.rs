@@ -103,9 +103,7 @@ pub enum Ty {
     Builder(Box<Builder>),
 }
 
-/// Host objects with a nominal type: `Response` from `fetch`, `Headers`, and
-/// the `node:crypto` hash/HMAC chains and `randomBytes` buffers, which only exist inside one
-/// recognized expression.
+/// Host objects with a nominal type: `Response` from `fetch`, and `Headers`.
 #[derive(Debug, Clone, PartialEq)]
 pub enum HostTy {
     Response,

@@ -37,12 +37,13 @@ final class Js {
 			$v instanceof JsSet, $v instanceof JsMap, $v instanceof JsNamespace, $v instanceof JsWeakMap, $v instanceof JsWeakSet, $v instanceof JsAbortSignal, $v instanceof JsAbortController => self::dynamicObjectTag( $v ),
 			$v instanceof JsSymbol => throw new JsError( 'Cannot convert a Symbol value to a string', 'TypeError' ),
 			$v instanceof JsUrl, $v instanceof JsUrlSearchParams => $v->toString(),
-			$v instanceof JsTypedArray => $v->call( 'join', array() ),
+			$v instanceof JsTypedArray => $v->node_buffer ? Node\Buffer::encode( $v->bytes(), 'utf8' ) : $v->call( 'join', array() ),
 			JsBinary::is( $v ) => self::dynamicObjectTag( $v ),
 			$v instanceof JsDate => throw new JsError( 'Date string coercion is not supported', 'TypeError' ),
-			$v instanceof JsError => $v->jsName . ( $v->getMessage() === '' ? '' : ': ' . $v->getMessage() ), // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+			$v instanceof JsError => $v->jsName . ( null === $v->node_code ? '' : ' [' . $v->node_code . ']' ) . ( $v->getMessage() === '' ? '' : ': ' . $v->getMessage() ), // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			$v instanceof RegExp => (string) $v,
-			$v instanceof \Closure => throw new JsError( 'Function string coercion is not supported', 'TypeError' ),
+			$v instanceof \Closure, $v instanceof Node\Ctor => throw new JsError( 'Function string coercion is not supported', 'TypeError' ),
+			$v instanceof Node\Dispatch => self::dynamicObjectTag( $v ),
 			$v instanceof \Stringable => (string) $v,
 			default => '[object Object]',
 		};
@@ -561,10 +562,19 @@ final class Js {
 			is_int( $v ), is_float( $v ) => 'number',
 			is_bool( $v ) => 'boolean',
 			$v instanceof JsBigInt => 'bigint',
-			$v instanceof \Closure, $v instanceof JsClass, $v instanceof JsConstructor => 'function',
+			$v instanceof \Closure, $v instanceof JsClass, $v instanceof JsConstructor, $v instanceof Node\Ctor => 'function',
 			$v instanceof JsSymbol => 'symbol',
 			default => 'object',
 		};
+	}
+
+	/** Check a typed assertion on an imported JavaScript value. */
+	public static function dynamicAs( mixed $value, string $type ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Called by compiled PHP.
+		$actual = self::typeOf( $value );
+		if ( $actual !== $type ) {
+			throw new JsError( "Expected a $type here, got $actual", 'TypeError' );
+		}
+		return $value;
 	}
 
 	/** Explicit `String(value)`: unlike implicit conversion, a symbol has a string form. */
@@ -2102,8 +2112,9 @@ final class Js {
 			if ( $seen->offsetExists( $value ) ) {
 				return $seen[ $value ]; }
 			if ( $value instanceof JsError ) {
-				$copy           = new JsError( $value->getMessage(), $value->jsName, $value->hasMessage ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
-				$seen[ $value ] = $copy;
+				$copy            = new JsError( $value->getMessage(), $value->jsName, $value->hasMessage ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+				$copy->node_code = $value->node_code;
+				$seen[ $value ]  = $copy;
 				return $copy;
 			}
 			if ( $value instanceof RegExp ) {
@@ -2162,6 +2173,9 @@ final class Js {
 			return $value->toJSON(); }
 		if ( $value instanceof JsUrlSearchParams ) {
 			return new \stdClass(); }
+		if ( $value instanceof Node\KeyObject || $value instanceof Node\CryptoKey ) {
+			return new \stdClass();
+		}
 		if ( JsBinary::is( $value ) ) {
 			return JsBinary::json( $value ); }
 		if ( $value instanceof JsSet || $value instanceof JsMap || $value instanceof JsNamespace || $value instanceof JsError || $value instanceof JsWeakMap || $value instanceof JsWeakSet || $value instanceof JsAbortSignal || $value instanceof JsAbortController ) {

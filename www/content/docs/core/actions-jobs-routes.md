@@ -40,6 +40,23 @@ A query may not write, in its own body or in anything it calls; the build refuse
 
 Every function is also a WordPress Ability, `<app>/<kebab-name>`. Islands and the typed client call it through `api.actions.<name>` and core's run route; see [Typed Clients](/docs/integrations/astro-and-clients#how-calls-reach-wordpress). A page form posts to it directly; see [Forms that post to an action](/docs/core/pages-and-islands#forms-that-post-to-an-action). Its HTTP endpoint on the app API is `POST /wp-json/spacepress/v1/actions/<name>` (a query also accepts `GET`).
 
+## Node built-ins
+
+Server handlers can import `node:buffer`, `node:crypto`, `node:events`, `node:path`, `node:querystring`, `node:string_decoder`, `node:util`, and `node:zlib`. The bare module names work too. Use `crypto.subtle` and `crypto.getRandomValues` for Web Crypto.
+
+```ts
+import { query } from "spacepress";
+import { createHash } from "node:crypto";
+
+export const checksum = query({}, ({ text }: { text: string }) => {
+	return createHash("sha256").update(text).digest("hex") as string;
+});
+```
+
+Module results are checked JavaScript values. Use a scalar assertion such as `as string` to check a value in typed code. Encode bytes as hex or base64 before returning them from a handler.
+
+RSA-PSS and OAEP digests other than SHA-1 require PHP 8.5. The compatibility reference lists the supported operations, input limits, and differences from Node. [Tested compiler compatibility](/docs/reference/language-support#node-modules)
+
 <Note title="action() and jobs are gone">
 `action()` is refused: use `query()` when the function only reads and `mutation()` when it writes. `import { jobs } from "spacepress"` is refused too: queue a job through its own export, as below.
 </Note>

@@ -75,7 +75,7 @@ Evidence: `tests/fixtures/reject-uninstalled-package`
 
 Status: **supported**.
 
-Locally installed source packages resolve through nearest node_modules: exact exports with import/default conditions, module entries, and supported main/index entries. Scoped packages and exact exported subpaths are supported. Static CommonJS runs once at build time: top-level `require("<literal>")` of relative files and CommonJS packages (require/default conditions), `module.exports = …` and `exports.name = …`, with named exports for ESM importers found like Node's cjs-module-lexer. Dynamic require, require inside functions, require of ES modules, require cycles, writes to module or exports inside functions, other module properties, implicit sloppy arguments, Node built-ins other than node:crypto, export patterns, package aliases, declaration-only entries and package-target escapes are refused. Raw JavaScript uses checked runtime operations; TypeScript keeps static checking. Resolving a package does not establish compatibility with its host APIs or every export. Pinned npm probes compare selected real imports to Node.
+Locally installed source packages resolve through nearest node_modules: exact exports with import/default conditions, module entries, and supported main/index entries. Scoped packages and exact exported subpaths are supported. Static CommonJS runs once at build time: top-level `require("<literal>")` of relative files and CommonJS packages (require/default conditions), `module.exports = …` and `exports.name = …`, with named exports for ESM importers found like Node's cjs-module-lexer. Dynamic require, require inside functions, require of ES modules, require cycles, writes to module or exports inside functions, other module properties, implicit sloppy arguments, Node built-ins outside the supported set, export patterns, package aliases, declaration-only entries and package-target escapes are refused. Raw JavaScript uses checked runtime operations; TypeScript keeps static checking. Resolving a package does not establish compatibility with its host APIs or every export. Pinned npm probes compare selected real imports to Node.
 
 Evidence: `src/loader.rs` (`installed_sources_follow_nearest_packages_exact_exports_and_relative_ts_imports`)
 
@@ -323,7 +323,7 @@ Evidence: `tests/compiler_contracts.rs` (`language_constructs_match_node_through
 
 Status: **supported**.
 
-Imported JavaScript compiles ArrayBuffer, the integer and float typed arrays, DataView, TextEncoder, TextDecoder (UTF-8 only, fatal and ignoreBOM), Blob, File, atob and btoa through checked runtime dispatch. Views share one buffer: subarray and buffer-offset views write through, slice copies. Element writes use the ECMAScript conversions (ToUint8 wraparound, Uint8Clamped round-half-even, Int32 modulo), and integer elements are little-endian. Invalid UTF-8 decodes with WHATWG maximal-subpart replacement. Blob.stream() is a ReadableStream of Uint8Array chunks, one per non-empty part as in Node. Module-scope byte constructions with plain-data arguments are rebuilt once per request. JSON.stringify of a typed array is an object of indexes; action and ability results that contain bytes throw a TypeError with a text fix, because JSON has no byte type. TextDecoder streaming, FileReader, and typed TypeScript use of byte globals are refused. See docs/decisions/2026-11-07-binary-data.md.
+Imported JavaScript compiles ArrayBuffer, the integer and float typed arrays, DataView, TextEncoder, TextDecoder (UTF-8 only, fatal and ignoreBOM), Blob, File, atob and btoa through checked runtime dispatch. Views share one buffer: subarray and buffer-offset views write through, slice copies. Element writes use the ECMAScript conversions (ToUint8 wraparound, Uint8Clamped round-half-even, Int32 modulo), and integer elements are little-endian. Invalid UTF-8 decodes with WHATWG maximal-subpart replacement. Blob.stream() is a ReadableStream of Uint8Array chunks, one per non-empty part as in Node. Module-scope byte constructions with plain-data arguments are rebuilt once per request. JSON.stringify of a typed array is an object of indexes; action and ability results that contain bytes throw a TypeError with a text fix, because JSON has no byte type. Typed TypeScript may use ArrayBuffer, Uint8Array, TextEncoder, TextDecoder and Buffer as JavaScript values (see node-modules); the other byte globals, TextDecoder streaming and FileReader are refused there. See docs/decisions/2026-11-07-binary-data.md.
 
 Evidence: `tests/compiler_contracts.rs` (`binary_data_matches_node_through_generated_php`)
 
@@ -595,7 +595,7 @@ Evidence: `tests/compiler_contracts.rs` (`language_constructs_match_node_through
 
 Status: **supported**.
 
-Imported JavaScript compiles crypto.subtle.digest(algorithm, data): SHA-1, SHA-256, SHA-384 and SHA-512 by name in any case or as { name }, over an ArrayBuffer, typed array or DataView, resolving to an ArrayBuffer; an unknown algorithm rejects with NotSupportedError and non-binary data with TypeError. Evidence: tests/differential/language/subtle-digest.ts.
+Handlers compile crypto.subtle.digest(algorithm, data): SHA-1, SHA-256, SHA-384 and SHA-512 by name in any case or as { name }, over an ArrayBuffer, typed array or DataView, resolving to an ArrayBuffer; an unknown algorithm rejects with NotSupportedError and non-binary data with TypeError. Evidence: tests/differential/language/subtle-digest.ts.
 
 Evidence: `tests/compiler_contracts.rs` (`language_constructs_match_node_through_generated_php`)
 
@@ -803,9 +803,121 @@ Evidence: `tests/fixtures/reject-plugin-db`
 
 Status: **supported**.
 
-Handlers use the standard host forms, type-checked by @types/node: the global fetch(url, { method, headers, body, redirect }) with a Response (status, statusText, ok, url, redirected, bodyUsed, headers.get/has/forEach, text(), json()), Headers and URLSearchParams; process.env.NAME and process.env["NAME"] (string | undefined); crypto.randomUUID(); and from "node:crypto" (import or a top-level const require) createHash and createHmac chains ending in digest("hex" | "base64" | "base64url"), randomBytes(n).toString(encoding), randomUUID and timingSafeEqual(Buffer.from(a), Buffer.from(b)). They lower in src/compile/host.rs onto SpacePress\Fetch (HTTPS-only egress policy), SpacePress\Env and SpacePress\Crypto. See config-api.md.
+Handlers use the standard host forms, type-checked by @types/node: the global fetch(url, { method, headers, body, redirect }) with a Response (status, statusText, ok, url, redirected, bodyUsed, headers.get/has/forEach, text(), json()), Headers and URLSearchParams; process.env.NAME and process.env["NAME"] (string | undefined); the Web Crypto global; and the Node built-in modules (see node-modules). They lower in src/compile/host.rs onto SpacePress\Fetch (HTTPS-only egress policy), SpacePress\Env, SpacePress\Crypto and SpacePress\Node\Module. See config-api.md.
 
 Evidence: `tests/compiler_contracts.rs` (`host_globals_match_node_through_generated_php`)
+
+## node-modules
+
+Status: **supported**.
+
+Handlers can import supported Node built-ins by their node: specifier or bare name, or load them with a static CommonJS require. The runtime checks JavaScript values from these modules. Authored TypeScript assertions to string, number, and boolean check the value before giving it a static type. See the Node built-in entries for supported exports.
+
+Evidence: `tests/compiler_contracts.rs` (`node_modules_typed_use_matches_node`)
+
+## node-buffer
+
+Status: **supported**.
+
+Buffer is a Uint8Array with Node byte encodings, allocation, copying, views, and integer access. allocUnsafe returns zero-filled bytes. Buffer allocations respect PHP’s memory limit. JSON.stringify emits {"type":"Buffer","data":[...]}. Encode bytes as text before returning them from a handler.
+
+Evidence: `tests/compiler_contracts.rs` (`binary_data_matches_node_through_generated_php`)
+
+## node-crypto
+
+Status: **supported**.
+
+Stateful hash and HMAC, one-shot hash, PBKDF2, HKDF, secure random bytes and integers, in-place random filling, UUIDs, and constant-time byte equality. Callback completion runs on SpacePress’s request microtask queue. getHashes reports the implemented algorithms.
+
+Evidence: `tests/compiler_contracts.rs` (`node_crypto_and_web_crypto_match_node_through_generated_php`)
+
+## node-crypto-keys
+
+Status: **supported**.
+
+KeyObject imports and exports RSA, P-256, P-384, and Ed25519 keys. RSA key generation supports up to 4096 bits and uses public exponent 65537. PHP 8.5 is required for RSA-PSS and OAEP digests other than SHA-1. OpenSSL 3.2 or later is required for PKCS#1 v1.5 private decryption. Encrypted PEMs and custom OAEP labels are unavailable.
+
+Evidence: `tests/compiler_contracts.rs` (`node_keys_match_node_through_generated_php`)
+
+## node-crypto-ciphers
+
+Status: **supported**.
+
+AES-128 and AES-256 in CBC and GCM modes. A GCM decipher releases bytes at final() after tag verification. A GCM cipher also returns ciphertext at final().
+
+Evidence: `tests/compiler_contracts.rs` (`node_ciphers_and_zlib_match_node_through_generated_php`)
+
+## web-crypto
+
+Status: **supported**.
+
+The crypto global and node:crypto webcrypto expose SubtleCrypto and getRandomValues. SubtleCrypto supports digest, key import and export, key generation, sign and verify, encrypt and decrypt, and PBKDF2 and HKDF derivation. AES uses 128- or 256-bit keys. The tested Node release reports InvalidAccessException when exporting a non-extractable key.
+
+Evidence: `tests/compiler_contracts.rs` (`node_crypto_and_web_crypto_match_node_through_generated_php`)
+
+## node-crypto-caps
+
+Status: **divergence**.
+
+A createHmac key read from process.env.NAME is trimmed and a blank key produces crypto_key_unavailable. Hash and HMAC inputs are capped at 1 MiB. randomBytes accepts 0 to 1024 bytes. PBKDF2 accepts up to 1,000,000 iterations and limits total work to 1,000,000 HMAC rounds across all output blocks. PBKDF2 salts are capped at 1024 bytes.
+
+Evidence: `tests/compiler_contracts.rs` (`node_crypto_and_web_crypto_match_node_through_generated_php`)
+
+## node-path
+
+Status: **supported**.
+
+POSIX path operations and constants. Relative paths resolve from /. path.posix refers to the POSIX module. Windows paths are unavailable.
+
+Evidence: `tests/compiler_contracts.rs` (`node_utility_modules_match_node_through_generated_php`)
+
+## node-querystring
+
+Status: **supported**.
+
+Parse and stringify Node query strings, including duplicate keys, custom separators and delimiters, and maxKeys.
+
+Evidence: `tests/compiler_contracts.rs` (`node_utility_modules_match_node_through_generated_php`)
+
+## node-string-decoder
+
+Status: **supported**.
+
+StringDecoder retains incomplete byte sequences between writes in UTF-8, UTF-16LE, and base64. SpacePress strings retain a valid UTF-16 surrogate pair across chunks.
+
+Evidence: `tests/compiler_contracts.rs` (`node_utility_modules_match_node_through_generated_php`)
+
+## node-util
+
+Status: **supported**.
+
+Formatting, inspection of supported values, deep equality, callback adapters, deprecation warnings, type predicates, and text encoders. util.inherits supports compiled JavaScript class constructors.
+
+Evidence: `tests/compiler_contracts.rs` (`node_utility_modules_match_node_through_generated_php`)
+
+## node-events
+
+Status: **supported**.
+
+EventEmitter supports listeners, once, promises from events.once, and subclasses in imported JavaScript.
+
+Evidence: `tests/compiler_contracts.rs` (`node_utility_modules_match_node_through_generated_php`)
+
+## node-zlib
+
+Status: **supported**.
+
+Gzip, deflate, raw deflate, and decompression in sync and callback forms. Output is capped at 16 MiB. Streaming and Brotli exports are unavailable.
+
+Evidence: `tests/compiler_contracts.rs` (`node_ciphers_and_zlib_match_node_through_generated_php`)
+
+## typed-event-emitter-subclass
+
+Status: **refused**. Diagnostic: `F2001`.
+
+Define the EventEmitter subclass in an imported JavaScript helper.
+
+Evidence: `tests/fixtures/reject-typed-event-emitter`
 
 ## fetch-signal
 
@@ -895,51 +1007,19 @@ env("NAME") is a deferred reference inside defineConfig (webhook URLs and secret
 
 Evidence: `tests/fixtures/reject-env-handler`
 
-## web-crypto-subtle
-
-Status: **refused**. Diagnostic: `F4001`.
-
-Imported JavaScript compiles crypto.subtle.digest (see subtle-digest). Typed TypeScript hashes and signs with createHash and createHmac from "node:crypto".
-
-Evidence: `tests/fixtures/reject-crypto-subtle`
-
-## web-crypto-random-values
-
-Status: **refused**. Diagnostic: `F4001`.
-
-Typed arrays are not compiled. Use randomBytes(n).toString("hex") from "node:crypto", or crypto.randomUUID().
-
-Evidence: `tests/fixtures/reject-crypto-random-values`
-
 ## node-crypto-members
 
 Status: **refused**. Diagnostic: `F2001`.
 
-node:crypto provides createHash, createHmac, randomBytes, randomUUID and timingSafeEqual. Ciphers, keys, KDFs and streams are not compiled.
+Use a supported key derivation API, such as pbkdf2 or hkdf, when the protocol permits it.
 
 Evidence: `tests/fixtures/reject-node-crypto-member`
-
-## node-crypto-buffers
-
-Status: **refused**. Diagnostic: `F4001`.
-
-Finish a hash in one expression with a string encoding: createHash("sha256").update(text).digest("hex"). Buffers exist only inside timingSafeEqual(Buffer.from(a), Buffer.from(b)) and Buffer.byteLength(text).
-
-Evidence: `tests/fixtures/reject-digest-buffer`
-
-## timing-safe-equal-strings
-
-Status: **refused**. Diagnostic: `F4001`.
-
-Pass Buffer.from(a) and Buffer.from(b). As in Node, inputs of different byte lengths throw RangeError, so check Buffer.byteLength first.
-
-Evidence: `tests/fixtures/reject-timing-safe-equal`
 
 ## node-builtins
 
 Status: **refused**. Diagnostic: `F1102`.
 
-Handlers run in PHP. Use the global fetch, process.env.NAME and "node:crypto".
+Import or statically require a supported Node built-in. Filesystem, process creation, and Node HTTP modules are unavailable to compiled handlers.
 
 Evidence: `tests/fixtures/reject-node-builtin`
 
@@ -947,7 +1027,7 @@ Evidence: `tests/fixtures/reject-node-builtin`
 
 Status: **refused**. Diagnostic: `F1102`.
 
-Static CommonJS may require("node:crypto") (or "crypto"); it resolves through the same built-in module lookup as import. Other Node built-ins are refused whether imported or required.
+Import or statically require a supported Node built-in. Filesystem, process creation, and Node HTTP modules are unavailable to compiled handlers.
 
 Evidence: `tests/fixtures/reject-require-module`
 

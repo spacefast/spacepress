@@ -27,6 +27,7 @@ final class JsClass {
 	/** @var array<string, \Closure> one function value per symbol member */
 	private array $symbolValues     = array(); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.PropertyNotSnakeCase -- Preserve the existing PHP property name.
 	private ?JsPrototype $prototype = null;
+	private ?self $prototype_parent = null;
 
 	public function __construct(
 		public readonly ?self $parent, // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.parentFound -- Preserve the existing PHP parameter name.
@@ -44,7 +45,7 @@ final class JsClass {
 		private readonly array $staticAccessors = array(), // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		/** Prototype data properties of a built-in root (Error.prototype.name and .message). */
 		private readonly array $prototypeData = array(), // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
-		/** The built-in constructor this descriptor models (one of Builtins::ERROR_CONSTRUCTORS), if any. */
+		/** The built-in constructor this descriptor models, if any. */
 		public readonly ?string $builtin = null,
 		/** @var list<array{0: JsSymbol, 1: \Closure}> `[symbol](...) {}` prototype methods */
 		array $symbolMethods = array(), // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
@@ -67,10 +68,24 @@ final class JsClass {
 		return $this->prototype ??= new JsPrototype( $this );
 	}
 
+	/** util.inherits changes the instance's prototype chain without changing super() or static inheritance. */
+	public function inherit_prototype( self $superclass ): void {
+		for ( $class = $superclass; null !== $class; $class = $class->lookup_parent( false ) ) {
+			if ( $class === $this ) {
+				throw new JsError( 'Cyclic prototype value', 'TypeError' );
+			}
+		}
+		$this->prototype_parent = $superclass;
+	}
+
+	private function lookup_parent( bool $for_static ): ?self {
+		return $for_static ? $this->parent : $this->prototype_parent ?? $this->parent;
+	}
+
 	/** The nearest symbol-keyed member along the chain: a prototype slot, or [symbol, closure] for static. */
 	private function symbolSlot( JsSymbol $key, bool $static ): ?array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, Universal.NamingConventions.NoReservedKeywordParameterNames.staticFound -- Preserve the existing PHP method name. Preserve the existing PHP parameter name.
 		$id = spl_object_id( $key );
-		for ( $class = $this; null !== $class; $class = $class->parent ) {
+		for ( $class = $this; null !== $class; $class = $class->lookup_parent( $static ) ) {
 			$slot = ( $static ? $class->staticSymbols : $class->prototypeSymbols )[ $id ] ?? null; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			if ( null !== $slot ) {
 				return $static ? array( 'm', $slot[0], $slot[1], $class ) : array( ...$slot, $class ); }
@@ -167,12 +182,18 @@ final class JsClass {
 	private static array $builtins = array();
 
 	/**
-	 * The built-in Error constructors as class roots, so `class E extends Error` gets
-	 * Error's constructor, prototype name/message and toString, and instanceof sees them.
+	 * Class roots for EventEmitter and the Error constructors, used for construction,
+	 * prototype methods, and instanceof.
 	 */
 	public static function builtin( string $name ): self {
 		if ( isset( self::$builtins[ $name ] ) ) {
 			return self::$builtins[ $name ]; }
+		if ( 'EventEmitter' === $name ) {
+			$descriptor = Node\Events::class_descriptor();
+			$descriptor->set( 'EventEmitter', $descriptor );
+			self::$builtins[ $name ] = $descriptor;
+			return $descriptor;
+		}
 		if ( ! in_array( $name, Builtins::ERROR_CONSTRUCTORS, true ) ) {
 			throw new JsError( "Extending $name is not supported", 'TypeError' );
 		}
@@ -209,7 +230,7 @@ final class JsClass {
 
 	/** The root built-in constructor name of a class chain ('Error', 'TypeError', ...), or null. */
 	public function builtinRoot(): ?string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
-		for ( $class = $this; null !== $class; $class = $class->parent ) {
+		for ( $class = $this; null !== $class; $class = $class->lookup_parent( false ) ) {
 			if ( null !== $class->builtin ) {
 				return $class->builtin; }
 		}
@@ -218,7 +239,7 @@ final class JsClass {
 
 	/** True when the chain reaches the built-in constructor $name (TypeError reaches Error too). */
 	public function extendsBuiltin( string $name ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
-		for ( $class = $this; null !== $class; $class = $class->parent ) {
+		for ( $class = $this; null !== $class; $class = $class->lookup_parent( false ) ) {
 			if ( $class->builtin === $name ) {
 				return true; }
 		}
@@ -244,7 +265,7 @@ final class JsClass {
 	public function hasMember( string $name ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( $this->accessor( $name, false ) !== null || $this->hasMethod( $name ) ) {
 			return true; }
-		for ( $class = $this; null !== $class; $class = $class->parent ) {
+		for ( $class = $this; null !== $class; $class = $class->lookup_parent( false ) ) {
 			if ( array_key_exists( $name, $class->prototypeData ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 				return true; }
 		}
@@ -260,7 +281,7 @@ final class JsClass {
 			return null; }
 		if ( $static && array_key_exists( $name, $this->statics->p ) ) {
 			return null; }
-		return $this->parent?->accessor( $name, $static );
+		return $this->lookup_parent( $static )?->accessor( $name, $static );
 	}
 
 	/** Returned by readInherited when no prototype member has the name; compared by identity. */
@@ -279,7 +300,7 @@ final class JsClass {
 			return $this->methodValue( $name, $static );
 		}
 		if ( ! $static ) {
-			for ( $class = $this; null !== $class; $class = $class->parent ) {
+			for ( $class = $this; null !== $class; $class = $class->lookup_parent( false ) ) {
 				if ( array_key_exists( $name, $class->prototypeData ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 					return $class->prototypeData[ $name ]; } // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			}
@@ -322,7 +343,7 @@ final class JsClass {
 	}
 
 	public function hasMethod( string $name ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
-		return isset( $this->methods[ $name ] ) || ( $this->parent?->hasMethod( $name ) ?? false );
+		return isset( $this->methods[ $name ] ) || ( $this->lookup_parent( false )?->hasMethod( $name ) ?? false );
 	}
 
 	public function hasStaticMethod( string $name ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
@@ -333,20 +354,22 @@ final class JsClass {
 		$method = ( $static ? $this->staticMethods : $this->methods )[ $name ] ?? null; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		if ( null !== $method ) {
 			return $method; }
-		if ( null !== $this->parent ) {
-			return $this->parent->method( $name, $static ); }
+		$owner = $this->lookup_parent( $static );
+		if ( null !== $owner ) {
+			return $owner->method( $name, $static ); }
 		throw new JsError( "Unknown class method $name", 'TypeError' );
 	}
 
 	/** One function identity per class and member, like a prototype method; call/apply supply the receiver. */
 	public function methodValue( string $name, bool $static ): \Closure { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, Universal.NamingConventions.NoReservedKeywordParameterNames.staticFound -- Preserve the existing PHP method name. Preserve the existing PHP parameter name.
 		// Inherited members share the declaring class's function, as with one prototype.
-		if ( ! isset( ( $static ? $this->staticMethods : $this->methods )[ $name ] ) && null !== $this->parent ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
-			return $this->parent->methodValue( $name, $static );
+		$owner = $this->lookup_parent( $static );
+		if ( ! isset( ( $static ? $this->staticMethods : $this->methods )[ $name ] ) && null !== $owner ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+			return $owner->methodValue( $name, $static );
 		}
-		$key = ( $static ? 'static:' : '' ) . $name;
+		$method = $this->method( $name, $static );
+		$key    = ( $static ? 'static:' : '' ) . spl_object_id( $method );
 		if ( ! isset( $this->methodValues[ $key ] ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
-			$method                     = $this->method( $name, $static );
 			$this->methodValues[ $key ] = Js::dynamicMethodFunction( // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 				static fn ( ...$args ) => $method( JsUndefined::Value, ...$args ),
 				static fn ( $thisArg, JsArray $args ) => $method( $thisArg, ...$args->a ), // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
@@ -374,6 +397,9 @@ final class JsClass {
 	private function getFor( self $receiver, string $key ): mixed { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( array_key_exists( $key, $this->statics->p ) ) {
 			return $this->statics->p[ $key ]; }
+		if ( 'super_' === $key && null !== $this->prototype_parent ) {
+			return $this->prototype_parent;
+		}
 		$accessor = $this->staticAccessors[ $key ] ?? null; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		if ( null !== $accessor ) {
 			return null === $accessor[0] ? JsUndefined::Value : ( $accessor[0] )( $receiver ); }
@@ -381,7 +407,8 @@ final class JsClass {
 	}
 
 	public function has( string $key ): bool {
-		return array_key_exists( $key, $this->statics->p ) || isset( $this->staticAccessors[ $key ] ) // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+		return ( 'super_' === $key && null !== $this->prototype_parent )
+			|| array_key_exists( $key, $this->statics->p ) || isset( $this->staticAccessors[ $key ] ) // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 			|| ( $this->parent?->has( $key ) ?? false );
 	}
 
@@ -395,7 +422,7 @@ final class JsClass {
 	public static function isInstance( mixed $value, self $expected ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 		if ( ! $value instanceof JsObject ) {
 			return false; }
-		for ( $class = $value->class; null !== $class; $class = $class->parent ) {
+		for ( $class = $value->class; null !== $class; $class = $class->lookup_parent( false ) ) {
 			if ( $class === $expected ) {
 				return true; }
 		}

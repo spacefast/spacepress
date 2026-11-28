@@ -34,8 +34,9 @@ impl Compiler<'_, '_> {
         }
         Ok(())
     }
-    /// Byte globals compile only through checked JavaScript dispatch; typed code has no static
-    /// Uint8Array/Blob types yet, and SharedArrayBuffer and the BigInt arrays are refused everywhere.
+    /// Byte globals compile through checked JavaScript dispatch. Typed code may use the ones Node
+    /// code needs for bytes (`TYPED_BINARY_GLOBALS`), as JavaScript values; SharedArrayBuffer and
+    /// the BigInt arrays are refused everywhere.
     pub(super) fn binary_global(&self, name: &str, span: Span) -> Result<()> {
         if name == "SharedArrayBuffer" {
             return err_help(
@@ -51,11 +52,13 @@ impl Compiler<'_, '_> {
                 "use a DataView with getUint32/setUint32 pairs, or a Uint8Array",
             );
         }
-        if !self.javascript_module(self.fx.as_ref().expect("fn").module) {
+        if !self.javascript_module(self.fx.as_ref().expect("fn").module)
+            && !crate::eval::TYPED_BINARY_GLOBALS.contains(&name)
+        {
             return err_help(
                 span,
                 format!("`{name}` is only available in imported JavaScript so far"),
-                "typed handlers don't have a static type for bytes yet; call a JavaScript or npm helper that uses them, and pass text across",
+                "typed code has ArrayBuffer, Uint8Array, TextEncoder, TextDecoder and Buffer; call a JavaScript or npm helper for the others, and pass text across",
             );
         }
         Ok(())

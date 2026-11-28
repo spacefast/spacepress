@@ -198,7 +198,7 @@ trait JsDynamic {
 		}
 		if ( $value instanceof JsError ) {
 			return match ( $key ) {
-				'name' => $value->jsName, 'message' => $value->getMessage(), 'errors' => $value->errors ?? JsUndefined::Value, 'stack' => self::str( $value ), 'cause' => JsUndefined::Value, 'code' => $value->nodeCode ?? JsUndefined::Value, default => self::dynamicMethodValue( $value, $key ) }; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+				'name' => $value->jsName, 'message' => $value->getMessage(), 'errors' => $value->errors ?? JsUndefined::Value, 'stack' => self::str( $value ), 'cause' => JsUndefined::Value, 'code' => $value->node_code ?? JsUndefined::Value, default => self::dynamicMethodValue( $value, $key ) }; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		}
 		if ( $value instanceof JsArray || $value instanceof JsArguments ) {
 			if ( $value instanceof JsArguments && 'callee' === $key ) {
@@ -595,6 +595,9 @@ trait JsDynamic {
 			$value instanceof JsWeakMap => 'WeakMap', $value instanceof JsWeakSet => 'WeakSet', $value instanceof JsSymbol => 'Symbol',
 			$value instanceof JsNamespace => $value->name,
 			$value instanceof Node\Module => 'Module',
+			$value instanceof Node\Subtle => 'SubtleCrypto',
+			$value instanceof Node\CryptoKey => 'CryptoKey',
+			$value instanceof Node\KeyObject => 'KeyObject',
 			is_object( $value ) && JsBinary::is( $value ) => JsBinary::tag( $value ),
 			$value instanceof JsError, $value instanceof JsObject && $value->class?->builtinRoot() !== null => 'Error',
 			$value instanceof \Closure, $value instanceof JsClass, $value instanceof JsConstructor, $value instanceof Node\Ctor => 'Function', default => 'Object',

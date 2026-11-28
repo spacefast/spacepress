@@ -4910,6 +4910,8 @@ impl<'a, 'p> Compiler<'a, 'p> {
             Resolved::Global("Infinity") => Ok(Out::atom("INF", Ty::Num)),
             Resolved::Global("Math") => Ok(Out::atom("\\SpacePress\\Js::dynamicNamespace('Math')", Ty::Dynamic)),
             Resolved::Global("Boolean") => Ok(boolean_function()),
+            Resolved::Global("crypto") => Ok(self.web_crypto_value()),
+            Resolved::Global("CryptoKey") => Ok(self.web_crypto_key_constructor()),
             Resolved::Global("AbortSignal") if self.javascript_module(self.fx.as_ref().expect("fn").module) => Ok(
                 Out::atom("\\SpacePress\\Js::dynamicNamespace('AbortSignal')", Ty::Dynamic),
             ),
@@ -9875,9 +9877,13 @@ impl<'a, 'p> Compiler<'a, 'p> {
         };
         let name = match &x.kind {
             ExprKind::Member { obj, prop, .. }
-                if crate::eval::HOST_OBJECTS.contains(&prop.as_str()) && global(self, obj) == Some("globalThis") =>
+                if (prop == "crypto" || crate::eval::HOST_OBJECTS.contains(&prop.as_str()))
+                    && global(self, obj) == Some("globalThis") =>
             {
                 return Ok(Some("object"));
+            }
+            ExprKind::Member { obj, prop, .. } if prop == "CryptoKey" && global(self, obj) == Some("globalThis") => {
+                return Ok(Some("function"));
             }
             ExprKind::Member {
                 obj, prop, prop_span, ..
@@ -9891,9 +9897,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
                 None => return Ok(None),
             },
         };
+        if name == "crypto" {
+            return Ok(Some("object"));
+        }
         if matches!(
             name,
-            "require" | "crypto" | "fetch" | "setTimeout" | "Promise" | "eval" | "Function"
+            "require" | "fetch" | "setTimeout" | "Promise" | "eval" | "Function"
         ) {
             return err_help(
                 x.span,

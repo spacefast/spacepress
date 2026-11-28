@@ -26,6 +26,9 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .node-version
       - name: Install Rust
         run: rustup toolchain install "$(cat rust-toolchain)" --profile minimal --component clippy --component rustfmt
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
@@ -44,6 +47,14 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y php-cli php-xml php-mbstring composer
           composer install --working-dir=examples/php-standards --no-interaction --prefer-dist
+      - name: Compare Node built-ins with generated PHP
+        run: |
+          cargo test --locked --test compiler_contracts -- --exact \
+            binary_data_matches_node_through_generated_php \
+            node_crypto_and_web_crypto_match_node_through_generated_php \
+            node_keys_match_node_through_generated_php \
+            node_ciphers_and_zlib_match_node_through_generated_php \
+            node_utility_modules_match_node_through_generated_php
       - name: Test PHP comparison tooling
         run: node --test examples/php-standards/compare.test.ts
       - name: Check generated PHP WordPress standards
@@ -132,6 +143,16 @@ jobs:
         run: |
           npm ci --prefix examples/npm-compat --ignore-scripts --no-audit --no-fund
           SP_BIN="$GITHUB_WORKSPACE/target/debug/spacepress" node examples/npm-compat/verify.mjs --isolated
+      - name: Compare crypto against Node on PHP 8.5
+        if: matrix.shard == 'compiler'
+        run: |
+          sudo add-apt-repository -y ppa:ondrej/php
+          sudo apt-get update
+          sudo apt-get install -y php8.5-cli php8.5-mbstring
+          sudo update-alternatives --set php /usr/bin/php8.5
+          cargo test --locked --test compiler_contracts -- --exact \
+            node_crypto_and_web_crypto_match_node_through_generated_php \
+            node_keys_match_node_through_generated_php
       # Every app under examples/ compiles (files-sdk, a probe of what doesn't yet, is left out).
       - if: matrix.shard == 'rest'
         run: scripts/check-examples.sh target/debug/spacepress

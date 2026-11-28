@@ -1,6 +1,6 @@
 //! Standard host globals, lowered onto the PHP runtime: the global `fetch` (`SpacePress\Fetch`),
 //! `Response`/`Headers`/`URLSearchParams`, `process.env.NAME` (`SpacePress\Env`), `process.platform` and
-//! `navigator.platform` (`SpacePress\Host`), the global `crypto`'s `randomUUID` (`SpacePress\Crypto`),
+//! `navigator.platform` (`SpacePress\Host`), the global `crypto`,
 //! and the Node built-in modules and global `Buffer` (`SpacePress\Node\Module`), which are checked
 //! JavaScript values in typed TypeScript as in imported JavaScript.
 //!
@@ -121,6 +121,11 @@ impl Compiler<'_, '_> {
                 Ok(Resolved::Value(Value::Builtin(Builtin::NodeModule(m, None)), _)) => Some(m),
                 _ => None,
             },
+            ExprKind::Member { obj, prop, .. }
+                if prop == "posix" && self.node_namespace(obj) == Some(BuiltinModule::Path) =>
+            {
+                Some(BuiltinModule::Path)
+            }
             _ => None,
         }
     }
@@ -185,20 +190,21 @@ impl Compiler<'_, '_> {
                 )
             };
         }
+        if self.is_global(obj, "globalThis") {
+            match prop {
+                "crypto" => return Ok(Some(self.web_crypto_value())),
+                "CryptoKey" => return Ok(Some(self.web_crypto_key_constructor())),
+                _ => {}
+            }
+        }
         if self.is_global(obj, "crypto") {
-            return match prop {
-                "subtle" => err_help(
-                    prop_span,
-                    "`crypto.subtle` isn't available in SpacePress code",
-                    "hash with `createHash(\"sha256\").update(text).digest(\"hex\")` from \"node:crypto\"",
-                ),
-                "randomUUID" => err_help(
-                    prop_span,
-                    "`crypto.randomUUID` can't be used as a value",
-                    "call it: `crypto.randomUUID()`",
-                ),
-                _ => self.web_crypto_refusal(prop, prop_span),
-            };
+            if !matches!(prop, "subtle" | "getRandomValues" | "randomUUID") {
+                return err(prop_span, format!("`crypto.{prop}` isn't available in SpacePress code"));
+            }
+            return Ok(Some(Out::atom(
+                format!("{}->member({})", self.web_crypto_value().php, php_str(prop)),
+                Ty::Dynamic,
+            )));
         }
         if self.is_global(obj, "Buffer") {
             return Ok(Some(Out::atom(
@@ -228,6 +234,11 @@ impl Compiler<'_, '_> {
                     "write `process.env.NAME`; a computed name could let request input read any server variable",
                 ),
             };
+        }
+        if let Some(module) = self.node_namespace(obj)
+            && let ExprKind::Str(name) = &index.kind
+        {
+            return Ok(Some(self.node_value(module, Some(module.export(name, index.span)?))));
         }
         if ["process", "navigator", "crypto"]
             .iter()
@@ -278,23 +289,35 @@ impl Compiler<'_, '_> {
             ExprKind::Member {
                 obj, prop, prop_span, ..
             } => {
-                if prop == "digest"
-                    && let Some(out) = self.subtle_digest(obj, args, span)?
-                {
-                    return Ok(Some(out));
-                }
                 if self.is_global(obj, "crypto") {
                     return self.web_crypto_call(prop, args, *prop_span, span).map(Some);
                 }
-                if self.is_global(obj, "Buffer") {
+                if self.is_global(obj, "Buffer") || self.node_export(obj)? == Some((BuiltinModule::Buffer, "Buffer")) {
                     let argv = self.javascript_args(args)?;
+                    let ty = match prop.as_str() {
+                        "byteLength" | "compare" => Ty::Num,
+                        "isBuffer" | "isEncoding" => Ty::Bool,
+                        _ => Ty::Dynamic,
+                    };
                     return Ok(Some(Out::atom(
                         format!(
-                            "(\\SpacePress\\Js::dynamicMethod({}, {}))(...({argv})->a)",
+                            "\\SpacePress\\Js::dynamicCallMethod({}, {}, {argv})",
                             self.buffer_value().php,
                             php_str(prop)
                         ),
-                        Ty::Dynamic,
+                        ty,
+                    )));
+                }
+                if self.node_text_result(obj, prop, args)? {
+                    let obj = self.expr(obj)?;
+                    let argv = self.javascript_args(args)?;
+                    return Ok(Some(Out::atom(
+                        format!(
+                            "\\SpacePress\\Js::dynamicCallMethod({}, {}, {argv})",
+                            obj.php,
+                            php_str(prop)
+                        ),
+                        Ty::Str,
                     )));
                 }
                 if self.is_global(obj, "process") || self.is_process_env(obj) {
@@ -311,6 +334,35 @@ impl Compiler<'_, '_> {
             }
             _ => Ok(None),
         }
+    }
+
+    /// Existing typed hash, HMAC, and random-byte chains still return strings when their
+    /// terminal encoding makes the result known. Intermediate objects use checked dispatch.
+    fn node_text_result(&mut self, receiver: &Expr, method: &str, args: &[ArrEl]) -> Result<bool> {
+        let mut value = receiver;
+        if method == "digest" {
+            if !matches!(args, [ArrEl::Item(Expr { kind: ExprKind::Str(enc), .. })]
+                if matches!(enc.as_str(), "hex" | "base64" | "base64url"))
+            {
+                return Ok(false);
+            }
+            while let ExprKind::Call { callee, .. } = &value.kind
+                && let ExprKind::Member { obj, prop, .. } = &callee.kind
+                && prop == "update"
+            {
+                value = obj;
+            }
+        } else if method != "toString" {
+            return Ok(false);
+        }
+        let ExprKind::Call { callee, .. } = &value.kind else {
+            return Ok(false);
+        };
+        Ok(matches!(
+            (method, self.node_export(callee)?),
+            ("digest", Some((BuiltinModule::Crypto, "createHash" | "createHmac")))
+                | ("toString", Some((BuiltinModule::Crypto, "randomBytes")))
+        ))
     }
 
     /// A call of a Node built-in export, dispatched by the runtime module. A `createHmac` key
@@ -343,6 +395,11 @@ impl Compiler<'_, '_> {
                 }
             }
         }
+        let ty = match (module, f) {
+            (BuiltinModule::Crypto, "randomUUID") => Ty::Str,
+            (BuiltinModule::Crypto, "timingSafeEqual") => Ty::Bool,
+            _ => Ty::Dynamic,
+        };
         Ok(Out::atom(
             format!(
                 "\\SpacePress\\Node\\Module::get({})->call({}, [{}])",
@@ -350,13 +407,28 @@ impl Compiler<'_, '_> {
                 php_str(f),
                 parts.join(", ")
             ),
-            Ty::Dynamic,
+            ty,
         ))
     }
 
     /// `new Headers(init)`. `URL`, `URLSearchParams` and `AbortController` are standard objects
     /// (`compile.rs`); other web constructors are refused.
     pub(super) fn host_new(&mut self, callee: &Expr, args: &[ArrEl], span: Span) -> Result<Option<Out>> {
+        if let Some((module, export)) = self.node_export(callee)?
+            && matches!(
+                (module, export),
+                (BuiltinModule::Events, "EventEmitter")
+                    | (BuiltinModule::StringDecoder, "StringDecoder")
+                    | (BuiltinModule::Util, "TextEncoder" | "TextDecoder")
+            )
+        {
+            let constructor = self.node_value(module, Some(export)).php;
+            let argv = self.javascript_args(args)?;
+            return Ok(Some(Out::atom(
+                format!("\\SpacePress\\Js::dynamicConstruct({constructor}, {argv})"),
+                Ty::Dynamic,
+            )));
+        }
         let ExprKind::Ident(n) = &callee.kind else {
             return Ok(None);
         };
@@ -516,58 +588,28 @@ impl Compiler<'_, '_> {
         ))
     }
 
-    /// `crypto.subtle.digest(algorithm, data)` in imported JavaScript: a promise of an ArrayBuffer,
-    /// as Web Crypto returns. files-sdk hashes upload bodies this way. Typed code keeps the
-    /// `node:crypto` hash, which the refusal on `crypto.subtle` names.
-    fn subtle_digest(&mut self, obj: &Expr, args: &[ArrEl], span: Span) -> Result<Option<Out>> {
-        let ExprKind::Member { obj: crypto, prop, .. } = &obj.kind else {
-            return Ok(None);
-        };
-        if prop != "subtle" || !self.is_global(crypto, "crypto") {
-            return Ok(None);
-        }
-        if !self.javascript_module(self.fx.as_ref().expect("fn").module) {
-            return err_help(
-                span,
-                "`crypto.subtle.digest` works in imported JavaScript only",
-                "hash with `createHash(\"sha256\").update(text).digest(\"hex\")` from \"node:crypto\"",
-            );
-        }
-        if args.len() != 2 || args.iter().any(|a| matches!(a, ArrEl::Spread(_))) {
-            return err(span, "crypto.subtle.digest takes an algorithm and the data to hash");
-        }
-        self.host_use(HostUse::Crypto("subtle.digest"), span)?;
-        let argv = self.javascript_args(args)?;
-        Ok(Some(Out::atom(
-            format!("\\SpacePress\\Crypto::subtleDigest(...({argv})->a)"),
-            Ty::Dynamic,
-        )))
+    pub(super) fn web_crypto_value(&self) -> Out {
+        Out::atom("\\SpacePress\\Node\\Module::get('webcrypto')", Ty::Dynamic)
+    }
+
+    pub(super) fn web_crypto_key_constructor(&self) -> Out {
+        Out::atom("\\SpacePress\\Node\\Subtle::key_constructor()", Ty::Dynamic)
     }
 
     fn web_crypto_call(&mut self, prop: &str, args: &[ArrEl], prop_span: Span, span: Span) -> Result<Out> {
-        if prop != "randomUUID" {
-            return self.web_crypto_refusal(prop, prop_span);
-        }
-        if !args.is_empty() {
-            return err(span, "crypto.randomUUID() takes no arguments");
-        }
-        self.host_use(HostUse::Crypto("randomUUID"), span)?;
-        Ok(Out::atom("\\SpacePress\\Crypto::randomUUID()", Ty::Str))
-    }
-
-    fn web_crypto_refusal<T>(&self, prop: &str, span: Span) -> Result<T> {
-        match prop {
-            "getRandomValues" => err_help(
-                span,
-                "`crypto.getRandomValues` needs typed arrays, which SpacePress doesn't compile",
-                "use `randomBytes(n).toString(\"hex\")` from \"node:crypto\"",
-            ),
-            _ => err_help(
-                span,
-                format!("`crypto.{prop}` isn't available in SpacePress code"),
-                "the global crypto has `randomUUID()`; import hashes and MACs from \"node:crypto\"",
-            ),
-        }
+        let name = match prop {
+            "randomUUID" => "randomUUID",
+            "getRandomValues" => "getRandomValues",
+            _ => return err(prop_span, format!("`crypto.{prop}` isn't callable in SpacePress code")),
+        };
+        self.route_opaque(format!("crypto.{name}"));
+        self.host_use(HostUse::Crypto(name), span)?;
+        let argv = self.javascript_args(args)?;
+        let ty = if name == "randomUUID" { Ty::Str } else { Ty::Dynamic };
+        Ok(Out::atom(
+            format!("{}->call({}, ({argv})->a)", self.web_crypto_value().php, php_str(name)),
+            ty,
+        ))
     }
 
     fn string_arg(&mut self, e: &Expr, call: &str, help: &str) -> Result<String> {

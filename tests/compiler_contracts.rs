@@ -59,7 +59,12 @@ fn checked(project: &Path) -> (Output, Value) {
 
 fn php(script: &str, args: &[&Path]) -> Value {
     let out = Command::new("php").args(["-r", script]).args(args).output().unwrap();
-    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&out.stderr),
+        String::from_utf8_lossy(&out.stdout)
+    );
     assert!(out.stderr.is_empty(), "{}", String::from_utf8_lossy(&out.stderr));
     serde_json::from_slice(&out.stdout).unwrap()
 }
@@ -1068,6 +1073,36 @@ fn binary_data_matches_node_through_generated_php() {
             "{name}: compiled byte behavior differs from Node"
         );
     }
+    let bounds = php(
+        r#"
+        require $argv[1];
+        ini_set('memory_limit', '32M');
+        $buffer = \SpacePress\Node\Buffer::class();
+        $bytes = \SpacePress\Node\Buffer::wrap('ab');
+        $results = [$buffer->invoke('concat', [new \SpacePress\JsArray(), 40 * 1024 * 1024])->length];
+        foreach ([
+            ['concat', [new \SpacePress\JsArray([$bytes]), 40 * 1024 * 1024]],
+            ['alloc', [40 * 1024 * 1024]],
+            ['alloc', [12 * 1024 * 1024, 'x']],
+            ['from', [new \SpacePress\JsObject(['length' => 40 * 1024 * 1024])]],
+        ] as [$method, $args]) {
+            try { $buffer->invoke($method, $args); $results[] = 'accepted'; }
+            catch (\SpacePress\JsError $error) { $results[] = $error->node_code; }
+        }
+        echo json_encode($results);
+        "#,
+        &[&content.join("plugins/spacepress-runtime/sp/bootstrap.php")],
+    );
+    assert_eq!(
+        bounds,
+        serde_json::json!([
+            0,
+            "ERR_BUFFER_TOO_LARGE",
+            "ERR_BUFFER_TOO_LARGE",
+            "ERR_BUFFER_TOO_LARGE",
+            "ERR_BUFFER_TOO_LARGE"
+        ])
+    );
     // JSON has no byte type: an action result holding bytes is refused, with the text fix.
     let refused = php(
         r#"
@@ -1084,6 +1119,120 @@ fn binary_data_matches_node_through_generated_php() {
         message.contains("Uint8Array at .v.0") && message.contains("TextDecoder"),
         "{message}"
     );
+}
+
+#[test]
+fn node_ciphers_and_zlib_match_node_through_generated_php() {
+    let oracle = Some("symmetric-oracle.mjs");
+    node_builtin_cases("crypto-cipher.mjs", &[], oracle);
+    node_builtin_cases("zlib.mjs", &[], oracle);
+}
+
+/// Compare a Node module's exports with compiled PHP. An optional Node-only oracle can supply
+/// per-case inputs and verify randomized output with the real Node APIs.
+fn node_builtin_cases(source: &str, siblings: &[&str], oracle: Option<&str>) {
+    let tmp = tempfile::tempdir().unwrap();
+    let fixtures = root().join("tests/differential/node");
+    let project = tmp.path();
+    for file in std::iter::once(source).chain(siblings.iter().copied()).chain(oracle) {
+        copy_app(fixtures.join(file), project.join("sp").join(file)).unwrap();
+    }
+    std::fs::write(
+        project.join("runner.mjs"),
+        r#"
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+const [source, oracleName, compare] = process.argv.slice(2);
+const cases = await import("./sp/" + source);
+const oracle = oracleName ? await import("./sp/" + oracleName) : null;
+if (compare) {
+  const expected = JSON.parse(readFileSync("./expected.json"));
+  const { results, phpVersion } = JSON.parse(readFileSync("./actual.json"));
+  assert.deepEqual(Object.keys(results).sort(), Object.keys(expected).sort());
+  for (const [name, entry] of Object.entries(expected)) {
+    try {
+      if (oracle) oracle.check(name, entry.input, entry.output, results[name], phpVersion);
+      else assert.deepEqual(results[name], entry.output);
+    } catch (error) {
+      throw new Error(name + ": compiled behavior differs from Node", { cause: error });
+    }
+  }
+} else {
+  const expected = {};
+  for (const [name, run] of Object.entries(cases)) {
+    const input = oracle ? oracle.inputFor(name) : {};
+    expected[name] = { input, output: await run(input) };
+  }
+  process.stdout.write(JSON.stringify(expected));
+}
+"#,
+    )
+    .unwrap();
+    let node = || {
+        let mut command = Command::new("node");
+        command
+            .current_dir(project)
+            .args(["runner.mjs", source, oracle.unwrap_or("")]);
+        command
+    };
+    let node_output = node().output().unwrap();
+    assert!(
+        node_output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&node_output.stderr)
+    );
+    let expected: Value = serde_json::from_slice(&node_output.stdout).unwrap();
+    let cases = expected.as_object().unwrap();
+    assert!(!cases.is_empty(), "no oracle cases for {source}");
+    let actions: Vec<String> = cases
+        .keys()
+        .map(|name| format!("export const {name} = mutation({{}}, async (input: {{}}) => await cases.{name}(input));"))
+        .collect();
+    std::fs::write(project.join("expected.json"), &node_output.stdout).unwrap();
+    std::fs::write(
+        project.join("spacepress.config.ts"),
+        format!(
+            "import {{ defineConfig, mutation }} from 'spacepress';\nimport * as cases from './sp/{source}';\n{}\nexport default defineConfig({{ name: 'node-builtin-tests' }});\n",
+            actions.join("\n"),
+        ),
+    )
+    .unwrap();
+    let content = build_wp(project);
+    let actual = php(
+        r#"
+        require $argv[1];
+        $schema = require $argv[2] . '/schema.php';
+        require $argv[2] . '/functions.php';
+        $expected = \SpacePress\Js::jsonParse(file_get_contents($argv[3]));
+        $results = [];
+        foreach ($schema['actions'] as $name => $action) {
+            $fn = '\\SpacePressApp\\' . $action['handler'];
+            $input = $expected->p[$name]->p['input'];
+            try { $results[$name] = $fn($input, new \SpacePress\JsObject()); }
+            catch (\Throwable $e) { throw new \RuntimeException($name . ': ' . $e->getMessage(), 0, $e); }
+        }
+        echo \SpacePress\Js::jsonStringify(new \SpacePress\JsObject([
+            'results' => new \SpacePress\JsObject($results), 'phpVersion' => PHP_VERSION_ID,
+        ]));
+        "#,
+        &[
+            &content.join("plugins/spacepress-runtime/sp/bootstrap.php"),
+            &content.join("plugins/spacepress-app-node-builtin-tests/sp/app"),
+            &project.join("expected.json"),
+        ],
+    );
+    std::fs::write(project.join("actual.json"), serde_json::to_vec(&actual).unwrap()).unwrap();
+    let compared = node().arg("compare").output().unwrap();
+    assert!(
+        compared.status.success(),
+        "{}",
+        String::from_utf8_lossy(&compared.stderr)
+    );
+}
+
+#[test]
+fn node_keys_match_node_through_generated_php() {
+    node_builtin_cases("crypto-keys.mjs", &["keys/fixtures.mjs"], Some("keys/oracle.mjs"));
 }
 
 #[test]
@@ -1694,6 +1843,29 @@ fn class_boundaries_refuse_unsupported_semantics_at_the_source() {
 
 /// The standard host forms (global fetch, Headers, URLSearchParams, process.env, crypto and
 /// node:crypto) give Node's results through the generated PHP, against one shared HTTP origin.
+#[test]
+fn node_utility_modules_match_node_through_generated_php() {
+    node_builtin_cases("modules.mjs", &["events.cjs"], None);
+    let output = Command::new("php")
+        .args([
+            "-d",
+            "error_log=",
+            "-r",
+            r#"
+            require $argv[1];
+            $util = \SpacePress\Node\Module::get('util');
+            $wrapped = $util->call('deprecate', [static fn ($x) => $x * 2, 'the fixture uses deprecate']);
+            echo json_encode([$wrapped(2), $wrapped(3)]);
+            "#,
+        ])
+        .arg(root().join("runtime/SpacePress/bootstrap.php"))
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    assert_eq!(output.stdout, b"[4,6]");
+    assert_eq!(output.stderr, b"DeprecationWarning: the fixture uses deprecate\n");
+}
+
 #[test]
 fn host_globals_match_node_through_generated_php() {
     let dir = root().join("tests/differential");
@@ -2383,7 +2555,6 @@ fn unsupported_builtin_overloads_are_located_in_both_phases() {
         "process.arch",
         "navigator.userAgent",
         "typeof require",
-        "typeof crypto",
         "typeof globalThis.Buffer",
         "(() => { const o = {n: 1}; Object.freeze(o); try {o.n = 2;} catch {} return o.n; })()",
         "(() => { const o: Record<string, number> = {}; o['__proto__'] = 1; return Object.hasOwn(o, '__proto__'); })()",
@@ -5164,4 +5335,10 @@ fn openapi_schemas_are_the_registered_ability_schemas() {
         }
         assert!(compared >= 10, "{source}: compared {compared} schemas");
     }
+}
+
+#[test]
+fn node_crypto_and_web_crypto_match_node_through_generated_php() {
+    node_builtin_cases("crypto-basic.mjs", &[], Some("crypto-oracle.mjs"));
+    node_builtin_cases("subtle.mjs", &["keys/fixtures.mjs"], None);
 }

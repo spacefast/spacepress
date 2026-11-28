@@ -1099,7 +1099,12 @@ impl<'a, 'p> Compiler<'a, 'p> {
         };
         std::iter::once(identity.id)
             .chain(identity.ancestors.iter().copied())
-            .any(|id| self.classes[&id]._value.builtin_base.is_some())
+            .any(|id| {
+                self.classes[&id]
+                    ._value
+                    .builtin_base
+                    .is_some_and(|base| crate::builtins::ERROR_CONSTRUCTORS.contains(&base))
+            })
     }
 
     /// An accessor write target: `Some(value type)` for a setter, an error for a getter-only accessor.

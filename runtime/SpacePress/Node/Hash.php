@@ -14,62 +14,69 @@ use SpacePress\JsUndefined;
  * Buffer, or a string in a known encoding, and finalizes it. The total updated data is capped at
  * 1 MiB (a documented difference: 413 `crypto_input_too_large`).
  */
-final class Hash implements Dispatch
-{
-    private ?\HashContext $context;
-    private int $size = 0;
+final class Hash implements Dispatch {
 
-    public function __construct(string $algorithm, ?string $key = null)
-    {
-        // An empty HMAC key is zero-padded to the block size like any other, as "\0" is.
-        $this->context = $key === null ? hash_init($algorithm) : hash_init($algorithm, HASH_HMAC, $key === '' ? "\0" : $key);
-    }
+	private ?\HashContext $context;
+	private int $size = 0;
 
-    public function read(string $key): mixed
-    {
-        return in_array($key, ['update', 'digest'], true)
-            ? Module::method('Hash:' . $key, static function (mixed $self, array $args) use ($key): mixed {
-                if (!$self instanceof self) { throw new JsError('Illegal invocation', 'TypeError'); }
-                return $self->invoke($key, $args);
-            })
-            : JsUndefined::Value;
-    }
+	public function __construct( string $algorithm, ?string $key = null, private readonly bool $hmac = false ) {
+		// An empty HMAC key is zero-padded to the block size like any other, as "\0" is.
+		$this->context = null === $key ? hash_init( $algorithm ) : hash_init( $algorithm, HASH_HMAC, '' === $key ? "\0" : $key );
+	}
 
-    public function invoke(string $name, array $args): mixed
-    {
-        $arg = static fn (int $i): mixed => array_key_exists($i, $args) ? $args[$i] : JsUndefined::Value;
-        return match ($name) {
-            'update' => $this->update($arg(0), $arg(1)),
-            'digest' => $this->digest($arg(0)),
-            default => Module::inherited($this, $name),
-        };
-    }
+	public function read( string $key ): mixed {
+		return in_array( $key, array( 'update', 'digest' ), true ) || ( 'copy' === $key && ! $this->hmac )
+			? Module::method(
+				'Hash:' . $key,
+				static function ( mixed $receiver, array $args ) use ( $key ): mixed {
+					if ( ! $receiver instanceof self ) {
+						throw new JsError( 'Illegal invocation', 'TypeError' ); }
+					return $receiver->invoke( $key, $args );
+				}
+			)
+			: JsUndefined::Value;
+	}
 
-    public function update(mixed $data, mixed $encoding = JsUndefined::Value): self
-    {
-        $context = $this->live();
-        if ($data instanceof JsArrayBuffer || !is_string($data) && !Buffer::isView($data)) {
-            throw JsError::node('The "data" argument must be of type string or an instance of Buffer, TypedArray, or DataView', 'TypeError', 'ERR_INVALID_ARG_TYPE');
-        }
-        $bytes = is_string($data) ? Buffer::decode($data, Buffer::encoding($encoding) ?? 'utf8') : Buffer::bytes($data, 'data');
-        $this->size += strlen($bytes);
-        if ($this->size > Limits::MAX_DATA) {
-            throw new HttpError(413, 'crypto_input_too_large', 'The crypto input is too large.');
-        }
-        hash_update($context, $bytes);
-        return $this;
-    }
+	public function invoke( string $name, array $args ): mixed {
+		$arg = static fn ( int $i ): mixed => array_key_exists( $i, $args ) ? $args[ $i ] : JsUndefined::Value;
+		return match ( $name ) {
+			'update' => $this->update( $arg( 0 ), $arg( 1 ) ),
+			'digest' => $this->digest( $arg( 0 ) ),
+			'copy' => $this->hmac ? Module::inherited( $this, $name ) : $this->copy(),
+			default => Module::inherited( $this, $name ),
+		};
+	}
 
-    public function digest(mixed $encoding = JsUndefined::Value): mixed
-    {
-        $bytes = hash_final($this->live(), true);
-        $this->context = null;
-        $encoding = $encoding === JsUndefined::Value ? null : Buffer::encoding($encoding);
-        return $encoding === null ? Buffer::wrap($bytes) : Buffer::encode($bytes, $encoding);
-    }
+	public function update( mixed $data, mixed $encoding = JsUndefined::Value ): self {
+		$context = $this->live();
+		if ( $data instanceof JsArrayBuffer || ! is_string( $data ) && ! Buffer::isView( $data ) ) {
+			throw JsError::node( 'The "data" argument must be of type string or an instance of Buffer, TypedArray, or DataView', 'TypeError', 'ERR_INVALID_ARG_TYPE' );
+		}
+		$bytes = is_string( $data ) ? Buffer::decode( $data, Buffer::encoding( $encoding ) ?? 'utf8' ) : Buffer::bytes( $data, 'data' );
+		$size  = $this->size + strlen( $bytes );
+		if ( $size > Limits::MAX_DATA ) {
+			throw new HttpError( 413, 'crypto_input_too_large', 'The crypto input is too large.' );
+		}
+		hash_update( $context, $bytes );
+		$this->size = $size;
+		return $this;
+	}
 
-    private function live(): \HashContext
-    {
-        return $this->context ?? throw JsError::node('Digest already called', 'Error', 'ERR_CRYPTO_HASH_FINALIZED');
-    }
+	public function digest( mixed $encoding = JsUndefined::Value ): mixed {
+		$bytes         = null === $this->context && $this->hmac ? '' : hash_final( $this->live(), true );
+		$this->context = null;
+		$encoding      = JsUndefined::Value === $encoding ? null : Buffer::encoding( $encoding );
+		return null === $encoding ? Buffer::wrap( $bytes ) : Buffer::encode( $bytes, $encoding );
+	}
+
+	private function copy(): self {
+		$context       = $this->live();
+		$copy          = clone $this;
+		$copy->context = hash_copy( $context );
+		return $copy;
+	}
+
+	private function live(): \HashContext {
+		return $this->context ?? throw JsError::node( 'Digest already called', 'Error', 'ERR_CRYPTO_HASH_FINALIZED' );
+	}
 }

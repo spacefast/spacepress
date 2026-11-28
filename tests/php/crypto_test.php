@@ -50,7 +50,7 @@ $code = static function (callable $f): string {
     } catch (HttpError $e) {
         return $e->errorCode;
     } catch (JsError $e) {
-        return $e->jsName . ($e->nodeCode === null ? '' : ' ' . $e->nodeCode) . ': ' . $e->getMessage();
+        return $e->jsName . ($e->node_code === null ? '' : ' ' . $e->node_code) . ': ' . $e->getMessage();
     }
 };
 eq('a missing or blank process.env key is crypto_key_unavailable; bad inputs throw as Node does',
@@ -75,16 +75,30 @@ eq('timingSafeEqual compares bytes and throws on different byte lengths, as Node
     $code(fn () => $crypto->call('timingSafeEqual', [$from('é'), $from('e')])),
     $code(fn () => $crypto->call('timingSafeEqual', ['a', 'a'])),
 ], [true, false, 'RangeError ERR_CRYPTO_TIMING_SAFE_EQUAL_LENGTH: Input buffers must have the same byte length',
-    'TypeError ERR_INVALID_ARG_TYPE: The "buf1" argument must be an instance of ArrayBuffer, Buffer, TypedArray, or DataView.']);
+    'TypeError ERR_INVALID_ARG_TYPE: The "buf1" argument must be an ArrayBuffer or view']);
 
 $uuid = Crypto::randomUUID();
 $random = static fn (mixed $n) => $crypto->call('randomBytes', [$n]);
 eq('randomUUID is RFC 4122 version 4; randomBytes is a Buffer of the asked length, 0 to 1024',
     [preg_match('/\A[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\z/', $uuid), $random(16)->length,
-        $random(8)->bytes() === $random(8)->bytes(), $random(0)->length, $random(9)->nodeBuffer,
+        $random(8)->bytes() === $random(8)->bytes(), $random(0)->length, $random(9)->node_buffer,
         $code(fn () => $random(1025)), $code(fn () => $random('1'))],
     [1, 16, false, 0, true, 'RangeError: randomBytes takes 0 to 1024 bytes in SpacePress code',
-        'TypeError ERR_INVALID_ARG_TYPE: The "size" argument must be of type number']);
+        'TypeError ERR_INVALID_ARG_TYPE: The "size" argument must be number']);
+
+// A native OpenSSL string can be a file URI. Compiled Node calls accept in-memory data only.
+$key_file = tmpfile();
+openssl_pkey_export(openssl_pkey_new(['private_key_bits' => 1024, 'private_key_type' => OPENSSL_KEYTYPE_RSA]), $fixture_key);
+fwrite($key_file, $fixture_key);
+$fixture_uri = 'file://' . stream_get_meta_data($key_file)['uri'];
+eq('KeyObject imports refuse file URIs', [
+    $code(fn () => $crypto->call('createPrivateKey', [$fixture_uri])),
+    $code(fn () => $crypto->call('createPublicKey', [new \SpacePress\JsObject(['key' => $fixture_uri, 'format' => 'pem'])])),
+], [
+    'Error ERR_OSSL_UNSUPPORTED: Expected an in-memory PEM key',
+    'Error ERR_OSSL_UNSUPPORTED: Expected an in-memory PEM key',
+]);
+fclose($key_file);
 
 eq('a digest is finalized once, as in Node', $code(function () use ($crypto) {
     $h = $crypto->call('createHash', ['sha256']);

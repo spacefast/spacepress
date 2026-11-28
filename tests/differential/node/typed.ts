@@ -2,7 +2,7 @@
 // (tests/compiler_contracts.rs `node_modules_typed_use_matches_node`). Module values are checked
 // JavaScript values; `as string` and `as number` check and narrow them.
 import { defineConfig, mutation } from "spacepress";
-import { createHash, createHmac, randomBytes } from "node:crypto";
+import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import * as nodeCrypto from "node:crypto";
 
 function signature(body: string): string {
@@ -36,6 +36,23 @@ export const typedBuffers = mutation({}, () => {
     JSON.stringify({ b: Buffer.from("ab") }),
     String(Buffer.from("x")),
   ];
+});
+
+export const typedScalarResults = mutation({}, () => {
+  const digest: string = nodeCrypto.createHash("sha256").update("a").update("b").digest("hex");
+  const random: string = randomBytes(8).toString("hex");
+  const uuid: string = randomUUID();
+  const equal: boolean = timingSafeEqual(Buffer.from("a"), Buffer.from("a"));
+  const length: number = Buffer.byteLength("é");
+  return [digest, random.length, uuid.length, equal, length];
+});
+
+export const typedWebCrypto = mutation({}, async () => {
+  const data: Uint8Array = new TextEncoder().encode("payload");
+  const digest: ArrayBuffer = await crypto.subtle.digest("SHA-256", data);
+  const view: Uint8Array = new Uint8Array(8);
+  const same = crypto.getRandomValues(view) === view;
+  return [Buffer.from(digest).toString("hex") as string, same, typeof crypto];
 });
 
 export default defineConfig({ name: "node-typed" });

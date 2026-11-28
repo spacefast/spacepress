@@ -67,14 +67,85 @@ impl BuiltinModule {
                 "randomBytes",
                 "randomUUID",
                 "timingSafeEqual",
+                "hash",
+                "randomInt",
+                "randomFillSync",
+                "getRandomValues",
+                "pbkdf2Sync",
+                "pbkdf2",
+                "hkdfSync",
+                "hkdf",
+                "getHashes",
+                "getCiphers",
+                "constants",
+                "generateKeyPairSync",
+                "generateKeyPair",
+                "createPrivateKey",
+                "createPublicKey",
+                "createSecretKey",
+                "KeyObject",
+                "createSign",
+                "createVerify",
+                "sign",
+                "verify",
+                "publicEncrypt",
+                "privateDecrypt",
+                "privateEncrypt",
+                "publicDecrypt",
+                "createCipheriv",
+                "createDecipheriv",
+                "webcrypto",
+                "subtle",
             ],
             BuiltinModule::Buffer => &["Buffer", "constants", "kMaxLength", "atob", "btoa"],
-            BuiltinModule::Path
-            | BuiltinModule::QueryString
-            | BuiltinModule::StringDecoder
-            | BuiltinModule::Events
-            | BuiltinModule::Util
-            | BuiltinModule::Zlib => &[],
+            BuiltinModule::Path => &[
+                "join",
+                "resolve",
+                "normalize",
+                "relative",
+                "dirname",
+                "basename",
+                "extname",
+                "isAbsolute",
+                "parse",
+                "format",
+                "sep",
+                "delimiter",
+                "posix",
+                "toNamespacedPath",
+            ],
+            BuiltinModule::QueryString => &["parse", "decode", "stringify", "encode", "escape", "unescape"],
+            BuiltinModule::StringDecoder => &["StringDecoder"],
+            BuiltinModule::Events => &["EventEmitter", "once"],
+            BuiltinModule::Util => &[
+                "format",
+                "inspect",
+                "promisify",
+                "callbackify",
+                "inherits",
+                "deprecate",
+                "types",
+                "isDeepStrictEqual",
+                "TextEncoder",
+                "TextDecoder",
+            ],
+            BuiltinModule::Zlib => &[
+                "gzipSync",
+                "gunzipSync",
+                "deflateSync",
+                "inflateSync",
+                "deflateRawSync",
+                "inflateRawSync",
+                "unzipSync",
+                "gzip",
+                "gunzip",
+                "deflate",
+                "inflate",
+                "deflateRaw",
+                "inflateRaw",
+                "unzip",
+                "constants",
+            ],
         }
     }
 
@@ -83,6 +154,18 @@ impl BuiltinModule {
         let exports = self.exports();
         if let Some(f) = exports.iter().find(|f| **f == name) {
             return Ok(f);
+        }
+        if self == BuiltinModule::Path && name == "win32" {
+            return Err(
+                Diag::new(span, "`node:path.win32` is unavailable: SpacePress runs on Linux")
+                    .help("use the POSIX methods of node:path"),
+            );
+        }
+        if self == BuiltinModule::Zlib && (name.starts_with("create") || name.to_lowercase().contains("brotli")) {
+            return Err(
+                Diag::new(span, format!("`node:zlib.{name}` is unavailable in SpacePress code"))
+                    .help("use gzipSync, gunzipSync, deflateSync or inflateSync"),
+            );
         }
         let d = Diag::new(
             span,

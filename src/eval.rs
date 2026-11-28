@@ -447,6 +447,7 @@ const GLOBALS: &[&str] = &[
     "TransformStream",
     "setTimeout",
     "crypto",
+    "CryptoKey",
     "Symbol",
     "WeakMap",
     "WeakSet",
@@ -1051,7 +1052,7 @@ impl<'p> Evaluator<'p> {
         };
         // Node built-ins resolve through the same lookup as `import` (`builtins::module`).
         if let Some(module) = crate::builtins::module(spec) {
-            return Ok(Value::Builtin(Builtin::NodeModule(module, None)));
+            return Ok(node_default(module));
         }
         let Some(&target) = self.program.resolved.get(&(from, spec.to_string())) else {
             return err(
@@ -1191,7 +1192,11 @@ impl<'p> Evaluator<'p> {
             return server_export(name, span);
         }
         if let Some(module) = crate::builtins::module(source) {
-            return node_export(module, name, span);
+            return if name == "default" {
+                Ok(node_default(module))
+            } else {
+                node_export(module, name, span)
+            };
         }
         if source == WORDPRESS_MODULE {
             return wordpress_export(name, span);
@@ -1332,9 +1337,7 @@ impl<'p> Evaluator<'p> {
             }
             let value = match &spec.imported {
                 ImportName::Named(n) => self.import_value(id, source, n, spec.span)?,
-                ImportName::Default if let Some(module) = crate::builtins::module(source) => {
-                    Value::Builtin(Builtin::NodeModule(module, None))
-                }
+                ImportName::Default if let Some(module) = crate::builtins::module(source) => node_default(module),
                 ImportName::Default => {
                     if crate::loader::builtin_module(source) {
                         return err_help(
@@ -1427,7 +1430,11 @@ impl<'p> Evaluator<'p> {
                 self.initialize_pattern(inner, v, scope, declaration)
             }
             Pat::Obj { props, rest, span } => {
-                if let Value::Builtin(Builtin::NodeModule(module, None)) = &value {
+                if let Value::Builtin(
+                    Builtin::NodeModule(module, None)
+                    | Builtin::NodeModule(module @ crate::builtins::BuiltinModule::Events, Some("EventEmitter")),
+                ) = &value
+                {
                     // `const { createHash } = require("node:crypto")`: each name is that export.
                     if rest.is_some() {
                         return err(
@@ -1954,6 +1961,20 @@ impl<'p> Evaluator<'p> {
                         Value::Class(c) => Some(c),
                         Value::Builtin(Builtin::Global(g)) if crate::builtins::ERROR_CONSTRUCTORS.contains(&g) => {
                             builtin_base = Some(g);
+                            None
+                        }
+                        Value::Builtin(Builtin::NodeModule(
+                            crate::builtins::BuiltinModule::Events,
+                            Some("EventEmitter"),
+                        )) => {
+                            if !self.program.modules[scope.module].dynamic {
+                                return err_help(
+                                    e.span,
+                                    "extending EventEmitter in typed TypeScript is not supported",
+                                    "use it from a JavaScript helper",
+                                );
+                            }
+                            builtin_base = Some("EventEmitter");
                             None
                         }
                         _ => {
@@ -2747,6 +2768,11 @@ impl<'p> Evaluator<'p> {
                 }
             }
             Value::Builtin(Builtin::NodeModule(module, None)) => node_export(*module, prop, span),
+            Value::Builtin(Builtin::NodeModule(crate::builtins::BuiltinModule::Events, Some("EventEmitter")))
+                if matches!(prop, "EventEmitter" | "once") =>
+            {
+                node_export(crate::builtins::BuiltinModule::Events, prop, span)
+            }
             Value::Builtin(Builtin::Db) => err(
                 span,
                 "`db` only works inside hooks and actions, which run in PHP at request time",
@@ -4831,8 +4857,21 @@ fn client_sdk_export(source: &str, name: &str, span: Span) -> R<Value> {
     )
 }
 
+fn node_default(module: crate::builtins::BuiltinModule) -> Value {
+    let export = (module == crate::builtins::BuiltinModule::Events).then_some("EventEmitter");
+    Value::Builtin(Builtin::NodeModule(module, export))
+}
+
 fn node_export(module: crate::builtins::BuiltinModule, name: &str, span: Span) -> R<Value> {
     let f = module.export(name, span).map_err(Ctl::Err)?;
+    if module == crate::builtins::BuiltinModule::Path {
+        match f {
+            "sep" => return Ok(Value::str("/")),
+            "delimiter" => return Ok(Value::str(":")),
+            "posix" => return Ok(Value::Builtin(Builtin::NodeModule(module, None))),
+            _ => {}
+        }
+    }
     Ok(Value::Builtin(Builtin::NodeModule(module, Some(f))))
 }
 

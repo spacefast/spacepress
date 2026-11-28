@@ -130,3 +130,15 @@ export function bufferMethods() {
     [JSON.stringify(Buffer.from("ab").toJSON()), Buffer.from("ab").reverse().toString(), Buffer.from("abc").at(-1), [...Buffer.from("ab").entries()].join(";")],
   ];
 }
+
+export function bufferArrayBounds() {
+  const source = new ArrayBuffer(8);
+  let offsetError = "";
+  try { Buffer.from(source, -1); } catch (error) { offsetError = error.name; }
+  return [
+    offsetError,
+    Buffer.from(source, -0.5).length,
+    Buffer.from({length: 4, 2: 255}).toString("hex"),
+    Buffer.concat([], 40 * 1024 * 1024).length,
+  ];
+}

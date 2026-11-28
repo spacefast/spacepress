@@ -57,7 +57,7 @@
       "status": "supported",
       "evidence": "src/loader.rs",
       "test": "installed_sources_follow_nearest_packages_exact_exports_and_relative_ts_imports",
-      "guidance": "Locally installed source packages resolve through nearest node_modules: exact exports with import/default conditions, module entries, and supported main/index entries. Scoped packages and exact exported subpaths are supported. Static CommonJS runs once at build time: top-level `require(\"<literal>\")` of relative files and CommonJS packages (require/default conditions), `module.exports = …` and `exports.name = …`, with named exports for ESM importers found like Node's cjs-module-lexer. Dynamic require, require inside functions, require of ES modules, require cycles, writes to module or exports inside functions, other module properties, implicit sloppy arguments, Node built-ins other than node:crypto and node:buffer, export patterns, package aliases, declaration-only entries and package-target escapes are refused. Raw JavaScript uses checked runtime operations; TypeScript keeps static checking. Resolving a package does not establish compatibility with its host APIs or every export. Pinned npm probes compare selected real imports to Node."
+      "guidance": "Locally installed source packages resolve through nearest node_modules: exact exports with import/default conditions, module entries, and supported main/index entries. Scoped packages and exact exported subpaths are supported. Static CommonJS runs once at build time: top-level `require(\"<literal>\")` of relative files and CommonJS packages (require/default conditions), `module.exports = …` and `exports.name = …`, with named exports for ESM importers found like Node's cjs-module-lexer. Dynamic require, require inside functions, require of ES modules, require cycles, writes to module or exports inside functions, other module properties, implicit sloppy arguments, Node built-ins outside the supported set, export patterns, package aliases, declaration-only entries and package-target escapes are refused. Raw JavaScript uses checked runtime operations; TypeScript keeps static checking. Resolving a package does not establish compatibility with its host APIs or every export. Pinned npm probes compare selected real imports to Node."
     },
     {
       "id": "unannotated-javascript",
@@ -545,7 +545,7 @@
       "status": "supported",
       "evidence": "tests/compiler_contracts.rs",
       "test": "language_constructs_match_node_through_generated_php",
-      "guidance": "Imported JavaScript compiles crypto.subtle.digest(algorithm, data): SHA-1, SHA-256, SHA-384 and SHA-512 by name in any case or as { name }, over an ArrayBuffer, typed array or DataView, resolving to an ArrayBuffer; an unknown algorithm rejects with NotSupportedError and non-binary data with TypeError. Evidence: tests/differential/language/subtle-digest.ts."
+      "guidance": "Handlers compile crypto.subtle.digest(algorithm, data): SHA-1, SHA-256, SHA-384 and SHA-512 by name in any case or as { name }, over an ArrayBuffer, typed array or DataView, resolving to an ArrayBuffer; an unknown algorithm rejects with NotSupportedError and non-binary data with TypeError. Evidence: tests/differential/language/subtle-digest.ts."
     },
     {
       "id": "host-platform",
@@ -743,14 +743,106 @@
       "status": "supported",
       "evidence": "tests/compiler_contracts.rs",
       "test": "host_globals_match_node_through_generated_php",
-      "guidance": "Handlers use the standard host forms, type-checked by @types/node: the global fetch(url, { method, headers, body, redirect }) with a Response (status, statusText, ok, url, redirected, bodyUsed, headers.get/has/forEach, text(), json()), Headers and URLSearchParams; process.env.NAME and process.env[\"NAME\"] (string | undefined); crypto.randomUUID(); and the Node built-in modules (see node-modules). They lower in src/compile/host.rs onto SpacePress\\Fetch (HTTPS-only egress policy), SpacePress\\Env, SpacePress\\Crypto and SpacePress\\Node\\Module. See config-api.md."
+      "guidance": "Handlers use the standard host forms, type-checked by @types/node: the global fetch(url, { method, headers, body, redirect }) with a Response (status, statusText, ok, url, redirected, bodyUsed, headers.get/has/forEach, text(), json()), Headers and URLSearchParams; process.env.NAME and process.env[\"NAME\"] (string | undefined); the Web Crypto global; and the Node built-in modules (see node-modules). They lower in src/compile/host.rs onto SpacePress\\Fetch (HTTPS-only egress policy), SpacePress\\Env, SpacePress\\Crypto and SpacePress\\Node\\Module. See config-api.md."
     },
     {
       "id": "node-modules",
       "status": "supported",
       "evidence": "tests/compiler_contracts.rs",
       "test": "node_modules_typed_use_matches_node",
-      "guidance": "An import or top-level require of a Node built-in module (\"node:crypto\" or \"crypto\", \"node:buffer\" or \"buffer\") and the global Buffer are run-time module objects (SpacePress\\Node\\Module), reached through checked JavaScript dispatch in typed TypeScript as in imported JavaScript. createHash and createHmac return stateful objects with update(data, inputEncoding?) and digest(encoding?), where digest() without an encoding returns a Buffer; randomBytes(n) returns a Buffer; timingSafeEqual takes buffers, typed arrays, DataViews or ArrayBuffers. In typed code their results are JavaScript values: narrow them with `as string`, `as number` or `as boolean`, which checks the type when PHP runs and throws a TypeError on a mismatch. Documented differences from Node: a createHmac key read from process.env.NAME is trimmed and refused when blank (500 crypto_key_unavailable), hash and HMAC input is capped at 1 MiB in total (413 crypto_input_too_large), and randomBytes takes 0 to 1024 bytes. Buffer (the global and node:buffer's, with constants, kMaxLength, atob and btoa) is the runtime's Uint8Array with Buffer's methods, so `buf instanceof Uint8Array` holds: from (strings in utf8, hex, base64, base64url, latin1/binary, ascii, utf16le/ucs2, decoded leniently as Node does; arrays, array-likes, typed arrays, ArrayBuffer views with offset and length, and toJSON objects), alloc, allocUnsafe (zero-filled), concat, isBuffer, isEncoding, byteLength, compare, of; and on instances toString(encoding, start, end), equals, compare, write, copy, fill, indexOf, lastIndexOf, includes, toJSON, slice and subarray (views), the readUInt/writeUInt and readInt/writeInt 8/16/32 methods in both byte orders, readBigUInt64BE/LE, and every Uint8Array method. JSON.stringify gives {\"type\":\"Buffer\",\"data\":[...]}. Evidence for Buffer: tests/differential/node/buffer.mjs, run by binary_data_matches_node_through_generated_php."
+      "guidance": "Handlers can import supported Node built-ins by their node: specifier or bare name, or load them with a static CommonJS require. The runtime checks JavaScript values from these modules. Authored TypeScript assertions to string, number, and boolean check the value before giving it a static type. See the Node built-in entries for supported exports."
+    },
+    {
+      "id": "node-buffer",
+      "status": "supported",
+      "evidence": "tests/compiler_contracts.rs",
+      "test": "binary_data_matches_node_through_generated_php",
+      "guidance": "Buffer is a Uint8Array with Node byte encodings, allocation, copying, views, and integer access. allocUnsafe returns zero-filled bytes. Buffer allocations respect PHP’s memory limit. JSON.stringify emits {\"type\":\"Buffer\",\"data\":[...]}. Encode bytes as text before returning them from a handler."
+    },
+    {
+      "id": "node-crypto",
+      "status": "supported",
+      "evidence": "tests/compiler_contracts.rs",
+      "test": "node_crypto_and_web_crypto_match_node_through_generated_php",
+      "guidance": "Stateful hash and HMAC, one-shot hash, PBKDF2, HKDF, secure random bytes and integers, in-place random filling, UUIDs, and constant-time byte equality. Callback completion runs on SpacePress’s request microtask queue. getHashes reports the implemented algorithms."
+    },
+    {
+      "id": "node-crypto-keys",
+      "status": "supported",
+      "evidence": "tests/compiler_contracts.rs",
+      "test": "node_keys_match_node_through_generated_php",
+      "guidance": "KeyObject imports and exports RSA, P-256, P-384, and Ed25519 keys. RSA key generation supports up to 4096 bits and uses public exponent 65537. PHP 8.5 is required for RSA-PSS and OAEP digests other than SHA-1. OpenSSL 3.2 or later is required for PKCS#1 v1.5 private decryption. Encrypted PEMs and custom OAEP labels are unavailable."
+    },
+    {
+      "id": "node-crypto-ciphers",
+      "status": "supported",
+      "evidence": "tests/compiler_contracts.rs",
+      "test": "node_ciphers_and_zlib_match_node_through_generated_php",
+      "guidance": "AES-128 and AES-256 in CBC and GCM modes. A GCM decipher releases bytes at final() after tag verification. A GCM cipher also returns ciphertext at final()."
+    },
+    {
+      "id": "web-crypto",
+      "status": "supported",
+      "evidence": "tests/compiler_contracts.rs",
+      "test": "node_crypto_and_web_crypto_match_node_through_generated_php",
+      "guidance": "The crypto global and node:crypto webcrypto expose SubtleCrypto and getRandomValues. SubtleCrypto supports digest, key import and export, key generation, sign and verify, encrypt and decrypt, and PBKDF2 and HKDF derivation. AES uses 128- or 256-bit keys. The tested Node release reports InvalidAccessException when exporting a non-extractable key."
+    },
+    {
+      "id": "node-crypto-caps",
+      "status": "divergence",
+      "evidence": "tests/compiler_contracts.rs",
+      "test": "node_crypto_and_web_crypto_match_node_through_generated_php",
+      "guidance": "A createHmac key read from process.env.NAME is trimmed and a blank key produces crypto_key_unavailable. Hash and HMAC inputs are capped at 1 MiB. randomBytes accepts 0 to 1024 bytes. PBKDF2 accepts up to 1,000,000 iterations and limits total work to 1,000,000 HMAC rounds across all output blocks. PBKDF2 salts are capped at 1024 bytes."
+    },
+    {
+      "id": "node-path",
+      "status": "supported",
+      "evidence": "tests/compiler_contracts.rs",
+      "test": "node_utility_modules_match_node_through_generated_php",
+      "guidance": "POSIX path operations and constants. Relative paths resolve from /. path.posix refers to the POSIX module. Windows paths are unavailable."
+    },
+    {
+      "id": "node-querystring",
+      "status": "supported",
+      "evidence": "tests/compiler_contracts.rs",
+      "test": "node_utility_modules_match_node_through_generated_php",
+      "guidance": "Parse and stringify Node query strings, including duplicate keys, custom separators and delimiters, and maxKeys."
+    },
+    {
+      "id": "node-string-decoder",
+      "status": "supported",
+      "evidence": "tests/compiler_contracts.rs",
+      "test": "node_utility_modules_match_node_through_generated_php",
+      "guidance": "StringDecoder retains incomplete byte sequences between writes in UTF-8, UTF-16LE, and base64. SpacePress strings retain a valid UTF-16 surrogate pair across chunks."
+    },
+    {
+      "id": "node-util",
+      "status": "supported",
+      "evidence": "tests/compiler_contracts.rs",
+      "test": "node_utility_modules_match_node_through_generated_php",
+      "guidance": "Formatting, inspection of supported values, deep equality, callback adapters, deprecation warnings, type predicates, and text encoders. util.inherits supports compiled JavaScript class constructors."
+    },
+    {
+      "id": "node-events",
+      "status": "supported",
+      "evidence": "tests/compiler_contracts.rs",
+      "test": "node_utility_modules_match_node_through_generated_php",
+      "guidance": "EventEmitter supports listeners, once, promises from events.once, and subclasses in imported JavaScript."
+    },
+    {
+      "id": "node-zlib",
+      "status": "supported",
+      "evidence": "tests/compiler_contracts.rs",
+      "test": "node_ciphers_and_zlib_match_node_through_generated_php",
+      "guidance": "Gzip, deflate, raw deflate, and decompression in sync and callback forms. Output is capped at 16 MiB. Streaming and Brotli exports are unavailable."
+    },
+    {
+      "id": "typed-event-emitter-subclass",
+      "status": "refused",
+      "code": "F2001",
+      "fixture": "tests/fixtures/reject-typed-event-emitter",
+      "message": "extending EventEmitter in typed TypeScript",
+      "guidance": "Define the EventEmitter subclass in an imported JavaScript helper."
     },
     {
       "id": "fetch-signal",
@@ -841,44 +933,28 @@
       "guidance": "env(\"NAME\") is a deferred reference inside defineConfig (webhook URLs and secrets, action signatures, upload credentials). Handlers read runtime variables with process.env.NAME."
     },
     {
-      "id": "web-crypto-subtle",
-      "status": "refused",
-      "code": "F4001",
-      "fixture": "tests/fixtures/reject-crypto-subtle",
-      "message": "`crypto.subtle.digest` works in imported JavaScript only",
-      "guidance": "Imported JavaScript compiles crypto.subtle.digest (see subtle-digest). Typed TypeScript hashes and signs with createHash and createHmac from \"node:crypto\"."
-    },
-    {
-      "id": "web-crypto-random-values",
-      "status": "refused",
-      "code": "F4001",
-      "fixture": "tests/fixtures/reject-crypto-random-values",
-      "message": "`crypto.getRandomValues` needs typed arrays",
-      "guidance": "Use randomBytes(n) from \"node:crypto\", or crypto.randomUUID()."
-    },
-    {
       "id": "node-crypto-members",
       "status": "refused",
       "code": "F2001",
       "fixture": "tests/fixtures/reject-node-crypto-member",
-      "message": "\"node:crypto\" has no `createCipheriv` in SpacePress code",
-      "guidance": "node:crypto provides createHash, createHmac, randomBytes, randomUUID and timingSafeEqual. Ciphers, keys, KDFs and streams are not compiled yet."
+      "message": "\"node:crypto\" has no `scrypt` in SpacePress code",
+      "guidance": "Use a supported key derivation API, such as pbkdf2 or hkdf, when the protocol permits it."
     },
     {
       "id": "node-builtins",
       "status": "refused",
       "code": "F1102",
       "fixture": "tests/fixtures/reject-node-builtin",
-      "message": "Node built-ins other than node:crypto and node:buffer are unavailable",
-      "guidance": "Handlers run in PHP. Use the global fetch, process.env.NAME, \"node:crypto\" and \"node:buffer\"."
+      "message": "this Node built-in is unavailable in SpacePress",
+      "guidance": "Import or statically require a supported Node built-in. Filesystem, process creation, and Node HTTP modules are unavailable to compiled handlers."
     },
     {
       "id": "require",
       "status": "refused",
       "code": "F1102",
       "fixture": "tests/fixtures/reject-require-module",
-      "message": "can't import \"node:fs\": Node built-ins other than node:crypto and node:buffer are unavailable",
-      "guidance": "Static CommonJS may require(\"node:crypto\") or require(\"node:buffer\") (or the bare names); they resolve through the same built-in module lookup as import. Other Node built-ins are refused whether imported or required."
+      "message": "can't import \"node:fs\": this Node built-in is unavailable in SpacePress",
+      "guidance": "Import or statically require a supported Node built-in. Filesystem, process creation, and Node HTTP modules are unavailable to compiled handlers."
     },
     {
       "id": "spacepress-fetch-import",

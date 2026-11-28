@@ -11,11 +11,11 @@ class JsError extends \Exception {
 	public ?JsArray $errors = null;
 
 	/** The JavaScript error code attached by a Node built-in. */
-	public ?string $nodeCode = null;
+	public ?string $node_code = null;
 
 	public static function node( string $message, string $name, string $code ): self {
-		$error = new self( $message, $name );
-		$error->nodeCode = $code;
+		$error            = new self( $message, $name );
+		$error->node_code = $code;
 		return $error;
 	}
 
@@ -31,11 +31,11 @@ class JsError extends \Exception {
 
 	/** Receipt snapshots persist JS-visible fields, never PHP frames containing callbacks. */
 	public function __serialize(): array {
-		return array( $this->getMessage(), $this->jsName, $this->hasMessage, $this->nodeCode ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+		return array( $this->getMessage(), $this->jsName, $this->hasMessage, $this->node_code ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 	}
 
 	public function __unserialize( array $data ): void {
 		$this->__construct( $data[0], $data[1], $data[2] );
-		$this->nodeCode = $data[3] ?? null;
+		$this->node_code = $data[3] ?? null;
 	}
 }

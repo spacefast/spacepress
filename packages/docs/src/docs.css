@@ -174,6 +174,7 @@ summary.sd-nav-link::-webkit-details-marker { display: none; }
 .sd-breadcrumbs a { color: var(--sd-ink-muted); text-decoration: none; }
 .sd-breadcrumbs a:hover { color: var(--sd-ink); }
 .sd-article-top { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+.sd-article-top .sd-breadcrumbs { min-width: 0; overflow-wrap: anywhere; }
 .sd-article-top .sd-breadcrumbs ol { margin: 0; }
 .sd-header-action { flex: none; margin-inline-start: auto; }
 .sd-article-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }

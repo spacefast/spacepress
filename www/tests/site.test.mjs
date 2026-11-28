@@ -50,7 +50,12 @@ test("home and synced reference fit a narrow viewport", async (t) => {
     assert.ok(await page.locator("h1").isVisible());
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), path);
     if (path.startsWith("/docs/")) {
-      assert.ok(await page.locator(".sd-article-top").getByRole("button", { name: "Switch between light and dark" }).isVisible());
+      const themeToggle = page.getByRole("button", { name: "Switch between light and dark" });
+      assert.ok(await themeToggle.isVisible());
+      await page.getByRole("navigation", { name: "Breadcrumbs" }).getByRole("link").last().evaluate((link) => {
+        link.textContent = "WordPressPluginConfiguration".repeat(4);
+      });
+      assert.ok(await themeToggle.evaluate((toggle) => toggle.getBoundingClientRect().right <= innerWidth));
     }
   }
 });

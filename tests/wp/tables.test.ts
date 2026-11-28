@@ -69,6 +69,57 @@ test("db.globals in compiled code reads and writes the WordPress-stored global",
   assert.equal((await ok("GET", "/settings")).postsPerPage, start + 1);
 });
 
+test("a trusted conditional table update preserves a competing commit", () => {
+  const signup = first("insert", "signups", JSON.stringify({ email: `pending-${run}@example.test` }))[0];
+  const result = JSON.parse(wp("eval", `
+    $db = \\SpacePress\\db();
+    $other = new wpdb(DB_USER, DB_PASSWORD, DB_NAME, DB_HOST);
+    $table = $GLOBALS['wpdb']->prefix . 'sp_signups';
+    $id = ${signup.id};
+    if (false === $GLOBALS['wpdb']->query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ')) {
+      throw new RuntimeException('Could not set the transaction isolation level.');
+    }
+    $rows = $db->transaction(function () use ($db, $other, $table, $id) {
+      $selector = ['id' => $id];
+      $seen = $db->findFirst('signups', ['where' => $selector]);
+      if ($seen['email'] !== 'pending-${run}@example.test') throw new RuntimeException('The transaction did not see the pending signup.');
+      $written = $other->query($other->prepare("UPDATE \`$table\` SET email = %s WHERE id = %d", 'winner-${run}@example.test', $id));
+      if ($written !== 1) throw new RuntimeException('The competing update failed.');
+      return $db->update('signups', ['email' => 'stale-${run}@example.test'], $selector + ['email' => $seen['email']], true);
+    });
+    $current = $db->findFirst('signups', ['where' => ['id' => $id]]);
+    echo wp_json_encode([$rows, $current['email']]);
+  `));
+
+  assert.deepEqual(result, [[], `winner-${run}@example.test`]);
+});
+
+test("an empty trusted conditional update returns a signup committed after the snapshot", () => {
+  const signup = first("insert", "signups", JSON.stringify({ email: `snapshot-${run}@example.test` }))[0];
+  const result = JSON.parse(wp("eval", `
+    $db = \\SpacePress\\db();
+    $schema = $db->schema();
+    $other_wpdb = new wpdb(DB_USER, DB_PASSWORD, DB_NAME, DB_HOST);
+    $other_wpdb->set_prefix($GLOBALS['wpdb']->prefix);
+    $connection = new \\SpacePress\\Wp\\Connection($other_wpdb);
+    $store = \\SpacePress\\Wp\\CompositeStore::create($schema, $connection);
+    $other = new \\SpacePress\\Db($store, $schema, $db->media());
+    if (false === $GLOBALS['wpdb']->query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ')) {
+      throw new RuntimeException('Could not set the transaction isolation level.');
+    }
+    $emails = $db->transaction(function () use ($db, $other) {
+      $seen = $db->findFirst('signups', ['where' => ['id' => ${signup.id}]]);
+      if ($seen['email'] !== 'snapshot-${run}@example.test') throw new RuntimeException('Could not establish the transaction snapshot.');
+      [$inserted] = $other->insert('signups', ['email' => 'arrived-${run}@example.test'], true);
+      $rows = $db->update('signups', [], ['id' => $inserted['id'], 'email' => $inserted['email']], true);
+      return array_column($rows, 'email');
+    });
+    echo wp_json_encode($emails);
+  `));
+
+  assert.deepEqual(result, [`arrived-${run}@example.test`]);
+});
+
 test("unique fields, filtered references and restrictive deletes hide competing rows on both REST surfaces", async () => {
   const trip = first("insert", "round_trips", JSON.stringify({ title: `Round trip ${run}`, ownerId: harness.users.editor.id, secretCode: `secret-${run}` }))[0];
   const nativeDraft = (owner: number) => Number(wp("eval", `$id = wp_insert_post(['post_type' => 'sp_round_trips', 'post_status' => 'draft', 'post_title' => 'Native draft ${run}', 'post_name' => '${trip.slug}'], true); if (is_wp_error($id)) throw new Exception($id->get_error_message()); update_field('field_sp_round_trips_ownerId', ${owner}, $id); echo $id;`));

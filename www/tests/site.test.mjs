@@ -49,6 +49,14 @@ test("home and synced reference fit a narrow viewport", async (t) => {
     const page = await open(t, path, { viewport: { width: 390, height: 800 } });
     assert.ok(await page.locator("h1").isVisible());
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), path);
+    if (path.startsWith("/docs/")) {
+      const themeToggle = page.getByRole("button", { name: "Switch between light and dark" });
+      assert.ok(await themeToggle.isVisible());
+      await page.getByRole("navigation", { name: "Breadcrumbs" }).getByRole("link").last().evaluate((link) => {
+        link.textContent = "WordPressPluginConfiguration".repeat(4);
+      });
+      assert.ok(await themeToggle.evaluate((toggle) => toggle.getBoundingClientRect().right <= innerWidth));
+    }
   }
 });
 
@@ -57,6 +65,9 @@ test("reference navigation opens synced Markdown and its code examples", async (
   await page.getByRole("link", { name: /Pages, Layouts & Interactive Islands/ }).click();
   await page.waitForURL("**/docs/core/pages-and-islands/");
   assert.equal(await page.locator("h1").textContent(), "Pages, Layouts & Interactive Islands");
+  const reference = await page.locator(".sd-docs").boundingBox();
+  const header = await page.locator(".sp-header").boundingBox();
+  assert.ok(reference && header && Math.abs(reference.y - (header.y + header.height)) <= 1);
   assert.ok(await page.getByRole("navigation", { name: "Reference", exact: true }).locator("a").count() > 1);
   assert.ok(await page.getByRole("navigation", { name: "On this page" }).locator("a").count() > 0);
   await page.locator(".sd-prose sp-code.sp-drawn").first().waitFor();
@@ -69,7 +80,7 @@ test("reference navigation opens synced Markdown and its code examples", async (
   await plain.locator(".sd-mobile-nav > summary").click();
   assert.ok(await plain.getByRole("navigation", { name: "Reference", exact: true }).getByRole("link", { name: "Pages, Layouts & Interactive Islands" }).isVisible());
 
-  await page.getByRole("button", { name: "Switch between light and dark" }).click();
+  await page.locator(".sd-article-top").getByRole("button", { name: "Switch between light and dark" }).click();
   const theme = await page.locator("html").getAttribute("data-theme");
   assert.ok(theme === "dark" || theme === "light");
   await page.reload();

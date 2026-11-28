@@ -1,4 +1,4 @@
-import { DocPage } from "@spacepress/docs";
+import { DocPage, ThemeToggle } from "@spacepress/docs";
 import { docs } from "spacepress/server/db";
 import { headings, nav, pager } from "spacepress/content";
 import { docSources } from "../../../data/doc-sources";
@@ -37,6 +37,7 @@ export default async function ReferencePage({ item, params }: PageProps) {
       site={site}
       source={docSources[path]}
       home={{ title: "Reference", href: "/docs" }}
+      headerAction={<ThemeToggle />}
     />
   );
 }

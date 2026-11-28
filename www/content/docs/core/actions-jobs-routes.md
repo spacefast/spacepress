@@ -40,10 +40,6 @@ A query may not write, in its own body or in anything it calls; the build refuse
 
 Every function is also a WordPress Ability, `<app>/<kebab-name>`. Islands and the typed client call it through `api.actions.<name>` and core's run route; see [Typed Clients](/docs/integrations/astro-and-clients#how-calls-reach-wordpress). A page form posts to it directly; see [Forms that post to an action](/docs/core/pages-and-islands#forms-that-post-to-an-action). Its HTTP endpoint on the app API is `POST /wp-json/spacepress/v1/actions/<name>` (a query also accepts `GET`).
 
-<Note title="action() and jobs are gone">
-`action()` is refused: use `query()` when the function only reads and `mutation()` when it writes. `import { jobs } from "spacepress"` is refused too: queue a job through its own export, as below.
-</Note>
-
 ## Background jobs
 
 Export `job(options, handler)` and queue it with `theJob.enqueue(input, { delay, key })`:

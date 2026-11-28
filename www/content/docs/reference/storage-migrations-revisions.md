@@ -1,32 +1,10 @@
 ---
 uid: zr_c0f65a9c5941e13d8ec8
 title: Storage migrations and revisions
-description: Design decisions for forward-only migrations, soft deletes, and revisions.
+description: How SpacePress applies schema changes, retains deleted rows, and tracks revisions.
 status: draft
 ---
-# Decision Record: Forward-Only Migrations, Aliasing, Soft Deletes, Native Revisions, and Destructive Plugin Escape Hatch
-
-Date: 2026-11-21
-Status: Accepted
-
-## Context
-
-SpacePress compiles TypeScript schema declarations (`collection()`, `table()`, `userProjection()`, `taxonomy()`, `global()`) into a WordPress plugin with custom InnoDB tables (`{prefix}sp_*`) and WordPress post/meta/user storage.
-
-Previously:
-- Migrations used sequential `0001_init.sql`, `0002_update.sql` files alongside a single mutable `sp/_generated/migrations/snapshot.json`, guaranteeing git merge conflicts whenever two branches both changed the schema.
-- Removing a column or table generated destructive `DROP COLUMN` / `DROP TABLE` statements in core migrations, and `.was()` emitted in-place `RENAME COLUMN` / `RENAME TABLE` DDL that broke rolling deploys and required SQLite copy workarounds.
-- Soft deletes existed only implicitly for `collection()` via WordPress Trash (while `table()` hard-deleted immediately), and WordPress's 30-day `wp_scheduled_delete` cron silently purged trashed items.
-- Revisions were off by default on `table()`, had no unified `kind.revisions` API, and did not track operation metadata (`create`, `update`, `delete`, `restore`, `purge`) or schema evolution.
-- Join tables for `ref().many()` used `{prefix}sp_<owner>_<field>`, which could collide with user-declared tables of the same name.
-
-Since SpacePress is pre-release with no external production deployments yet, we take a clean break without carrying legacy `0001_init.sql` / `snapshot.json` upgrade shims.
-
----
-
-## Decisions
-
-### 1. Sortable-String, Merge-Conflict-Free Migrations (No Global Snapshot)
+## Migration files
 
 - **Layout:** Each migration is an immutable folder under `sp/_generated/migrations/`:
   ```text
@@ -42,7 +20,7 @@ Since SpacePress is pre-release with no external production deployments yet, we 
   Columns: `app`, `id`, `kind` (`'schema' | 'data' | 'destructive'`), `applied_at`, `sql` (SHA-256 of `migration.sql`), `actor`, `reason`, `rows_affected`.
   `Migrator` applies any folder whose `id` is not yet in `sp__migrations` in `SORT_STRING` order (set-based, so out-of-order merged parallel branches apply cleanly without re-running applied IDs).
 
-### 2. Strictly Forward-Only Core & Column/Table Aliasing
+## Schema changes and aliases
 
 - **Core emits and executes ONLY lossless, forward-only DDL:**
   - `CREATE TABLE`
@@ -55,10 +33,9 @@ Since SpacePress is pre-release with no external production deployments yet, we 
 - **Aliasing instead of in-place `RENAME`:**
   - Columns support `.column("physical_name")` (decoupling the TypeScript/API field name from the physical SQL column name with zero DDL) and `.alias("old_api_name")` (accepting an old API/filter name during transitions).
   - Tables support `{ storageName: "physical_table_slug" }` to decouple the TypeScript kind name from `{prefix}sp_<storageName>`.
-  - Physical renames via `.was()` are removed from core DDL; diagnostics guide authors to `.column()` / `storageName` (zero-downtime) or the opt-in destructive plugin.
-- **Dedicated join-table namespace:** `ref().many()` join tables move from `{prefix}sp_<owner>_<field>` to `{prefix}sp__join_<owner>_<field>`, eliminating collisions with user tables.
+- **Join tables:** `ref().many()` stores links in `{prefix}sp__join_<owner>_<field>`, a namespace reserved for these relationships.
 
-### 3. Opt-In Destructive Escape Hatch (`spacepress/danger`)
+## Destructive operations with `spacepress/danger`
 
 - Destructive operations (`DROP COLUMN` / `DROP TABLE` on already-retired items, lossy type narrowing, physical purge of soft-deleted rows, raw escape-hatch SQL) live behind an explicit opt-in subpath `spacepress/danger` (never exported from the main `spacepress` barrel).
 - Opted in explicitly in `spacepress.config.ts`:
@@ -73,7 +50,7 @@ Since SpacePress is pre-release with no external production deployments yet, we 
   3. Optional `--archive-to=<path>` JSONL export before destructive execution.
   4. Audit row in `sp__migrations` with `kind = 'destructive'`, `actor`, `reason`, and `rows_affected`.
 
-### 4. Native Soft Deletes (Default ON) & Config-Driven Retention (Default `"forever"`)
+## Soft deletes and retention
 
 - **Default ON everywhere:** Both `table()` and `collection()` default to `softDelete: true` (opt out with `{ softDelete: false }`).
 - **Storage:**
@@ -96,10 +73,10 @@ Since SpacePress is pre-release with no external production deployments yet, we 
     ```
   - Swept in bounded batches via Action Scheduler.
 
-### 5. Native Revisions (Default ON for Both `collection()` and `table()`)
+## Revisions
 
 - Both `collection()` and `table()` default to `revisions: true` (opt out with `{ revisions: false }`).
-- `{prefix}sp__revisions` is enriched with:
+- Each row in `{prefix}sp__revisions` records these fields:
   - `version` (`INT UNSIGNED NOT NULL`, monotonic per `(collection, pk)`)
   - `op` (`VARCHAR(16) NOT NULL`: `'create' | 'update' | 'delete' | 'restore' | 'purge'`)
   - `at` (`CHAR(24) NOT NULL`)
@@ -115,7 +92,7 @@ Since SpacePress is pre-release with no external production deployments yet, we 
 - Schema-aware decoding resolves aliased/retired columns across forward-only migrations.
 - Optimistic concurrency (`_rev`) is supported uniformly on `table()` as well as `collection()`.
 
-### 6. Clean-Slate Ergonomics
+## System fields, filters, and IDs
 
 - **Automatic system fields:** Every kind with rows automatically exposes `id`, `author`, `createdAt`, `updatedAt` (plus `deletedAt`, `deletedBy` when `softDelete: true`).
 - **Strict Drizzle 1.0 filter semantics:** Explicit `undefined` values inside `where` filters throw `422 invalid_input` (instead of silently dropping the predicate and returning all rows). In `update()`, `undefined` means untouched and `null` clears nullable fields.

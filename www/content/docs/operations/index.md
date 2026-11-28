@@ -18,10 +18,6 @@ The command reference, plugin packaging, `spacepress push`, `doctor`, and sealed
 <Card title="SpacePress Admin" icon="pencil" href="/docs/operations/admin">
 Content editing and experimental Gutenberg collaboration.
 </Card>
-
-<Card title="Upgrade to SpacePress" icon="refresh-cw" href="/docs/operations/upgrade-to-spacepress">
-Move a project and a site from a pre-release build to the SpacePress names.
-</Card>
 </CardGroup>
 
 ## Hosting

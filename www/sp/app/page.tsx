@@ -661,13 +661,6 @@ export default function HomePage() {
                 <Link href="/docs/operations/cli-and-deploy" className="sp-inline-link">CLI &amp; Deployment</Link>.
               </p>
             </details>
-            <details className="sp-faq-item">
-              <summary>Why do the CLI, config file, and imports say <code>spacepress</code>?</summary>
-              <p>
-                SpacePress (<code>spacepress.dev</code>) is the framework brand; while{" "}
-                <Link href="/changelog" className="sp-inline-link">v0 (&ldquo;Istanbul&rdquo;)</Link> prepares for 1.0, the npm package (<code>spacepress</code>), CLI binary, config file (<code>spacepress.config.ts</code>), <code>sp/</code> directory (customizable via <code>dir</code>), and imports (<code>&quot;spacepress&quot;</code>, <code>&quot;spacepress/server/*&quot;</code>) keep the pre-release identifier <code>spacepress</code>.
-              </p>
-            </details>
           </div>
         </div>
       </section>

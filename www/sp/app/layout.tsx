@@ -20,12 +20,6 @@ export default function RootLayout({ children }: LayoutProps) {
   return (
     <div className="sp-shell">
       <a href="#main-content" className="sp-skip-link">Skip to content</a>
-      <div className="sp-wip-banner" role="status">
-        <span>
-          <Link href="/changelog" className="sp-wip-link">v0 &ldquo;Istanbul&rdquo;</Link> · THIS IS WORK IN PROGRESS.
-        </span>
-      </div>
-
       <header className="sp-header">
         <div className="sp-container sp-header-inner">
           <Link href="/" className="sp-brand">
@@ -136,7 +130,7 @@ export default function RootLayout({ children }: LayoutProps) {
             <div>
               <h4>Project</h4>
               <ul>
-                <li><Link href="/changelog">Changelog (v0 &ldquo;Istanbul&rdquo;)</Link></li>
+                <li><Link href="/changelog">Changelog</Link></li>
                 <li><a href="https://github.com/spacefast/spacepress" target="_blank" rel="noopener noreferrer">GitHub Repository</a></li>
                 <li><a href="https://github.com/spacefast/spacepress/discussions" target="_blank" rel="noopener noreferrer">GitHub Discussions</a></li>
                 <li><a href="https://github.com/spacefast/spacepress/releases" target="_blank" rel="noopener noreferrer">Releases</a></li>
@@ -150,7 +144,7 @@ export default function RootLayout({ children }: LayoutProps) {
               Proudly powered by <Link href="/">SpacePress</Link> on{" "}
               <a href="https://wordpress.org" target="_blank" rel="noopener noreferrer">WordPress</a>.
             </span>
-            <span>v0 &ldquo;Istanbul&rdquo; · Compiler MIT · WordPress runtime GPL-2.0-or-later.</span>
+            <span>Compiler MIT · WordPress runtime GPL-2.0-or-later.</span>
           </div>
         </div>
 

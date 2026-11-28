@@ -119,7 +119,7 @@ export default function QuickStartPage() {
 
       <div className="sp-container-narrow">
         <div className="sp-callout" style={{ marginTop: "32px" }}>
-          <strong>Requirements &amp; pre-release naming:</strong> You need <strong>Node.js 22+</strong> and npm. The <code>spacepress</code> npm package downloads a prebuilt Rust compiler binary automatically. During pre-release, CLI commands, config filenames (<code>spacepress.config.ts</code>), and imports (<code>from &quot;spacepress&quot;</code>) use the <code>spacepress</code> identifier.
+          You need <strong>Node.js 22+</strong> and npm. The <code>spacepress</code> package downloads the compiler for your platform during installation.
         </div>
 
         <div className="sp-steps">

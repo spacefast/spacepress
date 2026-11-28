@@ -200,33 +200,6 @@ code, pre { font-family: var(--font-mono); }
   padding: 0 clamp(16px, 2.5vw, 44px);
 }
 
-/* Work-in-progress top banner */
-.sp-wip-banner {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 9px 16px;
-  border-bottom: 1px solid var(--border);
-  background: var(--surface-code);
-  font-family: var(--font-mono);
-  font-size: 12px;
-  font-weight: 500;
-  letter-spacing: 0.08em;
-  color: var(--ink-secondary);
-  text-align: center;
-}
-.sp-wip-link {
-  color: var(--ink);
-  text-decoration: none;
-  border-bottom: 1px solid var(--border-strong);
-  padding-bottom: 1px;
-}
-.sp-wip-link:hover {
-  color: var(--accent);
-  border-bottom-color: var(--accent);
-  text-decoration: none;
-}
-
 .sp-gh-btn {
   gap: 6px;
 }

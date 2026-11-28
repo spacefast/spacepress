@@ -22,10 +22,7 @@ export default function RootLayout({ children }: LayoutProps) {
       <a href="#main-content" className="sp-skip-link">Skip to content</a>
       <header className="sp-header">
         <div className="sp-container sp-header-inner">
-          <Link href="/" className="sp-brand">
-            <span className="sp-logo-mark" aria-hidden="true">S</span>
-            <span>SpacePress</span>
-          </Link>
+          <Link href="/" className="sp-brand">SpacePress</Link>
 
           <nav className="sp-nav" aria-label="Primary">
             <Link href="/quick-start">Quick Start</Link>
@@ -94,10 +91,7 @@ export default function RootLayout({ children }: LayoutProps) {
         <div className="sp-container">
           <div className="sp-footer-grid">
             <div>
-              <Link href="/" className="sp-brand">
-                <span className="sp-logo-mark" aria-hidden="true">S</span>
-                <span>SpacePress</span>
-              </Link>
+              <Link href="/" className="sp-brand">SpacePress</Link>
               <p style={{ marginTop: "12px", maxWidth: "320px" }}>
                 The TypeScript full-stack framework that compiles directly into native PHP, SQL migrations, and WordPress plugins. Built with Rust and OXC.
               </p>

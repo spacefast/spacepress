@@ -244,9 +244,6 @@ code, pre { font-family: var(--font-mono); }
 }
 
 .sp-brand {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
   font-weight: 500;
   font-size: 17px;
   letter-spacing: -0.02em;
@@ -254,20 +251,6 @@ code, pre { font-family: var(--font-mono); }
   text-decoration: none;
 }
 .sp-brand:hover { text-decoration: none; opacity: 0.8; }
-
-.sp-logo-mark {
-  width: 26px;
-  height: 26px;
-  border-radius: 22.5%;
-  background: var(--ink);
-  color: var(--bg);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  font-size: 15px;
-  letter-spacing: 0;
-}
 
 .sp-nav {
   display: flex;

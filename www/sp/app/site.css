@@ -53,7 +53,6 @@
   --accent-ink: #141414;
   --accent-soft: rgba(30, 254, 87, 0.1);
   --accent-border: rgba(30, 254, 87, 0.3);
-  --daylight: linear-gradient(98deg, #1efe57 15%, #e5ff00 68%, #fff 100%);
   --ring: #0075ff;
   /* Kept for the inline styles that name them; both now sit inside the same quiet palette. */
   --indigo: #69b1ff;
@@ -200,33 +199,6 @@ code, pre { font-family: var(--font-mono); }
   padding: 0 clamp(16px, 2.5vw, 44px);
 }
 
-/* Work-in-progress top banner */
-.sp-wip-banner {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 9px 16px;
-  border-bottom: 1px solid var(--border);
-  background: var(--surface-code);
-  font-family: var(--font-mono);
-  font-size: 12px;
-  font-weight: 500;
-  letter-spacing: 0.08em;
-  color: var(--ink-secondary);
-  text-align: center;
-}
-.sp-wip-link {
-  color: var(--ink);
-  text-decoration: none;
-  border-bottom: 1px solid var(--border-strong);
-  padding-bottom: 1px;
-}
-.sp-wip-link:hover {
-  color: var(--accent);
-  border-bottom-color: var(--accent);
-  text-decoration: none;
-}
-
 .sp-gh-btn {
   gap: 6px;
 }
@@ -271,9 +243,6 @@ code, pre { font-family: var(--font-mono); }
 }
 
 .sp-brand {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
   font-weight: 500;
   font-size: 17px;
   letter-spacing: -0.02em;
@@ -281,20 +250,6 @@ code, pre { font-family: var(--font-mono); }
   text-decoration: none;
 }
 .sp-brand:hover { text-decoration: none; opacity: 0.8; }
-
-.sp-logo-mark {
-  width: 26px;
-  height: 26px;
-  border-radius: 22.5%;
-  background: var(--ink);
-  color: var(--bg);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  font-size: 15px;
-  letter-spacing: 0;
-}
 
 .sp-nav {
   display: flex;
@@ -404,9 +359,8 @@ code, pre { font-family: var(--font-mono); }
 
 /* Hero */
 .sp-hero { padding: clamp(40px, 6vw, 88px) 0 clamp(8px, 2vw, 24px); }
-.sp-hero-grid-bg { display: none; }
 
-.sp-hero-top { margin: 0 0 clamp(40px, 5vw, 64px); }
+.sp-hero-top { margin: 0 0 clamp(28px, 3.5vw, 44px); }
 
 .sp-hero h1 {
   max-width: 11.5em;
@@ -416,12 +370,9 @@ code, pre { font-family: var(--font-mono); }
   font-weight: 500;
   line-height: 0.96;
   letter-spacing: -0.02em;
-  color: transparent;
-  background-image: var(--daylight);
-  -webkit-background-clip: text;
-  background-clip: text;
+  color: var(--ink);
 }
-.sp-hero-accent { color: inherit; }
+.sp-hero-accent { color: var(--accent); }
 
 .sp-hero-sub {
   margin: 0 0 32px;
@@ -639,6 +590,7 @@ code, pre { font-family: var(--font-mono); }
   font-size: 12.5px;
   font-weight: 500;
 }
+.sp-pipeline-direction { font-size: 24px; line-height: 1; }
 .sp-pipe-arrow small { font-size: 12px; color: var(--ink-muted); }
 
 .sp-artifact-grid {
@@ -673,58 +625,8 @@ code, pre { font-family: var(--font-mono); }
 @media (max-width: 900px) {
   .sp-pipeline { grid-template-columns: minmax(0, 1fr); gap: 20px; }
   .sp-artifact-grid { grid-template-columns: 1fr; }
+  .sp-pipeline-direction { transform: rotate(90deg); }
   .sp-pipe-arrow { flex-direction: row; justify-content: center; gap: 12px; }
-}
-
-/* Three architectural theses on Home */
-.sp-theses {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: clamp(16px, 2vw, 24px);
-}
-.sp-thesis {
-  background: var(--surface);
-  border: 1px solid var(--border-soft);
-  border-radius: var(--radius-lg);
-  padding: clamp(24px, 2.6vw, 32px);
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  min-width: 0;
-}
-.sp-thesis h3 {
-  margin: 0;
-  font-size: 1.25rem;
-  font-weight: 500;
-  line-height: 1.25;
-  letter-spacing: -0.01em;
-}
-.sp-thesis p {
-  margin: 0;
-  font-size: 0.9375rem;
-  line-height: 1.58;
-  color: var(--ink-muted);
-}
-.sp-thesis-links {
-  margin-top: auto;
-  padding-top: 8px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 14px;
-  font-size: 14px;
-  font-weight: 500;
-}
-.sp-thesis-links a {
-  color: var(--ink-secondary);
-  text-decoration: none;
-}
-.sp-thesis-links a:hover {
-  color: var(--ink);
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-@media (max-width: 960px) {
-  .sp-theses { grid-template-columns: 1fr; }
 }
 
 /* Changelog page */
@@ -1734,10 +1636,8 @@ a.sp-deploy-card:hover .sp-wpcloud-logo {
   display: flex;
   align-items: baseline;
   gap: 10px;
-  padding: 14px 16px;
-  background: var(--surface-code);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
 }
 .sp-freedom-num {
   font-family: var(--font-mono);
@@ -2072,29 +1972,6 @@ a.sp-deploy-card:hover .sp-wpcloud-logo {
   font-family: var(--font-mono);
   font-size: 12.5px;
   color: var(--ink-muted);
-}
-
-/* Closing call to action */
-.sp-cta-band {
-  margin: 0 calc(-1 * var(--pad));
-  padding: clamp(40px, 6vw, 88px) var(--pad);
-  background: var(--bg-subtle);
-  border-radius: var(--radius-panel);
-}
-.sp-cta-band h2 {
-  max-width: 14em;
-  margin: 0 0 20px;
-  font-size: clamp(2rem, 4.4vw, 3.75rem);
-  font-weight: 500;
-  line-height: 1.04;
-  letter-spacing: -0.02em;
-  color: var(--ink);
-}
-.sp-cta-band p {
-  margin: 0 0 32px;
-  max-width: 36rem;
-  font-size: clamp(1.05rem, 1.4vw, 1.2rem);
-  color: var(--ink-secondary);
 }
 
 /* Footer */

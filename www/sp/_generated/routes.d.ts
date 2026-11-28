@@ -6,6 +6,7 @@ declare module "spacepress/app" {
   interface Routes {
     "docs/operations/deploy-pressable": { path: `/docs/operations/deploy-pressable`; params: {  } };
     "docs/operations/deploy-wordpress-com": { path: `/docs/operations/deploy-wordpress-com`; params: {  } };
+    "docs/operations/upgrade-to-spacepress": { path: `/docs/operations/upgrade-to-spacepress`; params: {  } };
     "api/examples.json": { path: `/api/examples.json`; params: {  } };
     "blog/[slug]": { path: `/blog/${string}`; params: { slug: string }; item: import("spacepress").RegisteredKinds extends { posts: { $inferSelect: infer R } } ? R : Record<string, unknown> };
     "docs/[...path]": { path: `/docs/${string}`; params: { path: string[] }; item: import("spacepress").RegisteredKinds extends { docs: { $inferSelect: infer R } } ? R : Record<string, unknown> };

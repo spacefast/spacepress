@@ -122,9 +122,6 @@ export function Part1Foundation() {
         <p>
           A SpacePress application is a regular TypeScript repository whose single source of truth is <code>spacepress.config.ts</code> and the modules under <code>sp/</code>. Instead of running a separate Node.js backend beside WordPress, SpacePress compiles your TypeScript directly into native PHP, SQL migrations, TypeScript types, OpenAPI 3.1, and standard WordPress plugins.
         </p>
-        <div className="sp-callout is-info">
-          <strong>Pre-release package &amp; CLI naming:</strong> SpacePress is the framework and platform brand (<code>spacepress.dev</code>). While preparing its 1.0 release, the Rust CLI binary, npm package, config filename, and virtual imports remain spelled <code>spacepress</code> (<code>spacepress.config.ts</code>, <code>sp/</code>, <code>import ... from &quot;spacepress&quot;</code>, <code>spacepress/server/*</code>).
-        </div>
         <Tree text={PROJECT_TREE} />
         <h3>Explore a complete multi-file SpacePress app</h3>
         <p>

@@ -1,11 +1,5 @@
----
-uid: zr_8e2b6d0c4f1a9375e2d1
-title: Upgrade to SpacePress
-description: Move a project and a site deployed with a pre-release build onto the SpacePress names without losing data.
-order: 7
-status: published
-publishedAt: 2026-11-23T09:00:00.000Z
----
+# Migrate a pre-release TypedPress project to SpacePress
+
 Pre-release builds of SpacePress used an earlier name for their npm packages, config file (`<name>.config.ts`), app folder and module imports, and for what they stored in the database. Everything now uses `spacepress` and `sp`, and nothing reads the earlier names, so a project and a site each move once.
 
 ## 1. Rename the project
@@ -35,7 +29,7 @@ The rename keeps each import's shape, but the current compiler splits server imp
 | `"php/wordpress"` | `"spacepress/server/wp"` |
 | `useLive`, `useMount`, `useEvent`, `sharedState` from `"spacepress/client"` | `from "spacepress/react"`, and `useState`, `useEffect`, `useRef` from `"react"` |
 | `useLive("notes", { limit: 10 })` | `useLive(api.notes.list({ limit: 10 }))` with `api` from `"../_generated/api"` |
-| `PageProps<"notes/[slug]">` | `import type { PageProps } from "./$types"` (with `rootDirs`; see [Project Structure](/docs/getting-started/project-structure#per-route-types-types)) |
+| `PageProps<"notes/[slug]">` | `import type { PageProps } from "./$types"` (with `rootDirs`; see [Project Structure](../../www/content/docs/getting-started/project-structure.md#per-route-types-types)) |
 
 Then run `spacepress build` and commit. Your committed migrations under `sp/_generated/migrations/` keep their IDs, and the table names inside them change to match the site's renamed tables. Don't regenerate or renumber them. The site's ledger keeps the hash each one had when it was applied, and it already counts them as applied.
 

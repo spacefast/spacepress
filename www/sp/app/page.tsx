@@ -224,16 +224,11 @@ export default function HomePage() {
               <span className="sp-hero-accent">compiles to WordPress.</span>
             </h1>
             <p className="sp-hero-sub">
-              Define <Link href="/docs/core/schema-and-storage" className="sp-inline-link">collections</Link>,{" "}
-              <Link href="/docs/core/schema-and-storage" className="sp-inline-link">SQL tables</Link>,{" "}
-              <Link href="/docs/core/queries-and-access" className="sp-inline-link">access rules</Link>,{" "}
-              <Link href="/docs/core/actions-jobs-routes" className="sp-inline-link">queries, mutations, background jobs</Link>, and{" "}
-              <Link href="/docs/core/pages-and-islands" className="sp-inline-link">React TSX pages</Link> in TypeScript. Headful WordPress by default — compiled into native PHP, SQL migrations, and standard plugins, with an optional{" "}
-              <Link href="/docs/integrations/astro-and-clients" className="sp-inline-link">typed client and OpenAPI 3.1</Link> when you want headless.
+              Write <Link href="/docs/core/schema-and-storage" className="sp-inline-link">schemas</Link>, <Link href="/docs/core/queries-and-access" className="sp-inline-link">access rules</Link>, <Link href="/docs/core/actions-jobs-routes" className="sp-inline-link">mutations and jobs</Link>, and <Link href="/docs/core/pages-and-islands" className="sp-inline-link">TSX pages</Link> in TypeScript. SpacePress compiles them to native PHP, SQL migrations, and standard WordPress plugins—with an optional <Link href="/docs/integrations/astro-and-clients" className="sp-inline-link">typed client and OpenAPI 3.1</Link> for headless frontends.
             </p>
             <div className="sp-hero-ctas">
               <Link href="/quick-start" className="sp-btn sp-btn-primary sp-btn-lg">
-                Start in 3 minutes →
+                Quick Start →
               </Link>
               <Link href="/play" className="sp-btn sp-btn-secondary sp-btn-lg">
                 Try in Browser
@@ -313,9 +308,9 @@ export default function HomePage() {
       <section className="sp-section">
         <div className="sp-container">
           <div className="sp-section-head">
-            <h2>One TypeScript codebase, standard WordPress output</h2>
+            <h2>TypeScript in, standard WordPress out</h2>
             <p>
-              SpacePress never ships a Node.js server or a JS runtime to production. Its Rust compiler analyzes your TypeScript once and emits deterministic PHP, SQL, types, and WordPress plugins.
+              No Node.js server in production. The Rust compiler turns your TypeScript into readable PHP, SQL migrations, types, and standard WordPress plugins.
             </p>
           </div>
 
@@ -336,10 +331,7 @@ export default function HomePage() {
             </div>
           </div>
           <p className="sp-sandbox-hint">
-            <code>spacepress.dev</code> itself is compiled by SpacePress to native PHP on{" "}
-            <Link href="/docs/operations/deploy-wp-cloud" className="sp-inline-link">Pressable</Link> — Reference docs, blog, SQL examples table, and playground share links included.{" "}
-            <Link href="/docs/getting-started/project-structure" className="sp-inline-link">Project structure →</Link>{" · "}
-            <Link href="/blog/introducing-spacepress" className="sp-inline-link">How it&apos;s built →</Link>
+            <code>spacepress.dev</code> is built with SpacePress — docs, blog, examples table, and Playground share links included. <Link href="/docs/getting-started/project-structure" className="sp-inline-link">Project structure →</Link> · <Link href="/blog/introducing-spacepress" className="sp-inline-link">How it's built →</Link>
           </p>
         </div>
       </section>
@@ -347,7 +339,7 @@ export default function HomePage() {
       <section className="sp-section">
         <div className="sp-container">
           <div className="sp-section-head">
-            <h2>What developers are saying</h2>
+            <h2>Early reactions</h2>
           </div>
 
           <div className="sp-quotes-grid">
@@ -437,14 +429,14 @@ export default function HomePage() {
       <section className="sp-section">
         <div className="sp-container">
           <div className="sp-section-head">
-            <h2>Change a schema, get an instant SQL migration</h2>
+            <h2>Edit a schema, generate the SQL migration</h2>
             <p>
-              SpacePress reads <Link href="/docs/core/schema-and-storage" className="sp-inline-link">migration history</Link> from <code>sp/_generated/migrations/</code>. Try adding a field or changing a default below to generate a new migration folder. Renames keep the old column with <code>.column(&quot;title&quot;)</code>, so no data moves.
+              SpacePress diffs against <code>sp/_generated/migrations/</code> and writes a new <Link href="/docs/core/schema-and-storage" className="sp-inline-link">forward-only migration</Link>. Edit the schema below to see the SQL update; use <code>.column("title")</code> to rename a field without moving data.
             </p>
           </div>
 
           <Sandbox
-            title="Live Schema Evolution -> Incremental SQL Migration"
+            title="Schema diff → SQL migration"
             base={MIGRATION_BASE}
             defaultTab="migration.sql"
             diff
@@ -458,9 +450,7 @@ export default function HomePage() {
             ]}
           />
           <p className="sp-sandbox-hint">
-            Migrating an existing schema? Convert statically without executing source code:{" "}
-            <code>npx spacepress migrate config --from emdash|payload|sanity|zero &lt;input&gt; --out spacepress.config.ts</code>{" · "}
-            <Link href="/docs/operations/cli-and-deploy" className="sp-inline-link">CLI Reference →</Link>
+            Importing an existing schema from EmDash, Payload, Sanity, or Zero? Use the standalone <code>spacepress-migrate</code> importer (<code>--from &lt;source&gt; config</code>). <Link href="/docs/operations/cli-and-deploy" className="sp-inline-link">CLI Reference →</Link>
           </p>
         </div>
       </section>
@@ -468,17 +458,15 @@ export default function HomePage() {
       <section className="sp-section sp-section-subtle">
         <div className="sp-container">
           <div className="sp-section-head">
-            <h2>Edit a complete app and boot it inside WordPress Playground</h2>
+            <h2>Edit and run a full app in WordPress Playground</h2>
             <p>
-              Every SpacePress build produces standard WordPress plugins. Click below to open the full multi-file <strong>Tasks</strong> app, edit its schema, page, or live{" "}
-              <Link href="/docs/core/pages-and-islands" className="sp-inline-link"><code>&quot;use client&quot;</code> island</Link>, inspect every compiled artifact, and click <strong>Run in WordPress</strong> to launch it live in-tab — or browse all{" "}
-              <Link href="/examples" className="sp-inline-link">examples</Link>.
+              Open the multi-file <strong>Tasks</strong> app below to edit its schema, TSX page, or <Link href="/docs/core/pages-and-islands" className="sp-inline-link"><code>"use client"</code> island</Link>, inspect the compiled files, and click <strong>Run in WordPress</strong> to boot it in-tab—or browse all <Link href="/examples" className="sp-inline-link">examples</Link>.
             </p>
           </div>
 
           <sp-play
             example="tasks"
-            hint="Multi-file Tasks app: SQL table, two mutations, TSX page, and live Interactivity API island — compile and run in WordPress Playground."
+            hint="Tasks app: SQL table, two mutations, TSX page, and an Interactivity API island."
           />
         </div>
       </section>
@@ -486,10 +474,9 @@ export default function HomePage() {
       <section className="sp-section sp-section-subtle">
         <div className="sp-container">
           <div className="sp-section-head">
-            <h2>Works on Spacefast, Pressable, WordPress.com — and everywhere else</h2>
+            <h2>Deploy anywhere WordPress runs</h2>
             <p>
-              Production output is standard PHP and WordPress plugins — zero Node.js server required. Push directly with{" "}
-              <Link href="/docs/operations/cli-and-deploy" className="sp-inline-link"><code>spacepress push</code></Link> or upload the compiled plugins anywhere PHP 8.2+ and WordPress 7.1+ run.
+              Deploy with <Link href="/docs/operations/cli-and-deploy" className="sp-inline-link"><code>spacepress push</code></Link> or install the compiled plugins directly on any host running WordPress 7.1+ and PHP 8.2+.
             </p>
           </div>
 
@@ -498,7 +485,7 @@ export default function HomePage() {
               <div className="sp-deploy-card-head">
                 <strong>Spacefast →</strong>
               </div>
-              <span>Instant cloud deployment built for SpacePress apps and AI workflows.</span>
+              <span>Managed WordPress 7.1+ and PHP 8.2+ hosting built for SpacePress apps—deploy directly with <code>spacepress push</code>.</span>
             </Link>
 
             <Link className="sp-deploy-card" href="/docs/operations/deploy-wp-cloud">
@@ -506,14 +493,14 @@ export default function HomePage() {
                 <strong>Pressable &amp; WordPress.com →</strong>
                 <WpCloudLogo />
               </div>
-              <span>Managed WordPress on WP Cloud — runs spacepress.dev itself. One guide covers both Pressable and plugin-enabled WordPress.com sites.</span>
+              <span>Managed WordPress on WP Cloud, including Pressable and plugin-enabled WordPress.com plans.</span>
             </Link>
 
             <Link className="sp-deploy-card" href="/docs/operations/deploy-self-hosted">
               <div className="sp-deploy-card-head">
                 <strong>Everywhere else →</strong>
               </div>
-              <span>Self-hosted WordPress, VPS, Docker, or any LAMP/LEMP host — see PHP 8.2+ &amp; WordPress 7.1+ requirements and standalone plugin setup.</span>
+              <span>Any VPS, Docker stack, or LAMP/LEMP server running WordPress 7.1+ and PHP 8.2+, via <code>spacepress push</code> or standalone plugins.</span>
             </Link>
           </div>
 
@@ -521,7 +508,7 @@ export default function HomePage() {
             <div className="sp-freedoms-head">
               <h3>The Four Freedoms</h3>
               <p>
-                Like WordPress, SpacePress compiles to standard GPL plugins and SQL tables you own outright — move hosts, inspect every generated line of PHP, or eject anytime.
+                SpacePress compiles to standard GPL-2.0-or-later plugins and plain SQL tables—inspect the generated PHP, switch hosts, or leave the compiler behind anytime.
               </p>
             </div>
             <ol className="sp-freedoms-list" start={0}>
@@ -562,30 +549,25 @@ export default function HomePage() {
             <details className="sp-faq-item">
               <summary>Does SpacePress run Node.js in production?</summary>
               <p>
-                No. Node.js 22+ is only used locally or in CI to invoke the prebuilt Rust compiler. Production output is native PHP (<code>schema.php</code>, <code>functions.php</code>), forward-only SQL migrations, and standard WordPress plugins running on any{" "}
-                <Link href="/docs/operations/deploy-self-hosted" className="sp-inline-link">WordPress 7.1+ / PHP 8.2+ host</Link>.
+                No. Node.js 22+ is only needed locally or in CI to run the Rust compiler. Production runs native PHP, SQL migrations, and standard plugins on any <Link href="/docs/operations/deploy-self-hosted" className="sp-inline-link">WordPress 7.1+ and PHP 8.2+ host</Link>.
               </p>
             </details>
             <details className="sp-faq-item">
               <summary>Is SpacePress headless WordPress?</summary>
               <p>
-                By default, no — SpacePress is headful WordPress. <Link href="/docs/core/pages-and-islands" className="sp-inline-link">Pages, layouts, and <code>&quot;use client&quot;</code> islands</Link> in <code>sp/app/</code> compile directly into server-rendered PHP inside WordPress, so routing, previews, auth, and plugins run in a single runtime. Headless is optional: every build also generates OpenAPI 3.1, a typed TypeScript client, React hooks, and{" "}
-                <Link href="/docs/integrations/astro-and-clients" className="sp-inline-link"><code>@spacepress/astro</code></Link> whenever you want to drive an external frontend.
+                Not by default. <Link href="/docs/core/pages-and-islands" className="sp-inline-link">Pages, layouts, and <code>"use client"</code> islands</Link> in <code>sp/app/</code> compile to server-rendered PHP inside WordPress. When you want an external frontend, every build also emits OpenAPI 3.1, a typed TypeScript client, and React hooks, paired with <Link href="/docs/integrations/astro-and-clients" className="sp-inline-link"><code>@spacepress/astro</code></Link>.
               </p>
             </details>
             <details className="sp-faq-item">
               <summary>Do existing WordPress plugins, WooCommerce, and Gutenberg still work?</summary>
               <p>
-                Yes. <Link href="/docs/core/schema-and-storage" className="sp-inline-link">Collections</Link> compile to standard WordPress post types and <code>wp.posts.extend()</code> extends built-in posts, so Gutenberg, drafts, revisions, comments, and the media library work natively.{" "}
-                <Link href="/docs/integrations/woocommerce" className="sp-inline-link">WooCommerce</Link> is modeled directly with <code>store()</code>, <code>product()</code>, and <code>order()</code>, and third-party plugins can be declared in <code>defineConfig(&#123; plugins &#125;)</code> and wired through <code>sp/wp-hooks/</code> or the{" "}
-                <Link href="/docs/operations/mcp-and-agents" className="sp-inline-link">WordPress Abilities API</Link>.
+                Yes. <Link href="/docs/core/schema-and-storage" className="sp-inline-link">Collections</Link> compile to standard post types, so Gutenberg, drafts, revisions, comments, and media work natively. Model <Link href="/docs/integrations/woocommerce" className="sp-inline-link">WooCommerce</Link> with <code>store()</code>, <code>product()</code>, and <code>order()</code>, and wire third-party plugins through <code>defineConfig(&#123; plugins &#125;)</code>, <code>sp/wp-hooks/</code>, or the <Link href="/docs/operations/mcp-and-agents" className="sp-inline-link">WordPress Abilities API</Link>.
               </p>
             </details>
             <details className="sp-faq-item">
               <summary>Can I inspect the generated PHP or eject later?</summary>
               <p>
-                Yes. Every build writes readable PHP, SQL migrations, OpenAPI 3.1, and GPL-2.0-or-later plugins under <code>sp/</code> and <code>sp/dist/wp-content/plugins/</code>. Your data stays in standard WordPress posts and SQL tables — you can move hosts, edit the generated PHP directly, or stop using the compiler anytime. See{" "}
-                <Link href="/docs/operations/cli-and-deploy" className="sp-inline-link">CLI &amp; Deployment</Link>.
+                Yes. Every build writes readable PHP, SQL migrations, OpenAPI 3.1, and GPL-2.0-or-later plugins under <code>sp/</code> and <code>sp/dist/wp-content/plugins/</code>. Your data lives in standard WordPress posts and SQL tables, so you can edit the PHP directly or stop using the compiler anytime. See <Link href="/docs/operations/cli-and-deploy" className="sp-inline-link">CLI &amp; Deployment</Link>.
               </p>
             </details>
           </div>

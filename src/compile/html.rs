@@ -325,14 +325,16 @@ mod tests {
     fn tables_match_the_runtime() {
         let php = include_str!("../../runtime/SpacePress/Html.php");
         let body = |name: &str| {
-            let start = php.find(&format!("private const {name} = [")).expect(name);
-            let rest = &php[start..];
-            rest[..rest.find("];").unwrap()].to_string()
+            php.split_once(&format!("private const {name} "))
+                .and_then(|(_, rest)| rest.split_once('='))
+                .and_then(|(_, rest)| rest.split_once(';'))
+                .expect(name)
+                .0
         };
-        let quoted = regex::Regex::new(r"'([^']*)' => (?:'([^']*)'|true)").unwrap();
+        let quoted = regex::Regex::new(r"'([^']*)'\s*=>\s*(?:'([^']*)'|true)").unwrap();
         let pairs = |name: &str| -> Vec<(String, String)> {
             quoted
-                .captures_iter(&body(name))
+                .captures_iter(body(name))
                 .map(|c| (c[1].to_string(), c.get(2).map_or("", |m| m.as_str()).to_string()))
                 .collect()
         };

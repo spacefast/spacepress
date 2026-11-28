@@ -6,7 +6,7 @@ export const metadata = {
   title: "Quick Start", description: "Go from zero to a running SpacePress application on local WordPress in minutes.", };
 
 const STARTER_SCHEMA = `import {
-  collection, table, text, integer, richText, slug, ref, action, defineConfig } from "spacepress";
+  collection, table, text, integer, richText, slug, ref, mutation, defineConfig } from "spacepress";
 import { db, HttpError } from "spacepress/server";
 
 export const notes = collection({
@@ -27,22 +27,20 @@ export const applause = table({
   access: { read: "anyone", create: "admin", update: "admin", delete: "admin" },
 });
 
-export const clap = action({
-  input: { noteId: integer() },
-  access: "anyone",
-  async handler({ noteId }) {
-    const existing = await db.query.applause.findFirst({ where: { noteId } });
-    if (existing) {
-      const [row] = await db.update(applause)
-        .set({ count: existing.count + 1 })
-        .where({ id: existing.id })
-        .returning();
-      return row;
-    }
-    const [row] = await db.insert(applause).values({ noteId, count: 1 }).returning();
-    if (!row) throw new HttpError(500, "insert_failed", "Could not save clap");
+// POST /wp-json/spacepress/v1/actions/clap; islands call it as api.actions.clap
+export const clap = mutation({ access: "anyone" }, async ({ noteId }: { noteId: number }) => {
+  const existing = await db.query.applause.findFirst({ where: { noteId } });
+  if (existing) {
+    const [row] = await db.update(applause)
+      .set({ count: existing.count + 1 })
+      .where({ id: existing.id })
+      .returning();
+    if (!row) throw new HttpError(404, "not_found", "Clap count not found");
     return row;
-  },
+  }
+  const [row] = await db.insert(applause).values({ noteId, count: 1 }).returning();
+  if (!row) throw new HttpError(500, "insert_failed", "Could not save clap");
+  return row;
 });
 
 export default defineConfig({ name: "my-app", seed: true });`;
@@ -80,21 +78,20 @@ export default async function Home() {
 
 const ISLAND_SNIPPET = `"use client";
 import { useState } from "react";
-import { clap } from "../schema";
+import { useMutation } from "spacepress/react";
+import { api } from "../_generated/api";
 
 export function ClapButton({ noteId, initial }: { noteId: number; initial: number }) {
   const [count, setCount] = useState(initial);
-  const [busy, setBusy] = useState(false);
+  const clap = useMutation(api.actions.clap);
 
   return (
     <button
       type="button"
-      disabled={busy}
+      disabled={clap.pending}
       onClick={async () => {
-        setBusy(true);
-        const res = await clap({ noteId });
+        const res = await clap.mutate({ noteId });
         setCount(res.count);
-        setBusy(false);
       }}
     >
       {count} {count === 1 ? "clap" : "claps"}
@@ -133,7 +130,7 @@ export default function QuickStartPage() {
             </div>
             <p style={{ color: "var(--ink-secondary)" }}>
               Paste this prompt into Claude Code, Cursor, Codex, or any coding agent. It reads{" "}
-              <a href="/start.md"><code>/start.md</code></a> and <a href="/rules.md"><code>/rules.md</code></a>, scaffolds the starter with <code>AGENTS.md</code>, 12 skills, and{" "}
+              <a href="/start.md"><code>/start.md</code></a> and <a href="/rules.md"><code>/rules.md</code></a>, scaffolds the starter with <code>AGENTS.md</code>, 10 skills, and{" "}
               <Link href="/docs/operations/mcp-and-agents"><code>.mcp.json</code></Link>, and boots local WordPress:
             </p>
             <div className="sp-cmd">
@@ -155,10 +152,10 @@ export default function QuickStartPage() {
           <article className="sp-step">
             <div className="sp-step-head">
               <span className="sp-step-num">2</span>
-              <h2>Define your schema &amp; server action</h2>
+              <h2>Define your schema &amp; a mutation</h2>
             </div>
             <p style={{ color: "var(--ink-secondary)" }}>
-              SpacePress reads <code>spacepress.config.ts</code> (and any files it re-exports from <code>sp/</code>). Edit the starter schema below — try adding a <code>summary: text().optional()</code> field or modifying the <code>clap</code> action — and inspect the live PHP, SQL migration, and TypeScript definitions generated in your browser.
+              SpacePress reads <code>spacepress.config.ts</code> and every <code>.ts</code> file under <code>sp/</code>. Edit the starter schema below — try adding a <code>summary: text().optional()</code> field or modifying the <code>clap</code> mutation — and inspect the live PHP, SQL migration, and TypeScript definitions generated in your browser.
             </p>
             <Sandbox
               eager
@@ -167,7 +164,7 @@ export default function QuickStartPage() {
               presets={[
                 {
                   label: "spacepress.config.ts",
-                  description: "Click inside the editor to modify fields, access rules, or the action handler and watch the compiler react instantly.",
+                  description: "Click inside the editor to modify fields, access rules, or the mutation handler and watch the compiler react instantly.",
                   code: STARTER_SCHEMA,
                 },
               ]}
@@ -180,7 +177,7 @@ export default function QuickStartPage() {
               <h2>Render a server TSX page &amp; interactive island</h2>
             </div>
             <p style={{ color: "var(--ink-secondary)" }}>
-              Pages in <code>sp/app/</code> compile directly to PHP and render inside WordPress with zero Node.js. Forms bound to <code>action=&#123;greet&#125;</code> work even with JavaScript disabled; components marked <code>&quot;use client&quot;</code> compile into WordPress Interactivity API stores.
+              Pages in <code>sp/app/</code> compile directly to PHP and render inside WordPress with zero Node.js. Forms bound to <code>action=&#123;greet&#125;</code> work even with JavaScript disabled; components marked <code>&quot;use client&quot;</code> compile into WordPress Interactivity API stores and call mutations through the generated, typed <code>api</code>.
             </p>
             <Code file="sp/app/page.tsx" note="Server-rendered in PHP" code={PAGE_SNIPPET} />
             <Code file="sp/components/ClapButton.tsx" note="Hydrated via Interactivity API" code={ISLAND_SNIPPET} />

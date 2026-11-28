@@ -2695,6 +2695,11 @@ fn forms_submit_in_place_in_the_browser() {
     let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(seen["errors"], serde_json::json!([]), "{seen}");
     assert_eq!(
+        seen["linkScroll"],
+        serde_json::json!({ "scrolledBefore": true, "after": 0, "marker": "same document", "missingFragment": ["#missing", 0], "selectorFragment": ["#1note", true] }),
+        "{seen}"
+    );
+    assert_eq!(
         seen["prefetch"],
         serde_json::json!([["Form", true], ["Bare template", false]]),
         "{seen}"
@@ -5588,6 +5593,23 @@ fn docs_kind_serves_a_folder_tree_with_navigation() {
         })
     );
     assert!(seen["blocks fenced"].as_str().unwrap().starts_with("<!-- wp:code"));
+    // [callouts opened, callouts closed, a </Callout> kept as code]
+    assert_eq!(
+        seen["blocks fence cases"],
+        serde_json::json!({
+            "info string": [1, 1, true],
+            "not a fence": [1, 1, false],
+            "indented": [1, 1, false],
+            "unclosed fence": "<Callout> holds a ``` code fence that is never closed: close it before </Callout>",
+        })
+    );
+    let inside = seen["blocks fenced inside"].as_str().unwrap();
+    assert!(
+        inside.starts_with("<!-- wp:docskind/callout")
+            && inside.contains("&lt;Shell search={entries()}&gt;<br>&lt;/Callout&gt;")
+            && inside.contains("After."),
+        "{inside}"
+    );
     // Code blocks: highlighted on the route, titled, line 2 marked, the `install` pair as tabs,
     // plain text escaped and unhighlighted, one stylesheet with a dark theme, and no script.
     let code = &seen["code"];
@@ -7705,13 +7727,10 @@ fn fixed_script_modules_carry_a_build_version() {
     let seen: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     let plugins = content.join("plugins");
     let runtime = std::fs::read_to_string(plugins.join("spacepress-runtime/spacepress-runtime.php")).unwrap();
-    let runtime_hash = runtime
-        .split("define('SP_RUNTIME_HASH', '")
-        .nth(1)
+    let runtime_hash = regex::Regex::new(r"define\s*\(\s*'SP_RUNTIME_HASH'\s*,\s*'([0-9a-f]+)'")
         .unwrap()
-        .split('\'')
-        .next()
-        .unwrap()
+        .captures(&runtime)
+        .expect("the runtime plugin declares its build hash")[1]
         .to_string();
     let client = std::fs::read(plugins.join("spacepress-app-clients/sp/app/client/spacepress-client.js")).unwrap();
     let client_hash: String = {

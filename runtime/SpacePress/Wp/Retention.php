@@ -17,215 +17,222 @@ use SpacePress\Schema;
  * When finite retention is configured (globally or per kind), `sweep()` purges expired soft-deleted
  * rows and prunes old revisions in bounded batches from Action Scheduler maintenance.
  */
-final class Retention
-{
-    /** Effective retention in seconds for soft-deleted rows of $collection, or null for `"forever"`. */
-    public static function deletedSeconds(Schema $schema, string $collection): ?int
-    {
-        $spec = $schema->hasCollection($collection) ? $schema->collection($collection) : null;
-        if ($spec !== null && array_key_exists('retention', $spec) && is_array($spec['retention'])) {
-            $sec = $spec['retention']['deletedSeconds'] ?? null;
+final class Retention {
 
-            return is_int($sec) ? $sec : null;
-        }
-        $global = $schema->raw()['retention'] ?? null;
-        if (is_array($global)) {
-            $sec = $global['deletedSeconds'] ?? null;
+	/** Effective retention in seconds for soft-deleted rows of $collection, or null for `"forever"`. */
+	public static function deletedSeconds( Schema $schema, string $collection ): ?int { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
+		$spec = $schema->hasCollection( $collection ) ? $schema->collection( $collection ) : null;
+		if ( null !== $spec && array_key_exists( 'retention', $spec ) && is_array( $spec['retention'] ) ) {
+			$sec = $spec['retention']['deletedSeconds'] ?? null;
 
-            return is_int($sec) ? $sec : null;
-        }
+			return is_int( $sec ) ? $sec : null;
+		}
+		$global = $schema->raw()['retention'] ?? null;
+		if ( is_array( $global ) ) {
+			$sec = $global['deletedSeconds'] ?? null;
 
-        return null;
-    }
+			return is_int( $sec ) ? $sec : null;
+		}
 
-    /**
-     * Effective revision retention for $collection: `['keepLast' => ?int, 'maxAgeSeconds' => ?int]`
-     * or null for `"forever"`.
-     *
-     * @return ?array{keepLast: ?int, maxAgeSeconds: ?int}
-     */
-    public static function revisionsPolicy(Schema $schema, string $collection): ?array
-    {
-        $spec = $schema->hasCollection($collection) ? $schema->collection($collection) : null;
-        if ($spec !== null && array_key_exists('retention', $spec) && is_array($spec['retention'])) {
-            return is_array($spec['retention']['revisions'] ?? null) ? $spec['retention']['revisions'] : null;
-        }
-        $global = $schema->raw()['retention'] ?? null;
-        if (is_array($global) && is_array($global['revisions'] ?? null)) {
-            return $global['revisions'];
-        }
+		return null;
+	}
 
-        return null;
-    }
+	/**
+	 * Effective revision retention for $collection: `['keepLast' => ?int, 'maxAgeSeconds' => ?int]`
+	 * or null for `"forever"`.
+	 *
+	 * @return ?array{keepLast: ?int, maxAgeSeconds: ?int}
+	 */
+	public static function revisionsPolicy( Schema $schema, string $collection ): ?array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
+		$spec = $schema->hasCollection( $collection ) ? $schema->collection( $collection ) : null;
+		if ( null !== $spec && array_key_exists( 'retention', $spec ) && is_array( $spec['retention'] ) ) {
+			return is_array( $spec['retention']['revisions'] ?? null ) ? $spec['retention']['revisions'] : null;
+		}
+		$global = $schema->raw()['retention'] ?? null;
+		if ( is_array( $global ) && is_array( $global['revisions'] ?? null ) ) {
+			return $global['revisions'];
+		}
 
-    /**
-     * True when WordPress's built-in 30-day `wp_scheduled_delete` must NOT auto-purge this post type.
-     * Any SpacePress post type with `softDelete: true` is governed by SpacePress's retention policy
-     * (default `"forever"`), never WordPress's hardcoded 30-day trash timer.
-     */
-    public static function blocksWpScheduledDelete(Schema $schema, string $postType): bool
-    {
-        foreach ($schema->collections() as $spec) {
-            if (($spec['wp']['postType'] ?? null) === $postType && ($spec['softDelete'] ?? false)) {
-                return true;
-            }
-        }
+		return null;
+	}
 
-        return false;
-    }
+	/**
+	 * True when WordPress's built-in 30-day `wp_scheduled_delete` must NOT auto-purge this post type.
+	 * Any SpacePress post type with `softDelete: true` is governed by SpacePress's retention policy
+	 * (default `"forever"`), never WordPress's hardcoded 30-day trash timer.
+	 */
+	public static function blocksWpScheduledDelete( Schema $schema, string $postType ): bool { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP method name. Preserve the existing PHP variable name.
+		foreach ( $schema->collections() as $spec ) {
+			if ( ( $spec['wp']['postType'] ?? null ) === $postType && ( $spec['softDelete'] ?? false ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+				return true;
+			}
+		}
 
-    /**
-     * Sweep expired soft-deleted rows and revisions in bounded batches (called from hourly maintenance).
-     *
-     * @return array{purged: int, revisionsPruned: int}
-     */
-    public static function sweep(Plugin $plugin, int $batchSize = 100): array
-    {
-        $schema = $plugin->schema;
-        $db = $plugin->db();
-        $nowMs = Js::now();
-        $purged = 0;
-        $revisionsPruned = 0;
+		return false;
+	}
 
-        $budget = max(1, $batchSize);
+	/**
+	 * Sweep expired soft-deleted rows and revisions in bounded batches (called from hourly maintenance).
+	 *
+	 * @return array{purged: int, revisionsPruned: int}
+	 */
+	public static function sweep( Plugin $plugin, int $batchSize = 100 ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		$schema          = $plugin->schema;
+		$db              = $plugin->db();
+		$now_ms          = Js::now();
+		$purged          = 0;
+		$revisionsPruned = 0; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 
-        foreach ($schema->collections() as $name => $spec) {
-            if ($purged >= $budget) {
-                break;
-            }
-            $name = (string) $name;
-            if (!($spec['softDelete'] ?? false)) {
-                continue;
-            }
-            $deletedSeconds = self::deletedSeconds($schema, $name);
-            if ($deletedSeconds === null) {
-                continue;
-            }
-            $cutoff = Js::iso($nowMs - ($deletedSeconds * 1000));
-            $pk = $spec['primaryKey'];
-            $remaining = $budget - $purged;
-            $expired = $db->findMany($name, [
-                'deleted' => 'only',
-                'where' => ['deletedAt' => ['lte' => $cutoff]],
-                'columns' => [$pk => true],
-                'limit' => $remaining,
-            ]);
-            foreach ($expired as $row) {
-                if ($purged >= $budget) {
-                    break;
-                }
-                // Recheck `deleted = 'only'` and the cutoff inside the purge transaction so a row
-                // restored or re-deleted after selection is never purged.
-                $gone = $db->transaction(static fn (): array => $db->purge(
-                    $name,
-                    [$pk => $row[$pk], 'deletedAt' => ['lte' => $cutoff]],
-                    returning: true,
-                    onlyDeleted: true,
-                ) ?? []);
-                $purged += count($gone);
-            }
-        }
+		$budget = max( 1, $batchSize ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 
-        $conn = $plugin->connection();
-        $revTableName = $conn->prefix() . 'sp__revisions';
-        $revTable = '`' . $revTableName . '`';
-        $hasRevTable = $conn->run(
-            'SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?',
-            [$revTableName],
-        ) !== [];
-        $postsTable = '`' . $conn->wpdb()->posts . '`';
+		foreach ( $schema->collections() as $name => $spec ) {
+			if ( $purged >= $budget ) {
+				break;
+			}
+			$name = (string) $name;
+			if ( ! ( $spec['softDelete'] ?? false ) ) {
+				continue;
+			}
+			$deletedSeconds = self::deletedSeconds( $schema, $name ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+			if ( null === $deletedSeconds ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+				continue;
+			}
+			$cutoff    = Js::iso( $now_ms - ( $deletedSeconds * 1000 ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+			$pk        = $spec['primaryKey'];
+			$remaining = $budget - $purged;
+			$expired   = $db->findMany(
+				$name,
+				array(
+					'deleted' => 'only',
+					'where'   => array( 'deletedAt' => array( 'lte' => $cutoff ) ),
+					'columns' => array( $pk => true ),
+					'limit'   => $remaining,
+				)
+			);
+			foreach ( $expired as $row ) {
+				if ( $purged >= $budget ) {
+					break;
+				}
+				// Recheck `deleted = 'only'` and the cutoff inside the purge transaction so a row
+				// restored or re-deleted after selection is never purged.
+				$gone    = $db->transaction(
+					static fn (): array => $db->purge(
+						$name,
+						array(
+							$pk         => $row[ $pk ],
+							'deletedAt' => array( 'lte' => $cutoff ),
+						),
+						returning: true,
+						onlyDeleted: true,
+					) ?? array()
+				);
+				$purged += count( $gone );
+			}
+		}
 
-        foreach ($schema->collections() as $name => $spec) {
-            if ($revisionsPruned >= $budget) {
-                break;
-            }
-            $name = (string) $name;
-            $policy = self::revisionsPolicy($schema, $name);
-            if ($policy === null) {
-                continue;
-            }
-            if (isset($spec['wp']['postType'])) {
-                $postType = (string) $spec['wp']['postType'];
-                if (is_int($policy['maxAgeSeconds'] ?? null)) {
-                    $remaining = $budget - $revisionsPruned;
-                    $cutoffMysql = gmdate('Y-m-d H:i:s', (int) floor(($nowMs - ($policy['maxAgeSeconds'] * 1000)) / 1000));
-                    $old = $conn->run(
-                        "SELECT r.ID FROM $postsTable r JOIN $postsTable p ON p.ID = r.post_parent WHERE p.post_type = ? AND r.post_type = 'revision' AND r.post_status = 'inherit' AND r.post_name NOT LIKE '%autosave%' AND r.post_date_gmt <> '0000-00-00 00:00:00' AND r.post_date_gmt <= ? LIMIT $remaining",
-                        [$postType, $cutoffMysql],
-                    );
-                    foreach ($old as $r) {
-                        if ($revisionsPruned >= $budget) {
-                            break;
-                        }
-                        if ($conn->core(static fn () => wp_delete_post_revision((int) $r['ID']))) {
-                            $revisionsPruned++;
-                        }
-                    }
-                }
-                if ($revisionsPruned < $budget && is_int($policy['keepLast'] ?? null) && $policy['keepLast'] >= 1) {
-                    $keep = (int) $policy['keepLast'];
-                    $remaining = $budget - $revisionsPruned;
-                    $parents = $conn->run(
-                        "SELECT r.post_parent FROM $postsTable r JOIN $postsTable p ON p.ID = r.post_parent WHERE p.post_type = ? AND r.post_type = 'revision' AND r.post_status = 'inherit' AND r.post_name NOT LIKE '%autosave%' GROUP BY r.post_parent HAVING COUNT(*) > ? LIMIT $remaining",
-                        [$postType, $keep],
-                    );
-                    foreach ($parents as $parent) {
-                        if ($revisionsPruned >= $budget) {
-                            break;
-                        }
-                        $rem = $budget - $revisionsPruned;
-                        $rows = $conn->run(
-                            "SELECT ID FROM $postsTable WHERE post_type = 'revision' AND post_parent = ? AND post_status = 'inherit' AND post_name NOT LIKE '%autosave%' ORDER BY ID DESC LIMIT $rem OFFSET $keep",
-                            [(int) $parent['post_parent']],
-                        );
-                        foreach ($rows as $r) {
-                            if ($revisionsPruned >= $budget) {
-                                break;
-                            }
-                            if ($conn->core(static fn () => wp_delete_post_revision((int) $r['ID']))) {
-                                $revisionsPruned++;
-                            }
-                        }
-                    }
-                }
-                continue;
-            }
-            if (!$hasRevTable) {
-                continue;
-            }
-            if (is_int($policy['maxAgeSeconds'] ?? null)) {
-                $remaining = $budget - $revisionsPruned;
-                $cutoff = Js::iso($nowMs - ($policy['maxAgeSeconds'] * 1000));
-                $old = $conn->run("SELECT `id` FROM $revTable WHERE `collection` = ? AND `at` <= ? LIMIT $remaining", [$name, $cutoff]);
-                foreach ($old as $r) {
-                    if ($revisionsPruned >= $budget) {
-                        break;
-                    }
-                    $conn->run("DELETE FROM $revTable WHERE `id` = ?", [(int) $r['id']]);
-                    $revisionsPruned++;
-                }
-            }
-            if ($revisionsPruned < $budget && is_int($policy['keepLast'] ?? null) && $policy['keepLast'] >= 1) {
-                $keep = (int) $policy['keepLast'];
-                $remaining = $budget - $revisionsPruned;
-                $pks = $conn->run("SELECT `pk` FROM $revTable WHERE `collection` = ? GROUP BY `pk` HAVING COUNT(*) > ? LIMIT $remaining", [$name, $keep]);
-                foreach ($pks as $p) {
-                    if ($revisionsPruned >= $budget) {
-                        break;
-                    }
-                    $rem = $budget - $revisionsPruned;
-                    $rows = $conn->run("SELECT `id` FROM $revTable WHERE `collection` = ? AND `pk` = ? ORDER BY `id` DESC LIMIT $rem OFFSET $keep", [$name, (string) $p['pk']]);
-                    foreach ($rows as $r) {
-                        if ($revisionsPruned >= $budget) {
-                            break;
-                        }
-                        $conn->run("DELETE FROM $revTable WHERE `id` = ?", [(int) $r['id']]);
-                        $revisionsPruned++;
-                    }
-                }
-            }
-        }
+		$conn           = $plugin->connection();
+		$rev_table_name = $conn->prefix() . 'sp__revisions';
+		$rev_table      = '`' . $rev_table_name . '`';
+		$has_rev_table  = $conn->run(
+			'SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?',
+			array( $rev_table_name ),
+		) !== array();
+		$posts_table    = '`' . $conn->wpdb()->posts . '`';
 
-        return ['purged' => $purged, 'revisionsPruned' => $revisionsPruned];
-    }
+		foreach ( $schema->collections() as $name => $spec ) {
+			if ( $revisionsPruned >= $budget ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+				break;
+			}
+			$name   = (string) $name;
+			$policy = self::revisionsPolicy( $schema, $name );
+			if ( null === $policy ) {
+				continue;
+			}
+			if ( isset( $spec['wp']['postType'] ) ) {
+				$postType = (string) $spec['wp']['postType']; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+				if ( is_int( $policy['maxAgeSeconds'] ?? null ) ) {
+					$remaining    = $budget - $revisionsPruned; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+					$cutoff_mysql = gmdate( 'Y-m-d H:i:s', (int) floor( ( $now_ms - ( $policy['maxAgeSeconds'] * 1000 ) ) / 1000 ) );
+					$old          = $conn->run(
+						"SELECT r.ID FROM $posts_table r JOIN $posts_table p ON p.ID = r.post_parent WHERE p.post_type = ? AND r.post_type = 'revision' AND r.post_status = 'inherit' AND r.post_name NOT LIKE '%autosave%' AND r.post_date_gmt <> '0000-00-00 00:00:00' AND r.post_date_gmt <= ? LIMIT $remaining",
+						array( $postType, $cutoff_mysql ), // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+					);
+					foreach ( $old as $r ) {
+						if ( $revisionsPruned >= $budget ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+							break;
+						}
+						if ( $conn->core( static fn () => wp_delete_post_revision( (int) $r['ID'] ) ) ) {
+							++$revisionsPruned; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+						}
+					}
+				}
+				if ( $revisionsPruned < $budget && is_int( $policy['keepLast'] ?? null ) && $policy['keepLast'] >= 1 ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+					$keep      = (int) $policy['keepLast'];
+					$remaining = $budget - $revisionsPruned; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+					$parents   = $conn->run(
+						"SELECT r.post_parent FROM $posts_table r JOIN $posts_table p ON p.ID = r.post_parent WHERE p.post_type = ? AND r.post_type = 'revision' AND r.post_status = 'inherit' AND r.post_name NOT LIKE '%autosave%' GROUP BY r.post_parent HAVING COUNT(*) > ? LIMIT $remaining",
+						array( $postType, $keep ), // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+					);
+					foreach ( $parents as $parent ) {
+						if ( $revisionsPruned >= $budget ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+							break;
+						}
+						$rem  = $budget - $revisionsPruned; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+						$rows = $conn->run(
+							"SELECT ID FROM $posts_table WHERE post_type = 'revision' AND post_parent = ? AND post_status = 'inherit' AND post_name NOT LIKE '%autosave%' ORDER BY ID DESC LIMIT $rem OFFSET $keep",
+							array( (int) $parent['post_parent'] ),
+						);
+						foreach ( $rows as $r ) {
+							if ( $revisionsPruned >= $budget ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+								break;
+							}
+							if ( $conn->core( static fn () => wp_delete_post_revision( (int) $r['ID'] ) ) ) {
+								++$revisionsPruned; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+							}
+						}
+					}
+				}
+				continue;
+			}
+			if ( ! $has_rev_table ) {
+				continue;
+			}
+			if ( is_int( $policy['maxAgeSeconds'] ?? null ) ) {
+				$remaining = $budget - $revisionsPruned; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+				$cutoff    = Js::iso( $now_ms - ( $policy['maxAgeSeconds'] * 1000 ) );
+				$old       = $conn->run( "SELECT `id` FROM $rev_table WHERE `collection` = ? AND `at` <= ? LIMIT $remaining", array( $name, $cutoff ) );
+				foreach ( $old as $r ) {
+					if ( $revisionsPruned >= $budget ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+						break;
+					}
+					$conn->run( "DELETE FROM $rev_table WHERE `id` = ?", array( (int) $r['id'] ) );
+					++$revisionsPruned; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+				}
+			}
+			if ( $revisionsPruned < $budget && is_int( $policy['keepLast'] ?? null ) && $policy['keepLast'] >= 1 ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+				$keep      = (int) $policy['keepLast'];
+				$remaining = $budget - $revisionsPruned; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+				$pks       = $conn->run( "SELECT `pk` FROM $rev_table WHERE `collection` = ? GROUP BY `pk` HAVING COUNT(*) > ? LIMIT $remaining", array( $name, $keep ) );
+				foreach ( $pks as $p ) {
+					if ( $revisionsPruned >= $budget ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+						break;
+					}
+					$rem  = $budget - $revisionsPruned; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+					$rows = $conn->run( "SELECT `id` FROM $rev_table WHERE `collection` = ? AND `pk` = ? ORDER BY `id` DESC LIMIT $rem OFFSET $keep", array( $name, (string) $p['pk'] ) );
+					foreach ( $rows as $r ) {
+						if ( $revisionsPruned >= $budget ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+							break;
+						}
+						$conn->run( "DELETE FROM $rev_table WHERE `id` = ?", array( (int) $r['id'] ) );
+						++$revisionsPruned; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+					}
+				}
+			}
+		}
+
+		return array(
+			'purged'          => $purged,
+			'revisionsPruned' => $revisionsPruned, // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		);
+	}
 }

@@ -32,4 +32,28 @@ Chain `.min(n)`, `.max(n)`, `.pattern(/.../)`, `.unique()`, `.default(v)`, `.def
 
 Rename a field in TypeScript while keeping its physical column with `.column("old_name")`. Keep an SQL table’s physical name with `storageName: "old_table"`. Add `.alias("oldName")` if callers still send the previous field name.
 
-Commit each generated folder under `sp/_generated/migrations/`. The compiler folds the folders’ `ops.json` files in order and writes a new folder when the SQL schema changes. Removing a field or table from the schema retires it while preserving its data.
+## Migrations
+
+Commit each generated folder under `sp/_generated/migrations/`. Each one is named `<timestamp>_<hash>_<slug>` and holds `ops.json` and `migration.sql`. The compiler folds the folders' `ops.json` files in name order and writes a new folder when the SQL schema changes, so two branches that both change the schema merge without a conflict on a shared file.
+
+Migrations only move forward and never lose data:
+
+- Adding a required column needs a literal `.default(...)`, or the build fails and says how to fix it.
+- Removing a field or table from the schema retires it: its column or table and data stay, and new code ignores them.
+- A narrowing change, such as a shorter text type, is refused at build time.
+- Renames go through `.column("old_name")` and `storageName`, not `RENAME`.
+
+Dropping retired columns and tables and purging soft-deleted rows happen only through the CLI's `spacepress danger` commands, after you list `destructiveMigrations()` from `"spacepress/danger"` in `defineConfig({ use })`.
+
+<Warning title="Don't regenerate committed migrations">
+A deployed site records which migrations it applied. Renumbering or rewriting a committed folder makes the site's history disagree with the project.
+</Warning>
+
+## Soft deletes and revisions
+
+`collection()` and `table()` keep deleted rows and revisions by default (`softDelete: false` or `revisions: false` turns them off per kind):
+
+- `kind.delete(id)` soft-deletes the row and, through `onDelete: "cascade"` references, its children. `kind.restore(id)` brings them back. `kind.purge(id)` deletes permanently and by default only the system may call it.
+- `kind.list({ deleted: "include" | "only" })` shows deleted rows to callers with `restore` or `delete` access.
+- `kind.revisions.list(id)`, `.get(id, version)`, `.diff(id, from, to)` and `.restore(id, version)` read and restore revisions. Each records the operation, the user and the schema migration it was written under.
+- Nothing is purged automatically. Set `retention: { deleted: "90d", revisions: { keepLast: 50 } }` in `defineConfig()` to purge in the background.

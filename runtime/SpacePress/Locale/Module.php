@@ -15,87 +15,80 @@ use function SpacePress\db;
  * propagation. The group is the `translationGroup` column on custom tables and Polylang's
  * translation group on post-backed WordPress (Wp\Polylang).
  */
-final class Module
-{
-    public static function register(): void
-    {
-        Extensions::beforeRead(Read::query(...), constraintSafe: true);
-        // Db selects a localized kind's locale and translations itself.
-        Extensions::onRead(Read::read(...), constraintSafe: true, reads: static fn (): array => []);
-        Extensions::normalizeWrite(GroupSync::normalize(...));
-        Extensions::onWrite(GroupSync::write(...));
-        Extensions::onWritten(GroupSync::written(...));
-        if (function_exists('add_action')) {
-            \SpacePress\Wp\Polylang::boot();
-        }
-    }
+final class Module {
 
-    public static function localized(string $collection): bool
-    {
-        $schema = db()->schema();
+	public static function register(): void {
+		Extensions::beforeRead( Read::query( ... ), constraintSafe: true );
+		// Db selects a localized kind's locale and translations itself.
+		Extensions::onRead( Read::read( ... ), constraintSafe: true, reads: static fn (): array => array() );
+		Extensions::normalizeWrite( GroupSync::normalize( ... ) );
+		Extensions::onWrite( GroupSync::write( ... ) );
+		Extensions::onWritten( GroupSync::written( ... ) );
+		if ( function_exists( 'add_action' ) ) {
+			\SpacePress\Wp\Polylang::boot();
+		}
+	}
 
-        return $schema->locales() !== null && $schema->hasCollection($collection) && ($schema->collection($collection)['localized'] ?? false);
-    }
+	public static function localized( string $collection ): bool {
+		$schema = db()->schema();
 
-    /** True when Polylang owns this collection's language and translation group (post-backed WP). */
-    public static function polylang(string $collection): bool
-    {
-        $store = db()->store();
+		return $schema->locales() !== null && $schema->hasCollection( $collection ) && ( $schema->collection( $collection )['localized'] ?? false );
+	}
 
-        return $store instanceof \SpacePress\Wp\CompositeStore && $store->isPostBacked($collection);
-    }
+	/** True when Polylang owns this collection's language and translation group (post-backed WP). */
+	public static function polylang( string $collection ): bool {
+		$store = db()->store();
 
-    /**
-     * Columns kept equal across a translation group: every column that isn't translated (see
-     * translated()), the primary key, a system column (status/publishedAt/uid/locale/...), the slug,
-     * or generated per row.
-     *
-     * @return list<string>
-     */
-    public static function synced(array $spec): array
-    {
-        $out = [];
-        foreach ($spec['columns'] as $name => $col) {
-            $generated = isset($col['onUpdate']) || isset($col['default']['now']) || isset($col['default']['fn']) || ($col['autoIncrement'] ?? false);
-            if ($name !== $spec['primaryKey'] && !($col['system'] ?? false) && !self::translated($col)
-                && $name !== ($spec['slug'] ?? null) && !$generated) {
-                $out[] = (string) $name;
-            }
-        }
+		return $store instanceof \SpacePress\Wp\CompositeStore && $store->isPostBacked( $collection );
+	}
 
-        return $out;
-    }
+	/**
+	 * Columns kept equal across a translation group: every column that isn't translated (see
+	 * translated()), the primary key, a system column (status/publishedAt/uid/locale/...), the slug,
+	 * or generated per row.
+	 *
+	 * @return list<string>
+	 */
+	public static function synced( array $spec ): array {
+		$out = array();
+		foreach ( $spec['columns'] as $name => $col ) {
+			$generated = isset( $col['onUpdate'] ) || isset( $col['default']['now'] ) || isset( $col['default']['fn'] ) || ( $col['autoIncrement'] ?? false );
+			if ( $name !== $spec['primaryKey'] && ! ( $col['system'] ?? false ) && ! self::translated( $col )
+				&& $name !== ( $spec['slug'] ?? null ) && ! $generated ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.
+				$out[] = (string) $name;
+			}
+		}
 
-    /**
-     * A column is translated per locale when it, or any sub-field, is `.localized()`: a group or
-     * repeater holding a translated field is translated whole (its sub-values aren't merged).
-     */
-    public static function translated(array $col): bool
-    {
-        if ($col['localized'] ?? false) {
-            return true;
-        }
-        foreach ([...array_values($col['fields'] ?? []), ...array_merge([], ...array_map('array_values', array_values($col['layouts'] ?? [])))] as $sub) {
-            if (self::translated($sub)) {
-                return true;
-            }
-        }
+		return $out;
+	}
 
-        return false;
-    }
+	/**
+	 * A column is translated per locale when it, or any sub-field, is `.localized()`: a group or
+	 * repeater holding a translated field is translated whole (its sub-values aren't merged).
+	 */
+	public static function translated( array $col ): bool {
+		if ( $col['localized'] ?? false ) {
+			return true;
+		}
+		foreach ( array( ...array_values( $col['fields'] ?? array() ), ...array_merge( array(), ...array_map( 'array_values', array_values( $col['layouts'] ?? array() ) ) ) ) as $sub ) {
+			if ( self::translated( $sub ) ) {
+				return true;
+			}
+		}
 
-    /** Equal JS-form values (decoded rows and normalized input compare as canonical JSON). */
-    public static function same(mixed $a, mixed $b): bool
-    {
-        return \SpacePress\Js::jsonStringify($a) === \SpacePress\Js::jsonStringify($b);
-    }
+		return false;
+	}
 
-    /** locale => primary key of every row in $row's group (self included), from the derived `translations`. */
-    public static function members(array $row, string $pk): array
-    {
-        $t = $row['translations'] ?? null;
-        $t = is_object($t) ? (array) $t : (is_array($t) ? $t : []);
+	/** Equal JS-form values (decoded rows and normalized input compare as canonical JSON). */
+	public static function same( mixed $a, mixed $b ): bool {
+		return \SpacePress\Js::jsonStringify( $a ) === \SpacePress\Js::jsonStringify( $b );
+	}
 
-        return $t + ($row['locale'] === null ? [] : [$row['locale'] => $row[$pk]]);
-    }
+	/** locale => primary key of every row in $row's group (self included), from the derived `translations`. */
+	public static function members( array $row, string $pk ): array {
+		$t = $row['translations'] ?? null;
+		$t = is_object( $t ) ? (array) $t : ( is_array( $t ) ? $t : array() );
+
+		return $t + ( null === $row['locale'] ? array() : array( $row['locale'] => $row[ $pk ] ) );
+	}
 }

@@ -1,12 +1,12 @@
 ---
 uid: zr_4adbd715279f7cefffe5
 title: MCP & AI Agents
-description: "Agent playbooks, compiler rules, 12 built-in skills, editor setup for Claude Code/Cursor/Codex, local & runtime MCP servers, and WordPress Abilities."
+description: "Agent playbooks, compiler rules, 10 built-in skills, editor setup for Claude Code/Cursor/Codex, local & runtime MCP servers, and WordPress Abilities."
 order: 2
 status: published
 publishedAt: 2026-11-21T09:15:00.000Z
 ---
-SpacePress treats coding agents (Claude Code, Cursor, Codex, GitHub Copilot) as first-class citizens — from a single-file build playbook before you even scaffold, to compiled `AGENTS.md`, 12 procedural skills, and a version-pinned local MCP server.
+SpacePress gives coding agents (Claude Code, Cursor, Codex, GitHub Copilot) what they need to work on a project: a build playbook to read before scaffolding, a generated `AGENTS.md`, 10 skills, and a local MCP server pinned to the compiler version.
 
 ## Machine-readable entry points
 
@@ -28,14 +28,14 @@ npx spacepress init --check   # fails CI if AGENTS.md or skills are stale
 
 `spacepress init` maintains three things without overwriting your custom notes:
 
-1. **Compiled `AGENTS.md`:** Writes your app's live kinds, fields, access matrix, actions, jobs, routes, endpoints, command table, and anti-hallucination compiler rules between `<!-- spacepress:begin -->` and `<!-- spacepress:end -->` markers.
+1. **Generated `AGENTS.md`:** Writes your app's kinds, fields, access rules, queries, mutations, jobs, routes, endpoints, the command table and the compiler's rules between the `spacepress:begin` and `spacepress:end` marker comments. Text outside the markers is yours and is never touched.
 1. **Project `.mcp.json`:** Registers the local `spacepress` stdio MCP server (`npx --no-install spacepress mcp`).
-1. **12 built-in Agent Skills:** Installs every `SKILL.md` into both `.agents/skills/` (Codex and the shared standard) and `.claude/skills/` (Claude Code).
+1. **The 10 built-in Agent Skills:** Installs every skill in the table below into both `.agents/skills/` (Codex and the shared convention) and `.claude/skills/` (Claude Code). If you delete one of those two folders, a rerun leaves it deleted.
 
 ## Editor setup
 
 - **Claude Code:** Reads `.mcp.json` and `.claude/skills/` automatically. If your repository has its own `CLAUDE.md`, add `@AGENTS.md` to it so Claude Code loads both.
-- **Cursor:** Reads `AGENTS.md`, `.agents/skills/`, and `.mcp.json` automatically — or [install the local SpacePress MCP server in Cursor]().
+- **Cursor:** Reads `AGENTS.md` and `.agents/skills/`. To add the MCP server, register `npx --no-install spacepress mcp` as a stdio server in Cursor's MCP settings (`.cursor/mcp.json`).
 - **Codex / VS Code / Copilot:** Automatically pick up `AGENTS.md` and `.agents/skills/`; point your MCP client at `npx --no-install spacepress mcp`.
 
 ## Built-in Agent Skills
@@ -44,7 +44,7 @@ npx spacepress init --check   # fails CI if AGENTS.md or skills are stale
 |-----------------------------|----------------------------------------------------------------------------------------------------------------------------|
 | `spacepress-add-kind`       | Adding or updating `collection()` / `table()` kinds, fields, `ref()`, access rules, or physical storage names                    |
 | `spacepress-add-page`       | Building headful `sp/app/**/page.tsx`, `layout.tsx`, dynamic segments, or custom `route.ts` endpoints                      |
-| `spacepress-write-action`   | Adding typed `query()` and `mutation()` RPC endpoints and retryable Action Scheduler `job()` queues                                        |
+| `spacepress-write-action`   | Adding typed `query()` and `mutation()` server functions and retryable Action Scheduler `job()` queues                     |
 | `spacepress-dev-site`       | Starting, inspecting, querying, or resetting the local WordPress + SQLite dev site                                         |
 | `spacepress-fix-diagnostic` | Reading `spacepress check --json` diagnostics and fixing TS-to-PHP compiler errors or lint warnings                        |
 | `spacepress-woocommerce`    | Scaffolding and configuring `store()`, `product()`, shipping zones, orders, and optimistic cart hooks                      |
@@ -61,7 +61,7 @@ SpacePress ships two distinct MCP servers for different jobs:
 
 Runs on stdio against your source repository — no live WordPress site or credentials required. Exposes read-only tools by default:
 
-- `schema` — compiled kinds, fields, access rules, relations, actions, jobs, routes, roles, and Abilities
+- `schema` — compiled kinds, fields, access rules, relations, queries and mutations, jobs, pages and routes, file buckets, roles, and Abilities
 - `check` — runs `spacepress check --json` without writing files
 - `docs_search` & `docs_read` — searches and reads documentation embedded inside the exact compiler binary version
 - `commands` — full build & site command table
@@ -72,11 +72,13 @@ Pass `--allow-writes` to additionally expose `run_action`, `insert`, and `update
 
 ### 2. Runtime WordPress MCP (`/wp-json/mcp/spacepress-<app>`)
 
-Every running SpacePress site exposes an authenticated WordPress MCP endpoint with one tool per collection operation and exported server function, authenticated as a WordPress user via Application Passwords or scoped agent credentials (`spacepress identity agent add`).
+Every running SpacePress site with the MCP Adapter plugin (installed with the platform plugins) serves the app's own MCP server, `spacepress-<app>`, at `/wp-json/mcp/spacepress-<app>`. Each ability with `agents` on is one tool: kind operations, globals, queries and mutations, and jobs with `agents: true`. Agents sign in as a WordPress user with an application password or scoped agent credentials (`spacepress identity agent add <user> --name=<name>`).
 
 ## WordPress Abilities API
 
-Every collection, global, action, and job is registered as a WordPress Ability by default (`agents: false` opts out). Queries are marked read-only. Set `destructive: true` on mutations that perform destructive work.
+Every collection, table, global, query and mutation is registered as a WordPress Ability, `<app>/<kebab-name>`. `agents: false` keeps it registered (for PHP, `wp spacepress run` and the app's own typed client) but hides it from REST discovery and MCP. Taxonomies and jobs are off unless you set `agents: true`. Queries are annotated read-only; set `destructive: true` on a mutation that deletes or overwrites data so agents confirm first.
+
+The typed client runs its calls through these Abilities too, at `/wp-json/wp-abilities/v1/abilities/<app>/<name>/run`; see [Typed Clients](/docs/integrations/astro-and-clients#how-calls-reach-wordpress).
 
 To invoke abilities provided by WordPress core or installed plugins with full TypeScript types:
 
@@ -84,7 +86,7 @@ To invoke abilities provided by WordPress core or installed plugins with full Ty
 npx spacepress abilities pull --site https://example.com
 ```
 
-Then call `abilities.call("ability/name", input)` from `"spacepress/server/wp"` inside any action, hook, or route.
+This locks their names and schemas into `sp/_generated/abilities.json`. Then call `abilities.call("ability/name", input)` from `"spacepress/server/wp"` in a query, mutation, job, hook or route, typed by that file.
 
 ## Guidance evals
 

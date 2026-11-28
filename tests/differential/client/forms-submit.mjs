@@ -212,6 +212,53 @@ try {
     await page.close();
   }
 
+  // A `<Link>` clicked far down a page (a sticky sidebar's, here fixed so it stays in view): the
+  // next page starts at the top, as a page load does, and in the same document.
+  {
+    const { page } = await open(`${url}/?ref=nav`);
+    await page.evaluate(() => {
+      window.spMarker = "same document";
+      document.body.style.padding = "0 0 3000px";
+      Object.assign(document.querySelector("a.other").style, { position: "fixed", top: "8px", left: "8px" });
+      window.scrollTo(0, document.documentElement.scrollHeight);
+    });
+    const before = await page.evaluate(() => window.scrollY);
+    await page.click("a.other");
+    await page.waitForSelector(".other-page", { timeout: 15000 });
+    await page.waitForTimeout(300);
+    out.linkScroll = {
+      scrolledBefore: before > 500,
+      after: await page.evaluate(() => window.scrollY),
+      marker: await page.evaluate(() => window.spMarker ?? null),
+    };
+    // A fragment the next page has no element for: the top too, as a page load would leave it.
+    await page.evaluate(() => {
+      document.body.style.padding = "0 0 3000px";
+      const link = document.querySelector('a[href$="/"]');
+      link.href = `${link.href}#missing`;
+      Object.assign(link.style, { position: "fixed", top: "8px", left: "8px" });
+      window.scrollTo(0, document.documentElement.scrollHeight);
+    });
+    await page.click('a[href$="/#missing"]');
+    await page.waitForSelector("form.subscribe", { timeout: 15000 });
+    await page.waitForTimeout(300);
+    out.linkScroll.missingFragment = await page.evaluate(() => [new URL(location.href).hash, window.scrollY]);
+    // A fragment that is an id but not a CSS selector (`#1note`, which the router's querySelector
+    // rejects): the next page still opens at that element, as a page load does.
+    await page.evaluate(() => {
+      const link = document.querySelector("a.other");
+      link.href = new URL("/other/#1note", location.href).href;
+      Object.assign(link.style, { position: "fixed", top: "8px", left: "8px" });
+      window.scrollTo(0, 0);
+    });
+    await page.click("a.other");
+    await page.waitForSelector(".other-page", { timeout: 15000 });
+    await page.waitForTimeout(500);
+    // The body's 3000px bottom padding (outside the region) leaves room to scroll the note to the top.
+    out.linkScroll.selectorFragment = await page.evaluate(() => [new URL(location.href).hash, window.scrollY > 0 && Math.abs(document.getElementById("1note").getBoundingClientRect().top) < 2]);
+    await page.close();
+  }
+
   // Two forms sent at once, the older answer last: the newer page stays, and the older form says
   // its result isn't shown.
   {

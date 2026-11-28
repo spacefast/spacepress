@@ -16,7 +16,7 @@ npx spacepress add shop
 
 ## Declarative store & catalog builders
 
-Export `store()`, `product()`, `productCategory()`, `productTag()`, and `order()` from `sp/shop.ts` (re-exported in `spacepress.config.ts`):
+Export `store()`, `product()`, `productCategory()`, `productTag()` and `order()` from `sp/shop.ts`, which `spacepress add shop` writes. Like every `.ts` file under `sp/`, it loads without an import from the config:
 
 ```ts
 import { store, product, productCategory, productTag, order } from "spacepress";

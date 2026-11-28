@@ -8,7 +8,7 @@ namespace SpacePress;
  * members live on the descriptor (see JsClass::defineSymbol). Reads, `in` and
  * Object.defineProperty with a symbol key are modeled; writes and deletes are refused.
  */
-final class JsPrototype
-{
-    public function __construct(public readonly JsClass $class) {}
+final class JsPrototype {
+
+	public function __construct( public readonly JsClass $class ) {} // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.classFound -- Preserve the existing PHP parameter name.
 }

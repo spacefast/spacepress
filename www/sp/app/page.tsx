@@ -2,19 +2,19 @@ import { Link } from "spacepress/app";
 import { Sandbox, Tree } from "../components/Code";
 
 export const metadata = {
-  title: "SpacePress — The TypeScript Framework for WordPress", description: "Write TypeScript schemas, server actions, background jobs, and React TSX pages. SpacePress compiles them with Rust into native PHP, SQL migrations, OpenAPI, and WordPress plugins.", };
+  title: "SpacePress — The TypeScript Framework for WordPress", description: "Write TypeScript schemas, queries and mutations, background jobs, and React TSX pages. SpacePress compiles them with Rust into native PHP, SQL migrations, OpenAPI, and WordPress plugins.", };
 
 const AUTHORED_TREE = `my-app/
   spacepress.config.ts   Project config & exports
   sp/
     schema.ts            Collections, SQL tables, globals, taxonomies, stores
-    server.ts            Server actions, Action Scheduler jobs & mail
+    server.ts            Queries, mutations, Action Scheduler jobs & mail
     app/
       layout.tsx         Root layout & shared metadata
       page.tsx           Server-rendered TSX pages
       api/feed/route.ts  Custom HTTP route handlers
     components/
-      TaskList.tsx       "use client" Interactivity API islands
+      TaskList.tsx       "use client" islands (Interactivity API)
     wp-hooks/
       the_content.ts     Typed WordPress core filters & actions
   content/
@@ -41,8 +41,7 @@ const GENERATED_TREE = `my-app/
       spacepress-identity/ Passkeys, TOTP, JWT & tokens
       spacepress-admin/    Modern Admin at /wp-admin/new/`;
 
-const HERO_SCHEMA_CODE = `import {
-  wp, table, text, integer, boolean, ref, action, defineConfig } from "spacepress";
+const HERO_SCHEMA_CODE = `import { wp, table, text, boolean, ref, mutation, defineConfig } from "spacepress";
 import { db, HttpError } from "spacepress/server";
 
 // Native WordPress posts extended with typed fields, URL routing & Markdown sync
@@ -54,7 +53,7 @@ export const posts = wp.posts.extend({
   comments: { moderation: "first-time", threaded: 2 },
 });
 
-// Relational SQL table: automatic numbered migrations
+// Relational SQL table: forward-only migrations written for you
 export const tasks = table({
   title: text().min(1).max(120),
   done: boolean().default(false),
@@ -63,20 +62,16 @@ export const tasks = table({
   access: { read: "anyone", create: "authenticated", update: "authenticated", delete: "editor" },
 });
 
-// Compiled to native PHP: POST /__sp/api/v1/actions/completeTask
-export const completeTask = action({
-  input: { id: integer() },
-  access: "authenticated",
-  async handler({ id }) {
-    const [row] = await db.update(tasks).set({ done: true }).where({ id }).returning();
-    if (!row) throw new HttpError(404, "not_found", "Task not found");
-    return row;
-  },
+// POST /wp-json/spacepress/v1/actions/completeTask, and a WordPress Ability
+export const completeTask = mutation({ access: "authenticated" }, async ({ id }: { id: number }) => {
+  const [row] = await db.update(tasks).set({ done: true }).where({ id }).returning();
+  if (!row) throw new HttpError(404, "not_found", "Task not found");
+  return row;
 });
 
 export default defineConfig({ name: "starter" });`;
 
-const HERO_JOBS_CODE = `import { table, text, integer, timestamp, action, job, jobs, defineConfig } from "spacepress";
+const HERO_JOBS_CODE = `import { table, text, timestamp, mutation, job, defineConfig } from "spacepress";
 import { db } from "spacepress/server";
 
 export const subscriptions = table({
@@ -88,27 +83,19 @@ export const subscriptions = table({
 }).on({
   async afterCreate(row) {
     // Queued in-transaction, delivered after commit on Action Scheduler
-    await jobs.sendWelcome.enqueue({ id: row.id }, { key: \`welcome-\${row.id}\` });
+    await sendWelcome.enqueue({ id: row.id }, { key: \`welcome-\${row.id}\` });
   },
 });
 
-export const sendWelcome = job({
-  input: { id: integer() },
-  retries: 3,
-  async handler({ id }) {
-    await db.update(subscriptions)
-      .set({ welcomedAt: new Date().toISOString() })
-      .where({ id });
-  },
+export const sendWelcome = job({ retries: 3 }, async ({ id }: { id: number }) => {
+  await db.update(subscriptions)
+    .set({ welcomedAt: new Date().toISOString() })
+    .where({ id });
 });
 
-export const upgradePlan = action({
-  input: { id: integer(), plan: text().max(32) },
-  access: "editor",
-  async handler({ id, plan }) {
-    const [row] = await db.update(subscriptions).set({ plan }).where({ id }).returning();
-    return row;
-  },
+export const upgradePlan = mutation({ access: "editor" }, async ({ id, plan }: { id: number; plan: string }) => {
+  const [row] = await db.update(subscriptions).set({ plan }).where({ id }).returning();
+  return row;
 });
 
 export default defineConfig({ name: "jobs-demo" });`;
@@ -188,7 +175,7 @@ export default defineConfig({ name: "tracker" });`;
 
 const MIGRATION_NEXT = `import { table, text, integer, boolean, select, timestamp, defineConfig } from "spacepress";
 
-// Edit this schema! Add a column, change a default, or rename with .was("title")
+// Edit this schema! Add a column or change a default; rename safely with .column("title")
 export const issues = table({
   title: text().min(1).max(160),
   priority: integer().default(2).min(1).max(5),
@@ -241,7 +228,7 @@ export default function HomePage() {
               Define <Link href="/docs/core/schema-and-storage" className="sp-inline-link">collections</Link>,{" "}
               <Link href="/docs/core/schema-and-storage" className="sp-inline-link">SQL tables</Link>,{" "}
               <Link href="/docs/core/queries-and-access" className="sp-inline-link">access rules</Link>,{" "}
-              <Link href="/docs/core/actions-jobs-routes" className="sp-inline-link">server actions, background jobs</Link>, and{" "}
+              <Link href="/docs/core/actions-jobs-routes" className="sp-inline-link">queries, mutations, background jobs</Link>, and{" "}
               <Link href="/docs/core/pages-and-islands" className="sp-inline-link">React TSX pages</Link> in TypeScript. Headful WordPress by default — compiled into native PHP, SQL migrations, and standard plugins, with an optional{" "}
               <Link href="/docs/integrations/astro-and-clients" className="sp-inline-link">typed client and OpenAPI 3.1</Link> when you want headless.
             </p>
@@ -282,7 +269,7 @@ export default function HomePage() {
               <p className="sp-install-note">
                 Paste into Claude Code, Cursor, or Codex — reads <a href="/start.md" className="sp-inline-link">/start.md</a> &amp;{" "}
                 <a href="/rules.md" className="sp-inline-link">/rules.md</a> and configures{" "}
-                <Link href="/docs/operations/mcp-and-agents" className="sp-inline-link">MCP, 12 skills &amp; AGENTS.md</Link>.
+                <Link href="/docs/operations/mcp-and-agents" className="sp-inline-link">MCP, 10 skills &amp; AGENTS.md</Link>.
               </p>
             </div>
           </div>
@@ -293,7 +280,7 @@ export default function HomePage() {
             defaultTab="schema.php"
             presets={[
               {
-                label: "Schema & Actions",
+                label: "Schema & Mutations",
                 description: "Edit the TypeScript on the left — the real Rust compiler runs in WebAssembly right in your browser to emit PHP, SQL migrations, db.d.ts, and OpenAPI.",
                 output: "schema.php",
                 code: HERO_SCHEMA_CODE,
@@ -319,7 +306,7 @@ export default function HomePage() {
             ]}
           />
           <p className="sp-sandbox-hint">
-            Try editing line 30: change <code>&quot;Task not found&quot;</code> to <code>&quot;Word{"p"}ress task not found&quot;</code> for an inline <code>capital_P_dangit</code> warning + Auto-fix, or break <code>integer()</code> on line 26 to see inline compiler errors.
+            Try editing line 25: change <code>&quot;Task not found&quot;</code> to <code>&quot;Word{"p"}ress task not found&quot;</code> for an inline <code>capital_P_dangit</code> warning + Auto-fix, or change <code>id: number</code> on line 23 to <code>id: Date</code> to see inline compiler errors.
           </p>
         </div>
       </section>
@@ -391,7 +378,7 @@ export default function HomePage() {
                 <Link href="/docs/integrations/markdown-sync" className="sp-inline-link">two-way Markdown Git sync</Link>) with relational{" "}
                 <Link href="/docs/core/schema-and-storage" className="sp-inline-link"><code>table()</code> SQL migrations</Link>, row- and field-level{" "}
                 <Link href="/docs/core/queries-and-access" className="sp-inline-link"><code>.access()</code></Link>, typed{" "}
-                <Link href="/docs/core/actions-jobs-routes" className="sp-inline-link"><code>action()</code> endpoints and Action Scheduler <code>job()</code> queues</Link>,{" "}
+                <Link href="/docs/core/actions-jobs-routes" className="sp-inline-link"><code>query()</code> and <code>mutation()</code> functions and Action Scheduler <code>job()</code> queues</Link>,{" "}
                 <Link href="/docs/integrations/woocommerce" className="sp-inline-link">WooCommerce storefronts</Link>,{" "}
                 <Link href="/docs/integrations/react-email" className="sp-inline-link">React Email templates</Link>, and{" "}
                 <Link href="/handbook#admin-plugins" className="sp-inline-link"><code>/wp-admin/new/</code> screens</Link>.
@@ -408,8 +395,8 @@ export default function HomePage() {
               <h3>Safe for teams and coding agents</h3>
               <p>
                 The <Link href="/handbook#compiler" className="sp-inline-link">Rust &amp; OXC compiler</Link> validates schemas, routes, hooks, and WordPress conventions like{" "}
-                <Link href="/docs/reference/language-support" className="sp-inline-link"><code>capital_P_dangit</code></Link> before deploy. Expose actions as{" "}
-                <Link href="/docs/operations/mcp-and-agents" className="sp-inline-link">WordPress Abilities</Link> with <code>readonly</code> and <code>destructive</code> annotations, run{" "}
+                <Link href="/docs/reference/language-support" className="sp-inline-link"><code>capital_P_dangit</code></Link> before deploy. Every query and mutation is a{" "}
+                <Link href="/docs/operations/mcp-and-agents" className="sp-inline-link">WordPress Ability</Link>, with queries marked read-only and <code>destructive</code> mutations flagged for confirmation; run{" "}
                 <Link href="/docs/operations/mcp-and-agents" className="sp-inline-link"><code>spacepress mcp</code></Link> for coding agents, and onboard agents directly from{" "}
                 <a href="/llms.txt" className="sp-inline-link"><code>/llms.txt</code></a> and generated <code>AGENTS.md</code>.
               </p>
@@ -427,7 +414,7 @@ export default function HomePage() {
           <div className="sp-section-head">
             <h2>Change a schema, get an instant SQL migration</h2>
             <p>
-              SpacePress reads <Link href="/docs/core/schema-and-storage" className="sp-inline-link">migration history</Link> from <code>sp/_generated/migrations/</code>. Try adding a field or renaming <code>title</code> with <code>.was(&quot;title&quot;)</code> below to generate a new migration folder.
+              SpacePress reads <Link href="/docs/core/schema-and-storage" className="sp-inline-link">migration history</Link> from <code>sp/_generated/migrations/</code>. Try adding a field or changing a default below to generate a new migration folder. Renames keep the old column with <code>.column(&quot;title&quot;)</code>, so no data moves.
             </p>
           </div>
 
@@ -466,7 +453,7 @@ export default function HomePage() {
 
           <sp-play
             example="tasks"
-            hint="Multi-file Tasks app: SQL table, two server actions, TSX page, and live Interactivity API island — compile and run in WordPress Playground."
+            hint="Multi-file Tasks app: SQL table, two mutations, TSX page, and live Interactivity API island — compile and run in WordPress Playground."
           />
         </div>
       </section>
@@ -648,7 +635,7 @@ export default function HomePage() {
             <details className="sp-faq-item">
               <summary>Does SpacePress run Node.js in production?</summary>
               <p>
-                No. Node.js 22+ is only used locally or in CI to invoke the prebuilt Rust compiler. Production output is native PHP (<code>schema.php</code>, <code>functions.php</code>), numbered SQL migrations, and standard WordPress plugins running on any{" "}
+                No. Node.js 22+ is only used locally or in CI to invoke the prebuilt Rust compiler. Production output is native PHP (<code>schema.php</code>, <code>functions.php</code>), forward-only SQL migrations, and standard WordPress plugins running on any{" "}
                 <Link href="/docs/operations/deploy-self-hosted" className="sp-inline-link">WordPress 7.1+ / PHP 8.2+ host</Link>.
               </p>
             </details>

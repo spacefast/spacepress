@@ -16,23 +16,26 @@ declare(strict_types=1);
 require __DIR__ . '/wp.php';
 
 // SP_SERVE_MU names a must-use plugin a browser test needs on the server (its test hooks).
-$mu = getenv('SP_SERVE_MU');
-$site = wpSite('serve-built', ['wpContent' => $argv[1]] + (is_string($mu) && is_file($mu) ? ['muPlugins' => ['test' => (string) file_get_contents($mu)]] : []));
-if (isset($argv[2])) {
-    \SpacePress\Sync\Seed::run(\SpacePress\Wp\Runtime::plugin(), $argv[2]);
+$mu   = getenv( 'SP_SERVE_MU' );
+$site = wpSite( 'serve-built', array( 'wpContent' => $argv[1] ) + ( is_string( $mu ) && is_file( $mu ) ? array( 'muPlugins' => array( 'test' => (string) file_get_contents( $mu ) ) ) : array() ) );
+if ( isset( $argv[2] ) ) {
+	\SpacePress\Sync\Seed::run( \SpacePress\Wp\Runtime::plugin(), $argv[2] );
 }
 $site->startServer();
-echo json_encode(['url' => $site->url()]), "\n";
-fclose(STDOUT);
-pcntl_signal(SIGTERM, static function () use ($site): void {
-    $site->destroy();
-    exit(0);
-});
-while (true) {
-    pcntl_signal_dispatch();
-    if (!$site->serving()) {
-        $site->destroy();
-        exit(1);
-    }
-    usleep(100_000);
+echo json_encode( array( 'url' => $site->url() ) ), "\n";
+fclose( STDOUT );
+pcntl_signal(
+	SIGTERM,
+	static function () use ( $site ): void {
+		$site->destroy();
+		exit( 0 );
+	}
+);
+while ( true ) {
+	pcntl_signal_dispatch();
+	if ( ! $site->serving() ) {
+		$site->destroy();
+		exit( 1 );
+	}
+	usleep( 100_000 );
 }

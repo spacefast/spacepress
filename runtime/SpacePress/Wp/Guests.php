@@ -22,115 +22,119 @@ use function SpacePress\db;
  * a hook that throws keeps the guest, logged. Each guest is pruned in its own transaction: a kept
  * guest leaves nothing half-deleted and doesn't stop the rest.
  */
-final class Guests
-{
-    public const HOOK = 'spacepress.prune-guests';
-    public const DEFAULT_TTL_DAYS = 30;
+final class Guests {
 
-    public static function register(): void
-    {
-        add_action(self::HOOK, static function (): void {
-            $plugin = Runtime::plugin();
-            // Pruning deletes rows: skip it while storage is behind or no app runs; it recurs.
-            if ($plugin !== null && $plugin->unavailable() === null && $plugin->app() !== null) {
-                self::prune();
-            }
-        });
-        // Installing, not serving: a managed build schedules it from initialize.
-        add_action('action_scheduler_init', static fn () => Runtime::installs() ? self::install() : null);
-    }
+	public const HOOK             = 'spacepress.prune-guests';
+	public const DEFAULT_TTL_DAYS = 30;
 
-    /** The daily guest pruning. */
-    public static function install(): void
-    {
-        if (Runtime::plugin() !== null && !as_has_scheduled_action(self::HOOK, [], 'spacepress')) {
-            as_schedule_recurring_action(time() + 3600, DAY_IN_SECONDS, self::HOOK, [], 'spacepress');
-        }
-    }
+	public static function register(): void {
+		add_action(
+			self::HOOK,
+			static function (): void {
+				$plugin = Runtime::plugin();
+				// Pruning deletes rows: skip it while storage is behind or no app runs; it recurs.
+				if ( null !== $plugin && $plugin->unavailable() === null && $plugin->app() !== null ) {
+					self::prune();
+				}
+			}
+		);
+		// Installing, not serving: a managed build schedules it from initialize.
+		add_action( 'action_scheduler_init', static fn () => Runtime::installs() ? self::install() : null );
+	}
 
-    /** What {@see install()} leaves: the pruning scheduled. */
-    public static function installed(): bool
-    {
-        return Runtime::plugin() === null || as_has_scheduled_action(self::HOOK, [], 'spacepress');
-    }
+	/** The daily guest pruning. */
+	public static function install(): void {
+		if ( Runtime::plugin() !== null && ! as_has_scheduled_action( self::HOOK, array(), 'spacepress' ) ) {
+			as_schedule_recurring_action( time() + 3600, DAY_IN_SECONDS, self::HOOK, array(), 'spacepress' );
+		}
+	}
 
-    /** @return array{pruned: list<int>, kept: list<array{id: int, reason: string}>} */
-    public static function prune(): array
-    {
-        $out = ['pruned' => [], 'kept' => []];
-        $days = self::ttlDays();
-        if ($days === null || !IdentityBridge::available()) {
-            return $out; // guests exist only with spacepress-identity
-        }
-        $db = Runtime::plugin()?->connection() ?? throw new \LogicException('No SpacePress app is active');
-        $cutoff = time() - $days * 86_400;
-        foreach (array_column($db->run(self::staleSql($db, false), [$cutoff]), 'ID') as $id) {
-            $id = (int) $id;
-            try {
-                if (db()->transaction(static fn (): bool => self::pruneOne($db, $id, $cutoff))) {
-                    $out['pruned'][] = $id;
-                }
-            } catch (\Throwable $e) {
-                $out['kept'][] = ['id' => $id, 'reason' => $e->getMessage()];
-                error_log('[spacepress] ' . self::HOOK . ": kept guest $id: " . $e->getMessage());
-            }
-        }
+	/** What {@see install()} leaves: the pruning scheduled. */
+	public static function installed(): bool {
+		return Runtime::plugin() === null || as_has_scheduled_action( self::HOOK, array(), 'spacepress' );
+	}
 
-        return $out;
-    }
+	/** @return array{pruned: list<int>, kept: list<array{id: int, reason: string}>} */
+	public static function prune(): array {
+		$out  = array(
+			'pruned' => array(),
+			'kept'   => array(),
+		);
+		$days = self::ttlDays();
+		if ( null === $days || ! IdentityBridge::available() ) {
+			return $out; // guests exist only with spacepress-identity
+		}
+		$db     = Runtime::plugin()?->connection() ?? throw new \LogicException( 'No SpacePress app is active' );
+		$cutoff = time() - $days * 86_400;
+		foreach ( array_column( $db->run( self::stale_sql( $db, false ), array( $cutoff ) ), 'ID' ) as $id ) {
+			$id = (int) $id;
+			try {
+				if ( db()->transaction( static fn (): bool => self::prune_one( $db, $id, $cutoff ) ) ) {
+					$out['pruned'][] = $id;
+				}
+			} catch ( \Throwable $e ) {
+				$out['kept'][] = array(
+					'id'     => $id,
+					'reason' => $e->getMessage(),
+				);
+				error_log( '[spacepress] ' . self::HOOK . ": kept guest $id: " . $e->getMessage() );
+			}
+		}
 
-    /** Days a guest may stay inactive, or null when pruning is off. */
-    public static function ttlDays(): ?int
-    {
-        $raw = trim((string) Env::get('SP_GUEST_TTL_DAYS'));
-        if ($raw === '') {
-            return self::DEFAULT_TTL_DAYS;
-        }
-        if (!preg_match('/^\d+$/D', $raw)) {
-            error_log('[spacepress] ' . self::HOOK . ': SP_GUEST_TTL_DAYS must be a whole number of days (0 turns pruning off); skipped');
+		return $out;
+	}
 
-            return null;
-        }
+	/** Days a guest may stay inactive, or null when pruning is off. */
+	public static function ttlDays(): ?int { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
+		$raw = trim( (string) Env::get( 'SP_GUEST_TTL_DAYS' ) );
+		if ( '' === $raw ) {
+			return self::DEFAULT_TTL_DAYS;
+		}
+		if ( ! preg_match( '/^\d+$/D', $raw ) ) {
+			error_log( '[spacepress] ' . self::HOOK . ': SP_GUEST_TTL_DAYS must be a whole number of days (0 turns pruning off); skipped' );
 
-        return (int) $raw === 0 ? null : (int) $raw;
-    }
+			return null;
+		}
 
-    /**
-     * Lock what a guest upgrade locks and changes (identity's account row, then the user's roles),
-     * recheck with a locking read, delete. False when an upgrade or sign-in committed first.
-     */
-    private static function pruneOne(Connection $db, int $id, int $cutoff): bool
-    {
-        $db->run('SELECT wp_user_id FROM `' . $db->wpdb()->prefix . 'sp_identity_accounts` WHERE wp_user_id = ? FOR UPDATE', [$id]);
-        if ($db->run(self::staleSql($db, true), [$cutoff, $id]) === []) {
-            return false;
-        }
-        $db->onRollback(static function () use ($id): void {
-            clean_user_cache($id);
-            wp_cache_delete($id, 'user_meta');
-        });
-        $collection = db()->schema()->auth()['collection'] ?? null;
-        if ($collection !== null && db()->findFirst($collection, ['where' => ['id' => $id]]) !== null) {
-            db()->delete($collection, ['id' => $id]); // onDelete, hooks, webhooks; then the user
-        } else {
-            WpUserStore::deleteUser($db, $id);
-        }
+		return 0 === (int) $raw ? null : (int) $raw;
+	}
 
-        return true;
-    }
+	/**
+	 * Lock what a guest upgrade locks and changes (identity's account row, then the user's roles),
+	 * recheck with a locking read, delete. False when an upgrade or sign-in committed first.
+	 */
+	private static function prune_one( Connection $db, int $id, int $cutoff ): bool {
+		$db->run( 'SELECT wp_user_id FROM `' . $db->wpdb()->prefix . 'sp_identity_accounts` WHERE wp_user_id = ? FOR UPDATE', array( $id ) );
+		if ( $db->run( self::stale_sql( $db, true ), array( $cutoff, $id ) ) === array() ) {
+			return false;
+		}
+		$db->onRollback(
+			static function () use ( $id ): void {
+				clean_user_cache( $id );
+				wp_cache_delete( $id, 'user_meta' );
+			}
+		);
+		$collection = db()->schema()->auth()['collection'] ?? null;
+		if ( null !== $collection && db()->findFirst( $collection, array( 'where' => array( 'id' => $id ) ) ) !== null ) {
+			db()->delete( $collection, array( 'id' => $id ) ); // onDelete, hooks, webhooks; then the user
+		} else {
+			WpUserStore::deleteUser( $db, $id );
+		}
 
-    /** Guests last active before ? (unix seconds); with $one, just user ?, locked. */
-    private static function staleSql(Connection $db, bool $one): string
-    {
-        $wpdb = $db->wpdb();
-        $caps = $wpdb->get_blog_prefix() . 'capabilities';
-        $ttl = \SpacePress\Identity\OAuth::REFRESH_TTL;
-        // user_registered is UTC: TIMESTAMPDIFF from the epoch involves no session time zone.
-        $active = "GREATEST(TIMESTAMPDIFF(SECOND, '1970-01-01 00:00:00', u.user_registered), COALESCE((SELECT MAX(t.expires_at) - $ttl FROM `"
-            . $wpdb->prefix . "sp_identity_tokens` t WHERE t.wp_user_id = u.ID AND t.kind = 'refresh'), 0))";
+		return true;
+	}
 
-        return 'SELECT u.ID FROM `' . $wpdb->users . '` u JOIN `' . $wpdb->usermeta . "` m ON m.user_id = u.ID AND m.meta_key = '" . esc_sql($caps) . "'"
-            . " WHERE m.meta_value LIKE '%\"sp_guest\"%' AND $active < ?"
-            . ($one ? ' AND u.ID = ? FOR UPDATE' : ' ORDER BY u.ID');
-    }
+	/** Guests last active before ? (unix seconds); with $one, just user ?, locked. */
+	private static function stale_sql( Connection $db, bool $one ): string {
+		$wpdb = $db->wpdb();
+		$caps = $wpdb->get_blog_prefix() . 'capabilities';
+		$ttl  = \SpacePress\Identity\OAuth::REFRESH_TTL;
+		// user_registered is UTC: TIMESTAMPDIFF from the epoch involves no session time zone.
+		$active = "GREATEST(TIMESTAMPDIFF(SECOND, '1970-01-01 00:00:00', u.user_registered), COALESCE((SELECT MAX(t.expires_at) - $ttl FROM `"
+			. $wpdb->prefix . "sp_identity_tokens` t WHERE t.wp_user_id = u.ID AND t.kind = 'refresh'), 0))";
+
+		return 'SELECT u.ID FROM `' . $wpdb->users . '` u JOIN `' . $wpdb->usermeta . "` m ON m.user_id = u.ID AND m.meta_key = '" . esc_sql( $caps ) . "'"
+			. " WHERE m.meta_value LIKE '%\"sp_guest\"%' AND $active < ?"
+			. ( $one ? ' AND u.ID = ? FOR UPDATE' : ' ORDER BY u.ID' );
+	}
 }

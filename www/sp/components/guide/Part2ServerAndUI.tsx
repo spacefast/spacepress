@@ -1,6 +1,6 @@
 import { Code, ProjectExplorer, Sandbox } from "../Code";
 
-const HOOKS_SANDBOX = `import { table, text, integer, timestamp, job, jobs, defineConfig } from "spacepress";
+const HOOKS_SANDBOX = `import { table, text, integer, timestamp, job, defineConfig } from "spacepress";
 import { db, HttpError } from "spacepress/server";
 
 export const invoices = table({
@@ -17,23 +17,19 @@ export const invoices = table({
     data.code = \`INV-\${crypto.randomUUID().slice(0, 8).toUpperCase()}\`;
   },
   async afterCreate(row) {
-    await jobs.syncInvoice.enqueue({ invoiceId: row.id }, { key: \`inv-\${row.id}\` });
+    await syncInvoice.enqueue({ invoiceId: row.id }, { key: \`inv-\${row.id}\` });
   },
 });
 
-export const syncInvoice = job({
-  input: { invoiceId: integer() },
-  retries: 3,
-  async handler({ invoiceId }) {
-    await db.update(invoices)
-      .set({ syncedAt: new Date().toISOString() })
-      .where({ id: invoiceId });
-  },
+export const syncInvoice = job({ retries: 3 }, async ({ invoiceId }: { invoiceId: number }) => {
+  await db.update(invoices)
+    .set({ syncedAt: new Date().toISOString() })
+    .where({ id: invoiceId });
 });
 
 export default defineConfig({ name: "hooks-demo" });`;
 
-const ACTIONS_FILES_SANDBOX = `import { table, text, integer, file, files, action, job, jobs, env, defineConfig } from "spacepress";
+const ACTIONS_FILES_SANDBOX = `import { table, text, file, files, mutation, job, env, defineConfig } from "spacepress";
 import { db, HttpError } from "spacepress/server";
 
 // Private file bucket: downloads use signed 5-minute URLs when loaded via \`with\`
@@ -49,28 +45,20 @@ export const submissions = table({
   status: text().default("pending"),
 });
 
-// Annotated readonly/destructive actions also become typed WordPress Abilities
-export const approveSubmission = action({
-  input: { id: integer() },
-  access: "editor",
-  idempotent: true,
-  async handler({ id }) {
-    const [row] = await db.update(submissions)
-      .set({ status: "approved" })
-      .where({ id })
-      .returning();
-    if (!row) throw new HttpError(404, "not_found", "Submission not found");
-    await jobs.notifyReviewer.enqueue({ id }, { delay: 10, key: \`approved-\${id}\` });
-    return row;
-  },
+// Every query and mutation is also a typed WordPress Ability
+export const approveSubmission = mutation({ access: "editor", idempotent: true }, async ({ id }: { id: number }) => {
+  const [row] = await db.update(submissions)
+    .set({ status: "approved" })
+    .where({ id })
+    .returning();
+  if (!row) throw new HttpError(404, "not_found", "Submission not found");
+  await notifyReviewer.enqueue({ id }, { delay: 10, key: \`approved-\${id}\` });
+  return row;
 });
 
-export const notifyReviewer = job({
-  input: { id: integer() },
-  retries: 2,
-  async handler({ id }) {
-    await db.query.submissions.findFirst({ where: { id } });
-  },
+// Jobs may read private files: briefs.readText(id), briefs.readBase64(id)
+export const notifyReviewer = job({ retries: 2 }, async ({ id }: { id: number }) => {
+  await db.query.submissions.findFirst({ where: { id } });
 });
 
 export default defineConfig({
@@ -123,7 +111,7 @@ const CLIENT_HOOKS_CODE = `import * as React from "react";
 import { createClient } from "./sp/_generated/client/index";
 import { createHooks } from "./sp/_generated/client/react";
 
-export const client = createClient({ baseUrl: "https://api.example.com" });
+export const client = createClient({ url: "https://cms.example.com" });
 export const { useQuery, useMutation } = createHooks(React);
 
 export function TaskCounter() {
@@ -199,32 +187,32 @@ export function Part2ServerAndUI() {
 
       <section id="actions-jobs-routes" className="sp-guide-section">
         <span className="sp-guide-num">06</span>
-        <h2>Server Actions, Background Jobs, HTTP Routes &amp; Files</h2>
+        <h2>Queries, Mutations, Background Jobs, HTTP Routes &amp; Files</h2>
         <p>
           Beyond CRUD endpoints, SpacePress compiles three server primitives directly into WordPress:
         </p>
         <ul>
           <li>
-            <strong>Server Actions (<code>action()</code>):</strong> Mounted at <code>POST /__sp/api/v1/actions/&lt;name&gt;</code>, validated with the same column builders, protected by <code>access</code> (default <code>&quot;editor&quot;</code>), optionally signed via HMAC webhook verification (<code>signature</code>), and annotated with <code>idempotent</code>, <code>readonly</code>, or <code>destructive</code> for AI agents.
+            <strong>Server functions (<code>query()</code> &amp; <code>mutation()</code>):</strong> <code>query(options, handler)</code> only reads; <code>mutation(options, handler)</code> writes in one transaction. The input is the handler&apos;s parameter type, validated before the handler runs. Each one is mounted at <code>POST /wp-json/spacepress/v1/actions/&lt;name&gt;</code> and registered as a WordPress Ability, protected by <code>access</code> (default <code>&quot;editor&quot;</code>), rate limited with <code>rateLimit</code>, optionally signed via HMAC webhook verification (<code>signature</code>), and annotated <code>idempotent</code> or <code>destructive</code> for AI agents. Queries are marked read-only.
           </li>
           <li>
-            <strong>Background Jobs (<code>job()</code>):</strong> Dispatched via <code>jobs.&lt;name&gt;.enqueue(input, &#123; delay?, key? &#125;)</code> onto WordPress&apos;s <strong>Action Scheduler</strong>. Enqueueing inside a hook or action commits atomically with the database write, supports automatic <code>retries</code>, dedupe <code>key</code>s, and idempotency guards via <code>once(key, fn)</code>.
+            <strong>Background Jobs (<code>job()</code>):</strong> <code>job(options, handler)</code>, queued with <code>myJob.enqueue(input, &#123; delay?, key? &#125;)</code> onto WordPress&apos;s <strong>Action Scheduler</strong>. Enqueueing inside a hook or mutation commits atomically with the database write, supports automatic <code>retries</code>, dedupe <code>key</code>s, and idempotency guards via <code>once(key, fn)</code>. Recurring work uses <code>job(&#123; every: &quot;1h&quot; &#125;, ...)</code> or <code>cron(&quot;0 3 * * *&quot;, ...)</code>. Jobs get longer outbound <code>fetch()</code> limits (60&nbsp;s, 16&nbsp;MiB) than requests do.
           </li>
           <li>
             <strong>Custom HTTP Routes (<code>sp/app/.../route.ts</code>):</strong> Export <code>GET</code>, <code>POST</code>, <code>PUT</code>, <code>PATCH</code>, or <code>DELETE</code> handlers plus <code>export const guard</code> to serve JSON feeds, webhooks, robots.txt, or custom endpoints at any clean URL outside <code>/wp-json</code>.
           </li>
           <li>
-            <strong>Private File Buckets (<code>files()</code>) &amp; Signed Webhooks:</strong> Store private uploads locally or on S3-compatible storage (<code>uploads: &#123; backend: &quot;s3&quot;, ... &#125;</code>) with automatic 5-minute signed download URLs, and emit signed <code>SpacePress-Signature</code> HMAC webhooks on any <code>&lt;kind&gt;.created|updated|deleted</code> event.
+            <strong>Private File Buckets (<code>files()</code>) &amp; Signed Webhooks:</strong> Store private uploads locally or on S3-compatible storage (<code>uploads: &#123; backend: &quot;s3&quot;, ... &#125;</code>) with automatic 5-minute signed download URLs, read them on the server with <code>bucket.get(id)</code>, <code>readText(id)</code> and <code>readBase64(id)</code>, accept uploads from islands with <code>uploadFile(bucket, file)</code>, and emit signed <code>SpacePress-Signature</code> HMAC webhooks on any <code>&lt;kind&gt;.created|updated|deleted</code> event.
           </li>
         </ul>
 
         <Sandbox
-          title="Live Compiler: Private File Buckets, Actions, Jobs & Webhooks"
+          title="Live Compiler: Private File Buckets, Mutations, Jobs & Webhooks"
           defaultTab="openapi.json"
           presets={[
             {
-              label: "Actions, Jobs & Files",
-              description: "Inspect the generated openapi.json, schema.php, and functions.php for private buckets, signed webhooks, actions, and delayed jobs.",
+              label: "Mutations, Jobs & Files",
+              description: "Inspect the generated openapi.json, schema.php, and functions.php for private buckets, signed webhooks, mutations, and delayed jobs.",
               output: "openapi.json",
               code: ACTIONS_FILES_SANDBOX,
             },

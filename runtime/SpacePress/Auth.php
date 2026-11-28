@@ -10,21 +10,21 @@ namespace SpacePress;
  */
 
 /** Resolves a request to a User (§5): Wp\WpAuth, with spacepress-identity's bearer tokens when installed. */
-interface Auth
-{
-    /**
-     * The user making this request, or null when anonymous. A suspended user's credentials throw
-     * HttpError 403 `suspended` (§6.2) instead of resolving.
-     *
-     * @param array<string, string> $headers lower-cased header names
-     * @return ?array{id: int, name: string, role: string}
-     */
-    public function resolve(array $headers): ?array;
+interface Auth {
 
-    /**
-     * Look a user up by id (revision authors). Null when unknown.
-     *
-     * @return ?array{id: int, name: string, role: string}
-     */
-    public function user(int $id): ?array;
+	/**
+	 * The user making this request, or null when anonymous. A suspended user's credentials throw
+	 * HttpError 403 `suspended` (§6.2) instead of resolving.
+	 *
+	 * @param array<string, string> $headers lower-cased header names
+	 * @return ?array{id: int, name: string, role: string}
+	 */
+	public function resolve( array $headers ): ?array;
+
+	/**
+	 * Look a user up by id (revision authors). Null when unknown.
+	 *
+	 * @return ?array{id: int, name: string, role: string}
+	 */
+	public function user( int $id ): ?array;
 }

@@ -1984,18 +1984,9 @@ a.sp-deploy-card:hover .sp-wpcloud-logo {
 }
 
 .sp-reference:has(.sd-docs) {
-  margin-top: var(--gutter);
   background: var(--sd-bg);
   color: var(--sd-ink);
   color-scheme: var(--sd-color-scheme);
-}
-.sp-reference:not(:has(.sd-docs)) .sp-reference-toolbar { display: none; }
-.sp-reference-toolbar {
-  display: flex;
-  justify-content: flex-end;
-  max-width: var(--sd-page-width);
-  margin: 0 auto;
-  padding: 16px 24px 0;
 }
 
 .sp-docs-lead {

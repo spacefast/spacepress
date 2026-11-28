@@ -21,6 +21,27 @@ The reference WordPress/MariaDB suites and the separate
 showcase launcher still need Docker with Compose, plus `bash` 4+, `python3`,
 `curl`, `sha256sum` and `rsync` on the host.
 
+## PHP style
+
+PR CI checks added and edited lines in hand-written runtime PHP with
+WordPress-Core. Vendored code, build output, and retained upstream admin
+sources are excluded. The runtime ruleset respects class filenames used by
+namespace autoloaders. The existing full WordPress standard check for the
+three generated example outputs runs separately.
+
+Run the changed-line check locally against your branch's base commit:
+
+```sh
+composer install --working-dir=examples/php-standards
+node scripts/check-php-standards.ts "$(git merge-base origin/main HEAD)"
+```
+
+To format a runtime file before committing:
+
+```sh
+examples/php-standards/vendor/bin/phpcbf --standard=examples/php-standards/runtime.xml runtime/SpacePress/Fetch.php
+```
+
 ## How it works
 
 1. **Parse.** [oxc](https://oxc.rs) parses `spacepress.config.ts` and the local `.ts`

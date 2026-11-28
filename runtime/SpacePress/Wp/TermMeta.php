@@ -14,66 +14,68 @@ use SpacePress\Wp\Abilities\JsonSchema;
  * core's generic meta path (`auth_callback` false): {@see TermsController} reads `meta` and saves it
  * through SpacePress's pipeline.
  */
-final class TermMeta extends \WP_REST_Term_Meta_Fields
-{
-    public function __construct(string $taxonomy, private readonly string $collection)
-    {
-        parent::__construct($taxonomy);
-    }
+final class TermMeta extends \WP_REST_Term_Meta_Fields {
 
-    /** register_term_meta for every authored field of a taxonomy (init). */
-    public static function register(array $spec): void
-    {
-        foreach (self::fields($spec) as $col => $def) {
-            $schema = JsonSchema::column($def, true);
-            $types = array_values(array_diff((array) $schema['type'], ['null']));
-            register_term_meta($spec['wp']['taxonomy'], $spec['wp']['metaPrefix'] . $col, [
-                'single' => true,
-                'type' => count($types) === 1 ? $types[0] : 'object',
-                'label' => (string) ($def['ui']['label'] ?? $col),
-                'show_in_rest' => ['name' => $col, 'schema' => $schema],
-                'auth_callback' => '__return_false',
-            ]);
-        }
-    }
+	public function __construct( string $taxonomy, private readonly string $collection ) {
+		parent::__construct( $taxonomy );
+	}
 
-    /** @return array<string, array> the authored fields, kept as term meta */
-    public static function fields(array $spec): array
-    {
-        return array_filter($spec['columns'], static fn (string $col) => WpTermStore::isMeta($spec, $col), ARRAY_FILTER_USE_KEY);
-    }
+	/** register_term_meta for every authored field of a taxonomy (init). */
+	public static function register( array $spec ): void {
+		foreach ( self::fields( $spec ) as $col => $def ) {
+			$schema = JsonSchema::column( $def, true );
+			$types  = array_values( array_diff( (array) $schema['type'], array( 'null' ) ) );
+			register_term_meta(
+				$spec['wp']['taxonomy'],
+				$spec['wp']['metaPrefix'] . $col,
+				array(
+					'single'        => true,
+					'type'          => count( $types ) === 1 ? $types[0] : 'object',
+					'label'         => (string) ( $def['ui']['label'] ?? $col ),
+					'show_in_rest'  => array(
+						'name'   => $col,
+						'schema' => $schema,
+					),
+					'auth_callback' => '__return_false',
+				)
+			);
+		}
+	}
 
-    /** The request's `meta`, read from a JSON body with SpacePress's decoder (core's turns `{}` into `[]`). */
-    public static function input(\WP_REST_Request $request): ?array
-    {
-        $body = (string) $request->get_body();
-        if (($request->get_content_type()['value'] ?? null) === 'application/json' && trim($body) !== '') {
-            try {
-                $decoded = \SpacePress\Seam::container(Js::decodeJson($body));
-                if (is_array($decoded) && array_key_exists('meta', $decoded)) {
-                    $meta = \SpacePress\Seam::container($decoded['meta']);
+	/** @return array<string, array> the authored fields, kept as term meta */
+	public static function fields( array $spec ): array {
+		return array_filter( $spec['columns'], static fn ( string $col ) => WpTermStore::isMeta( $spec, $col ), ARRAY_FILTER_USE_KEY );
+	}
 
-                    return is_array($meta) ? $meta : null;
-                }
-            } catch (\JsonException) {
-            }
-        }
-        $meta = $request->get_param('meta');
+	/** The request's `meta`, read from a JSON body with SpacePress's decoder (core's turns `{}` into `[]`). */
+	public static function input( \WP_REST_Request $request ): ?array {
+		$body = (string) $request->get_body();
+		if ( ( $request->get_content_type()['value'] ?? null ) === 'application/json' && trim( $body ) !== '' ) {
+			try {
+				$decoded = \SpacePress\Seam::container( Js::decodeJson( $body ) );
+				if ( is_array( $decoded ) && array_key_exists( 'meta', $decoded ) ) {
+					$meta = \SpacePress\Seam::container( $decoded['meta'] );
 
-        return is_array($meta) ? $meta : null;
-    }
+					return is_array( $meta ) ? $meta : null;
+				}
+			} catch ( \JsonException ) {
+			}
+		}
+		$meta = $request->get_param( 'meta' );
 
-    public function get_value($object_id, $request)
-    {
-        $plugin = Plugin::instance() ?? throw new \LogicException('No SpacePress app');
-        $spec = $plugin->schema->collection($this->collection);
-        $fields = array_keys(self::fields($spec));
-        $viewer = CoreAccess::viewer();
-        $db = $plugin->db();
-        // The term as this viewer reads it: a field its rules hide is left out.
-        $row = $viewer === null ? null : $db->findFirst($this->collection, ['where' => [$spec['primaryKey'] => (int) $object_id]], $viewer);
-        $visible = $row === null ? [] : array_intersect_key($row, array_flip($fields));
+		return is_array( $meta ) ? $meta : null;
+	}
 
-        return PostMeta::values($this->collection, $visible, array_map('strval', array_keys($visible)));
-    }
+	public function get_value( $object_id, $request ) {
+		$plugin = Plugin::instance() ?? throw new \LogicException( 'No SpacePress app' );
+		$spec   = $plugin->schema->collection( $this->collection );
+		$fields = array_keys( self::fields( $spec ) );
+		$viewer = CoreAccess::viewer();
+		$db     = $plugin->db();
+		// The term as this viewer reads it: a field its rules hide is left out.
+		$row     = null === $viewer ? null : $db->findFirst( $this->collection, array( 'where' => array( $spec['primaryKey'] => (int) $object_id ) ), $viewer );
+		$visible = null === $row ? array() : array_intersect_key( $row, array_flip( $fields ) );
+
+		return PostMeta::values( $this->collection, $visible, array_map( 'strval', array_keys( $visible ) ) );
+	}
 }

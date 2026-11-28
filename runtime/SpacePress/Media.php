@@ -18,32 +18,32 @@ namespace SpacePress;
  * (phase 2 §7.2). Access is enforced by Db and the media routes (read anyone, create author,
  * update/delete editor), never here.
  */
-interface Media
-{
-    /** Store an uploaded file ($tmpPath is consumed). Returns the media row. */
-    public function upload(string $tmpPath, string $filename, ?array $user, ?string $alt = null): array;
+interface Media {
 
-    public function get(int $id): ?array;
+	/** Store an uploaded file ($tmpPath is consumed). Returns the media row. */
+	public function upload( string $tmpPath, string $filename, ?array $user, ?string $alt = null ): array; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 
-    /**
-     * @param list<int> $ids
-     * @return array<int, array> media rows keyed by id (missing ids absent)
-     */
-    public function getMany(array $ids): array;
+	public function get( int $id ): ?array;
 
-    /**
-     * `GET /media`: $opts holds where/orderBy/limit/offset over the media row fields
-     * (id, filename, mime, size, width, height, alt, createdAt).
-     *
-     * @return list<array>
-     */
-    public function list(array $opts): array;
+	/**
+	 * @param list<int> $ids
+	 * @return array<int, array> media rows keyed by id (missing ids absent)
+	 */
+	public function getMany( array $ids ): array; // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
 
-    public function delete(int $id): void;
+	/**
+	 * `GET /media`: $opts holds where/orderBy/limit/offset over the media row fields
+	 * (id, filename, mime, size, width, height, alt, createdAt).
+	 *
+	 * @return list<array>
+	 */
+	public function list( array $opts ): array;
 
-    /**
-     * `PATCH /media/{id}`: $patch holds `alt` (?string) and/or `focal` (?{x, y}); a changed focal
-     * regenerates every `cover` size. Returns the updated row, null when the id is unknown.
-     */
-    public function update(int $id, array $patch): ?array;
+	public function delete( int $id ): void;
+
+	/**
+	 * `PATCH /media/{id}`: $patch holds `alt` (?string) and/or `focal` (?{x, y}); a changed focal
+	 * regenerates every `cover` size. Returns the updated row, null when the id is unknown.
+	 */
+	public function update( int $id, array $patch ): ?array;
 }

@@ -160,7 +160,7 @@ function sp_admin_framed_url( $pagenow, $query, $page ) {
 	if ( 'index.php' === $pagenow && '' === $query ) {
 		return sp_admin_url( '/' );
 	}
-	$slug = $pagenow . ( '' !== $query ? '?' . $query : '' );
+	$slug  = $pagenow . ( '' !== $query ? '?' . $query : '' );
 	$route = sp_admin_classic_route( $slug );
 	// Apache refuses an encoded slash in a path: a plugin page named after its file goes in the query form.
 	return str_contains( $slug, '/' ) ? sp_admin_query_url( $route ) : sp_admin_url( $route );
@@ -194,7 +194,7 @@ function sp_admin_redirect_classic_page() {
 		|| ! current_user_can( 'read' ) || \SpacePress\Wp\CoreAccess::viewer() === null ) {
 		return;
 	}
-	$uri = wp_unslash( $_SERVER['REQUEST_URI'] ?? '' ); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- compared, never printed.
+	$uri  = wp_unslash( $_SERVER['REQUEST_URI'] ?? '' ); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- compared, never printed.
 	$page = is_string( $_GET['page'] ?? null ) ? wp_unslash( $_GET['page'] ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended,WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- compared, never printed.
 	$to   = sp_admin_framed_url( $pagenow, (string) wp_parse_url( $uri, PHP_URL_QUERY ), $page );
 	if ( null !== $to ) {

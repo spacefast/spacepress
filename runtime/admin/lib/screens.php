@@ -283,13 +283,13 @@ function sp_admin_register_classic_screens() {
 		if ( false === $screen['classic'] ) {
 			continue;
 		}
-		$classic  = (array) $screen['classic'];
-		$render   = static function () use ( $id ) {
+		$classic = (array) $screen['classic'];
+		$render  = static function () use ( $id ) {
 			sp_admin_render_classic_screen( $id );
 		};
 		// wp-admin prints menu titles as HTML; a title can come from a runtime label.
-		$label    = esc_html( $screen['title'] );
-		$hook     = empty( $classic['parent'] )
+		$label = esc_html( $screen['title'] );
+		$hook  = empty( $classic['parent'] )
 			? add_menu_page( $label, $label, $screen['capability'], sp_admin_screen_page( $id ), $render, $classic['icon'] ?? 'dashicons-admin-generic', $classic['position'] ?? null )
 			: add_submenu_page( $classic['parent'], $label, $label, $screen['capability'], sp_admin_screen_page( $id ), $render, $classic['position'] ?? null );
 		if ( $hook ) {
@@ -319,11 +319,11 @@ function sp_admin_enqueue_classic_screen( $id ) {
 	// Modules can import other modules whose classic WordPress globals must also load first.
 	$modules = array();
 	foreach ( glob( SP_ADMIN_PLUGIN_DIR . 'build/packages/*/index.asset.php' ) as $file ) {
-		$module = include $file;
+		$module                     = include $file;
 		$modules[ $module['name'] ] = $module;
 	}
-	$pending = array( '@spacepress-admin/screens' );
-	$seen = array();
+	$pending      = array( '@spacepress-admin/screens' );
+	$seen         = array();
 	$dependencies = array();
 	while ( $pending ) {
 		$name = array_pop( $pending );
@@ -331,15 +331,25 @@ function sp_admin_enqueue_classic_screen( $id ) {
 			continue;
 		}
 		$seen[ $name ] = true;
-		$dependencies = array_merge( $dependencies, $modules[ $name ]['dependencies'] ?? array() );
-		$pending = array_merge( $pending, $modules[ $name ]['moduleDependencies'] ?? array() );
+		$dependencies  = array_merge( $dependencies, $modules[ $name ]['dependencies'] ?? array() );
+		$pending       = array_merge( $pending, $modules[ $name ]['moduleDependencies'] ?? array() );
 	}
 	$asset = $modules['@spacepress-admin/screens'] ?? array( 'version' => SP_ADMIN_VERSION );
 	// Classic globals the module expects (React, wp.apiFetch with its nonce). The module mounts itself
 	// on the page's `#spacepress-admin-screen` element, which names the screen in `data-screen-id` (runtime/admin/classic-screen.js).
 	wp_register_script( 'spacepress-admin-screen-prerequisites', '', array_values( array_unique( $dependencies ) ), $asset['version'], true );
 	wp_enqueue_script( 'spacepress-admin-screen-prerequisites' );
-	wp_register_script_module( 'spacepress-admin-screen-classic', SP_ADMIN_PLUGIN_URL . 'classic-screen.js', array( array( 'id' => '@spacepress-admin/screens', 'import' => 'static' ) ), SP_ADMIN_VERSION );
+	wp_register_script_module(
+		'spacepress-admin-screen-classic',
+		SP_ADMIN_PLUGIN_URL . 'classic-screen.js',
+		array(
+			array(
+				'id'     => '@spacepress-admin/screens',
+				'import' => 'static',
+			),
+		),
+		SP_ADMIN_VERSION
+	);
 	wp_enqueue_script_module( 'spacepress-admin-screen-classic' );
 	// The modules import `__i18n__`, which SpacePress Admin's import map scopes; print that map in place
 	// of core's (same position: before the modules).
@@ -375,8 +385,8 @@ add_action(
 			if ( false === $screen['menu'] || ! current_user_can( $screen['capability'] ) ) {
 				continue;
 			}
-			$menu    = (array) $screen['menu'];
-			$parent  = $menu['parent'] ?? null;
+			$menu   = (array) $screen['menu'];
+			$parent = $menu['parent'] ?? null;
 			// Put built-in system screens (`schema-versions`, `deployments`) cleanly inside Settings
 			// unless the caller explicitly placed them elsewhere.
 			if ( null === $parent && in_array( $id, array( 'schema-versions', 'deployments' ), true ) ) {
@@ -421,8 +431,8 @@ add_action(
 			if ( isset( $kind['wp']['postType'] ) || ! empty( $kind['auth'] ) || false === ( $api['list'] ?? true ) || false === ( $kind['agents'] ?? true ) ) {
 				continue;
 			}
-			$k       = \SpacePress\Wp\Abilities\Register::kebab( $name );
-			$fields  = array();
+			$k      = \SpacePress\Wp\Abilities\Register::kebab( $name );
+			$fields = array();
 			foreach ( $kind['columns'] as $column => $spec ) {
 				if ( ! empty( $spec['hidden'] ) ) {
 					continue;
@@ -454,15 +464,18 @@ add_action(
 				// The kebab-case kind name (`stockItems` → `stock-items`), as the ability names use it.
 				'table-' . $k,
 				array(
-					'title'      => $kind['label'] ?? $name,
+					'title'       => $kind['label'] ?? $name,
 					'description' => __( 'The 100 most recent rows. All of them are in SpacePress Admin, under Collections.', 'spacepress-admin' ),
-					'capability' => 'read',
-					'classic'    => array( 'parent' => 'spacepress-' . $app ),
+					'capability'  => 'read',
+					'classic'     => array( 'parent' => 'spacepress-' . $app ),
 					// SpacePress Admin lists every kind under Collections already.
-					'menu'       => false,
-					'view'       => array(
+					'menu'        => false,
+					'view'        => array(
 						'ability' => "$app/$k-list",
-						'input'   => array( 'limit' => 100, 'orderBy' => array( $primary => 'desc' ) ),
+						'input'   => array(
+							'limit'   => 100,
+							'orderBy' => array( $primary => 'desc' ),
+						),
 						'items'   => 'rows',
 						'id'      => $primary,
 						'fields'  => $fields,
@@ -472,7 +485,7 @@ add_action(
 							'fields'     => array_values( array_diff( array_column( $fields, 'id' ), array( $title ) ) ),
 						),
 					),
-					'actions'    => $actions,
+					'actions'     => $actions,
 				)
 			);
 		}

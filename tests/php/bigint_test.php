@@ -10,41 +10,58 @@ require __DIR__ . '/../../runtime/SpacePress/bootstrap.php';
 
 use SpacePress\JsBigInt as B;
 
-$vectors = json_decode(file_get_contents(__DIR__ . '/fixtures/bigint-vectors.json'), true, 512, JSON_THROW_ON_ERROR);
-$show = static function (callable $f): string {
-    try {
-        $r = $f();
-        return match (true) {
-            is_string($r) => $r,
-            is_bool($r) => $r ? 'true' : 'false',
-            is_int($r), is_float($r) => \SpacePress\Js::numStr($r),
-            default => (string) $r,
-        };
-    } catch (\SpacePress\JsError $e) {
-        return $e->jsName;
-    }
+$vectors  = json_decode( file_get_contents( __DIR__ . '/fixtures/bigint-vectors.json' ), true, 512, JSON_THROW_ON_ERROR );
+$show     = static function ( callable $f ): string {
+	try {
+		$r = $f();
+		return match ( true ) {
+			is_string( $r ) => $r,
+			is_bool( $r ) => $r ? 'true' : 'false',
+			is_int( $r ), is_float( $r ) => \SpacePress\Js::numStr( $r ),
+			default => (string) $r,
+		};
+	} catch ( \SpacePress\JsError $e ) {
+		return $e->jsName;
+	}
 };
 $failures = 0;
-$checked = 0;
-foreach ($vectors as $i => $row) {
-    [$as, $bs, $ss] = $row;
-    [$a, $b, $s] = [B::fromDecimal($as), B::fromDecimal($bs), B::fromDecimal($ss)];
-    $e = B::fromInt(abs((int) $ss) % 7);
-    $got = [$as, $bs, $ss,
-        $show(fn () => $a->add($b)), $show(fn () => $a->sub($b)), $show(fn () => $a->mul($b)),
-        $show(fn () => $a->divRem($b)[0]), $show(fn () => $a->divRem($b)[1]),
-        $show(fn () => $a->bitwise('&', $b)), $show(fn () => $a->bitwise('|', $b)), $show(fn () => $a->bitwise('^', $b)),
-        $show(fn () => $a->not()), $show(fn () => $a->shift($s, true)), $show(fn () => $a->shift($s, false)),
-        $show(fn () => $a->compare($b) < 0), $show(fn () => $a->equals($b)), $show(fn () => $a->pow($e)),
-        $show(fn () => $a->toRadix(16)), $show(fn () => $a->toRadix(36)), $show(fn () => $a->toNumber()),
-        $show(fn () => $a->asN(64, true)), $show(fn () => $a->asN(13, false))];
-    foreach ($row as $k => $want) {
-        $checked++;
-        if ($got[$k] !== $want) {
-            $failures++;
-            if ($failures <= 10) { fwrite(STDERR, "vector $i column $k: $as $bs $ss: want $want, got {$got[$k]}\n"); }
-        }
-    }
+$checked  = 0;
+foreach ( $vectors as $i => $row ) {
+	[$as, $bs, $ss] = $row;
+	[$a, $b, $s]    = array( B::fromDecimal( $as ), B::fromDecimal( $bs ), B::fromDecimal( $ss ) );
+	$e              = B::fromInt( abs( (int) $ss ) % 7 );
+	$got            = array(
+		$as,
+		$bs,
+		$ss,
+		$show( fn () => $a->add( $b ) ),
+		$show( fn () => $a->sub( $b ) ),
+		$show( fn () => $a->mul( $b ) ),
+		$show( fn () => $a->divRem( $b )[0] ),
+		$show( fn () => $a->divRem( $b )[1] ),
+		$show( fn () => $a->bitwise( '&', $b ) ),
+		$show( fn () => $a->bitwise( '|', $b ) ),
+		$show( fn () => $a->bitwise( '^', $b ) ),
+		$show( fn () => $a->not() ),
+		$show( fn () => $a->shift( $s, true ) ),
+		$show( fn () => $a->shift( $s, false ) ),
+		$show( fn () => $a->compare( $b ) < 0 ),
+		$show( fn () => $a->equals( $b ) ),
+		$show( fn () => $a->pow( $e ) ),
+		$show( fn () => $a->toRadix( 16 ) ),
+		$show( fn () => $a->toRadix( 36 ) ),
+		$show( fn () => $a->toNumber() ),
+		$show( fn () => $a->asN( 64, true ) ),
+		$show( fn () => $a->asN( 13, false ) ),
+	);
+	foreach ( $row as $k => $want ) {
+		++$checked;
+		if ( $got[ $k ] !== $want ) {
+			++$failures;
+			if ( $failures <= 10 ) {
+				fwrite( STDERR, "vector $i column $k: $as $bs $ss: want $want, got {$got[$k]}\n" ); }
+		}
+	}
 }
 echo "bigint: $checked checked, $failures failed\n";
-exit($failures === 0 ? 0 : 1);
+exit( 0 === $failures ? 0 : 1 );

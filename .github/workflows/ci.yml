@@ -285,6 +285,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 2
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version-file: .node-version
@@ -302,6 +304,16 @@ jobs:
       # brand_upgrade builds a site with the last pre-rename runtime: that one commit, not the history.
       - run: git fetch --no-tags --depth=1 origin "$(sed -n "s/^const LEGACY_COMMIT = '\([0-9a-f]*\)';/\1/p" tests/php/brand_upgrade_test.php)"
       - run: tests/php/run.sh
+      - name: Check changed runtime PHP against WordPress standards
+        if: github.event_name == 'pull_request'
+        run: |
+          # The first parent of the checked-out PR merge is its base.
+          if git diff --quiet --no-renames --diff-filter=AMT HEAD^1 HEAD -- ':(glob)runtime/**/*.php'; then
+            exit 0
+          fi
+          sudo apt-get install -y php8.3-xml composer
+          composer install --working-dir=examples/php-standards --no-interaction --prefer-dist
+          node scripts/check-php-standards.ts HEAD^1
 
   vendor:
     if: github.event_name != 'pull_request'

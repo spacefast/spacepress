@@ -1,6 +1,6 @@
 // <sp-play>: full interactive SpacePress Playground component.
 // Edits a real app, compiles it in-browser with compiler.wasm (src/wasm.rs), inspects every generated
-// artifact and diff, shares edits via /__sp/api/v1/actions/share, and boots it in WordPress Playground.
+// artifact and diff, shares edits via /wp-json/spacepress/v1/actions/share, and boots it in WordPress Playground.
 import { File, FileDiff } from "@pierre/diffs";
 import { Editor } from "@pierre/diffs/edit";
 import { FileTree } from "@pierre/trees";
@@ -14,7 +14,7 @@ const describe = (file, existed) => {
   if (file.endsWith("/schema.php")) return "Your collections, tables, fields, access rules, and routes as PHP arrays. WordPress registers post types, tables, and URLs from it.";
   if (file.endsWith("/functions.php")) return "Every hook, action, job, HTTP route, page, and component compiled to native PHP.";
   if (file.includes("/migrations/")) return existed ? "A file from the project's migration history." : "A migration file generated live for your schema change.";
-  if (file.endsWith("db.d.ts")) return "Generated TypeScript definitions for spacepress:db and db.query so editors type-check your app.";
+  if (file.endsWith("db.d.ts")) return "Generated TypeScript definitions for spacepress/server/db and db.query so editors type-check your app.";
   if (file.endsWith("openapi.json")) return "OpenAPI 3.1 specification of the app's REST API.";
   if (file.includes("/client/")) return "Generated typed TypeScript client for browsers and external frontends.";
   return "Generated from your TypeScript source. Rebuilds automatically as you edit.";

@@ -26,15 +26,15 @@ require_once __DIR__ . '/api/routes.php';
 spl_autoload_register(
 	static function ( $class ) {
 		static $files = array(
-			'spacepress_admin_rest_attachments_controller'       => 'class-spacepress-admin-rest-attachments-controller.php',
+			'spacepress_admin_rest_attachments_controller' => 'class-spacepress-admin-rest-attachments-controller.php',
 			'spacepress_admin_rest_field_collections_controller' => 'class-spacepress-admin-rest-field-collections-controller.php',
-			'spacepress_admin_rest_view_config_controller'       => 'class-spacepress-admin-rest-view-config-controller.php',
-			'spacepress_admin_rest_editor_controller'            => 'class-spacepress-admin-rest-editor-controller.php',
-			'spacepress_admin_rest_themes_controller'            => 'class-wp-rest-themes-controller.php',
-			'spacepress_admin_rest_plugins_controller'           => 'class-spacepress-admin-rest-plugins-controller.php',
+			'spacepress_admin_rest_view_config_controller' => 'class-spacepress-admin-rest-view-config-controller.php',
+			'spacepress_admin_rest_editor_controller'      => 'class-spacepress-admin-rest-editor-controller.php',
+			'spacepress_admin_rest_themes_controller'      => 'class-wp-rest-themes-controller.php',
+			'spacepress_admin_rest_plugins_controller'     => 'class-spacepress-admin-rest-plugins-controller.php',
 			'spacepress_admin_rest_resolved_template_controller' => 'class-spacepress-admin-rest-resolved-template-controller.php',
 		);
-		$key = strtolower( $class );
+		$key          = strtolower( $class );
 		if ( isset( $files[ $key ] ) ) {
 			require_once __DIR__ . '/rest-api/' . $files[ $key ];
 		}

@@ -1,93 +1,110 @@
 <?php
 declare(strict_types=1);
 require __DIR__ . '/harness.php';
-foreach (['SpacePress', 'identity'] as $name) {
-    $root = __DIR__ . '/../../runtime/' . $name;
-    if (!is_file($root . '/composer.json')) {
-        continue;
-    }
-    $manifest = json_decode(file_get_contents($root . '/vendor-prefixed/.manifest.json'), true, 512, JSON_THROW_ON_ERROR);
-    eq($name . ' vendor lock is current', $manifest['lock'], hash_file('sha256', $root . '/composer.lock'));
-    eq($name . ' vendor toolchain is pinned', [$manifest['strauss'], $manifest['php']], ['0.31.1', '8.2']);
+foreach ( array( 'SpacePress', 'identity' ) as $name ) {
+	$root = __DIR__ . '/../../runtime/' . $name;
+	if ( ! is_file( $root . '/composer.json' ) ) {
+		continue;
+	}
+	$manifest = json_decode( file_get_contents( $root . '/vendor-prefixed/.manifest.json' ), true, 512, JSON_THROW_ON_ERROR );
+	eq( $name . ' vendor lock is current', $manifest['lock'], hash_file( 'sha256', $root . '/composer.lock' ) );
+	eq( $name . ' vendor toolchain is pinned', array( $manifest['strauss'], $manifest['php'] ), array( '0.31.1', '8.2' ) );
 }
 // The identity screens' committed bundles must come from the committed sources (apps/build.mjs).
 $apps = __DIR__ . '/../../runtime/identity/apps';
-if (is_dir($apps)) {
-    $lines = [];
-    $files = new RecursiveIteratorIterator(new RecursiveCallbackFilterIterator(
-        new RecursiveDirectoryIterator($apps, FilesystemIterator::SKIP_DOTS),
-        static fn (SplFileInfo $f) => $f->getFilename() !== 'node_modules',
-    ));
-    foreach ($files as $file) {
-        $lines[substr($file->getPathname(), strlen($apps) + 1)] = hash_file('sha256', $file->getPathname());
-    }
-    ksort($lines, SORT_STRING);
-    $digest = hash('sha256', implode('', array_map(static fn ($path, $hash) => "$hash  $path\n", array_keys($lines), $lines)));
-    $built = json_decode(file_get_contents(__DIR__ . '/../../runtime/identity/build/.manifest.json'), true, 512, JSON_THROW_ON_ERROR);
-    eq('identity screens are built from the committed sources (cd runtime/identity/apps && node build.mjs)', $built['sources'], $digest);
+if ( is_dir( $apps ) ) {
+	$lines = array();
+	$files = new RecursiveIteratorIterator(
+		new RecursiveCallbackFilterIterator(
+			new RecursiveDirectoryIterator( $apps, FilesystemIterator::SKIP_DOTS ),
+			static fn ( SplFileInfo $f ) => $f->getFilename() !== 'node_modules',
+		)
+	);
+	foreach ( $files as $file ) {
+		$lines[ substr( $file->getPathname(), strlen( $apps ) + 1 ) ] = hash_file( 'sha256', $file->getPathname() );
+	}
+	ksort( $lines, SORT_STRING );
+	$digest = hash( 'sha256', implode( '', array_map( static fn ( $path, $hash ) => "$hash  $path\n", array_keys( $lines ), $lines ) ) );
+	$built  = json_decode( file_get_contents( __DIR__ . '/../../runtime/identity/build/.manifest.json' ), true, 512, JSON_THROW_ON_ERROR );
+	eq( 'identity screens are built from the committed sources (cd runtime/identity/apps && node build.mjs)', $built['sources'], $digest );
 }
 // The admin screens' committed bundle must come from the committed sources (apps/build.mjs), and
 // its licence bundle must name every notice that lives in the workspace itself.
 $adminApps = __DIR__ . '/../../runtime/admin/apps';
-if (is_dir($adminApps)) {
-    $lines = [];
-    // Skips what the workspace's .gitignore skips (generated trees and files), as build.mjs does.
-    $generated = static fn (string $name) => in_array($name, ['node_modules', '.tsout', 'build', '.build-meta.json'], true) || str_ends_with($name, '.tsbuildinfo');
-    $files = new RecursiveIteratorIterator(new RecursiveCallbackFilterIterator(
-        new RecursiveDirectoryIterator($adminApps, FilesystemIterator::SKIP_DOTS),
-        static fn (SplFileInfo $f) => !$generated($f->getFilename()) && !$f->isLink() && ($f->isDir() || $f->isFile()),
-    ));
-    $notices = [];
-    foreach ($files as $file) {
-        $rel = substr($file->getPathname(), strlen($adminApps) + 1);
-        $lines[$rel] = hash_file('sha256', $file->getPathname());
-        $top = strtok($rel, '/');
-        if (in_array($top, ['packages', 'routes', 'fields'], true) && preg_match('/^(LICEN[CS]E|COPYING|NOTICE)(\\b|[.\\-_])/i', $file->getFilename())) {
-            $notices[] = $rel;
-        }
-    }
-    ksort($lines, SORT_STRING);
-    $digest = hash('sha256', implode('', array_map(static fn ($path, $hash) => "$hash  $path\n", array_keys($lines), $lines)));
-    $built = json_decode(file_get_contents(__DIR__ . '/../../runtime/admin/build/.manifest.json'), true, 512, JSON_THROW_ON_ERROR);
-    eq('admin screens are built from the committed sources (cd runtime/admin/apps && pnpm build)', $built['sources'], $digest);
-    $bundle = file_get_contents(__DIR__ . '/../../runtime/admin/build/THIRD-PARTY-LICENSES.txt');
-    sort($notices);
-    eq('admin licence bundle names every workspace notice', array_values(array_filter($notices, static fn ($n) => !str_contains($bundle, "\n$n\n") && !str_starts_with($bundle, "$n\n"))), []);
+if ( is_dir( $adminApps ) ) {
+	$lines = array();
+	// Skips what the workspace's .gitignore skips (generated trees and files), as build.mjs does.
+	$generated = static fn ( string $name ) => in_array( $name, array( 'node_modules', '.tsout', 'build', '.build-meta.json' ), true ) || str_ends_with( $name, '.tsbuildinfo' );
+	$files     = new RecursiveIteratorIterator(
+		new RecursiveCallbackFilterIterator(
+			new RecursiveDirectoryIterator( $adminApps, FilesystemIterator::SKIP_DOTS ),
+			static fn ( SplFileInfo $f ) => ! $generated( $f->getFilename() ) && ! $f->isLink() && ( $f->isDir() || $f->isFile() ),
+		)
+	);
+	$notices   = array();
+	foreach ( $files as $file ) {
+		$rel           = substr( $file->getPathname(), strlen( $adminApps ) + 1 );
+		$lines[ $rel ] = hash_file( 'sha256', $file->getPathname() );
+		$top           = strtok( $rel, '/' );
+		if ( in_array( $top, array( 'packages', 'routes', 'fields' ), true ) && preg_match( '/^(LICEN[CS]E|COPYING|NOTICE)(\\b|[.\\-_])/i', $file->getFilename() ) ) {
+			$notices[] = $rel;
+		}
+	}
+	ksort( $lines, SORT_STRING );
+	$digest = hash( 'sha256', implode( '', array_map( static fn ( $path, $hash ) => "$hash  $path\n", array_keys( $lines ), $lines ) ) );
+	$built  = json_decode( file_get_contents( __DIR__ . '/../../runtime/admin/build/.manifest.json' ), true, 512, JSON_THROW_ON_ERROR );
+	eq( 'admin screens are built from the committed sources (cd runtime/admin/apps && pnpm build)', $built['sources'], $digest );
+	$bundle = file_get_contents( __DIR__ . '/../../runtime/admin/build/THIRD-PARTY-LICENSES.txt' );
+	sort( $notices );
+	eq( 'admin licence bundle names every workspace notice', array_values( array_filter( $notices, static fn ( $n ) => ! str_contains( $bundle, "\n$n\n" ) && ! str_starts_with( $bundle, "$n\n" ) ) ), array() );
 }
 // Another plugin can own the bundled libraries' original names before SpacePress loads.
 // The bundled Markdown, YAML and merger must still run through their private names,
 // on WordPress core's own HTML API, which the bundle no longer copies.
-eval('namespace Symfony\Component\Yaml; final class Yaml {}');
-eval('namespace League\CommonMark; final class CommonMarkConverter {}');
-eval('namespace WordPress\Merge; final class MergeStrategy {}');
+eval( 'namespace Symfony\Component\Yaml; final class Yaml {}' );
+eval( 'namespace League\CommonMark; final class CommonMarkConverter {}' );
+eval( 'namespace WordPress\Merge; final class MergeStrategy {}' );
 require __DIR__ . '/wp.php';
 wpCoreHtmlApi();
 require __DIR__ . '/../../runtime/SpacePress/bootstrap.php';
-$document = (new \SpacePress\Vendor\WordPress\Markdown\MarkdownConsumer("---\ntitle: Proof\n---\n# Hello\n\nWorld\n"))->consume();
-eq('isolated Markdown and nested YAML preserve front matter', $document->get_all_metadata(), ['title' => ['Proof']]);
-eq('isolated Markdown produces blocks on core\'s HTML API', $document->get_block_markup(), "<!-- wp:heading {\"level\":1} -->\n<h1 class=\"wp-block-heading\" id=\"hello\">Hello</h1>\n<!-- /wp:heading -->\n\n<!-- wp:paragraph -->\n<p>World</p>\n<!-- /wp:paragraph -->\n\n");
-eq('the bundled toolkit loaded no HTML API of its own', array_values(array_filter(get_included_files(), static fn (string $f): bool => str_contains($f, '/vendor-prefixed/') && str_contains($f, 'class-wp-html'))), []);
-$merge = new \SpacePress\Vendor\WordPress\Merge\MergeStrategy(new \SpacePress\Vendor\WordPress\Merge\Diff\LineDiffer(), new \SpacePress\Vendor\WordPress\Merge\Merge\LineMerger());
-$result = $merge->merge("a\nb\nc\n", "A\nb\nc\n", "a\nb\nC\n");
-eq('bundled merge combines independent edits', [$result->has_conflicts(), $result->get_merged_content()], [false, "A\nb\nC\n\n"]);
+$document = ( new \SpacePress\Vendor\WordPress\Markdown\MarkdownConsumer( "---\ntitle: Proof\n---\n# Hello\n\nWorld\n" ) )->consume();
+eq( 'isolated Markdown and nested YAML preserve front matter', $document->get_all_metadata(), array( 'title' => array( 'Proof' ) ) );
+eq( 'isolated Markdown produces blocks on core\'s HTML API', $document->get_block_markup(), "<!-- wp:heading {\"level\":1} -->\n<h1 class=\"wp-block-heading\" id=\"hello\">Hello</h1>\n<!-- /wp:heading -->\n\n<!-- wp:paragraph -->\n<p>World</p>\n<!-- /wp:paragraph -->\n\n" );
+eq( 'the bundled toolkit loaded no HTML API of its own', array_values( array_filter( get_included_files(), static fn ( string $f ): bool => str_contains( $f, '/vendor-prefixed/' ) && str_contains( $f, 'class-wp-html' ) ) ), array() );
+$merge  = new \SpacePress\Vendor\WordPress\Merge\MergeStrategy( new \SpacePress\Vendor\WordPress\Merge\Diff\LineDiffer(), new \SpacePress\Vendor\WordPress\Merge\Merge\LineMerger() );
+$result = $merge->merge( "a\nb\nc\n", "A\nb\nc\n", "a\nb\nC\n" );
+eq( 'bundled merge combines independent edits', array( $result->has_conflicts(), $result->get_merged_content() ), array( false, "A\nb\nC\n\n" ) );
 // The identity bundle runs its own JWT and TOTP copies while the original names are occupied.
-eval('namespace Firebase\JWT; final class JWT {}');
-eval('namespace OTPHP; final class TOTP {}');
+eval( 'namespace Firebase\JWT; final class JWT {}' );
+eval( 'namespace OTPHP; final class TOTP {}' );
 $identity = __DIR__ . '/../../runtime/identity';
-$issues = 'caller-owned';
+$issues   = 'caller-owned';
 require "$identity/src/autoload.php";
-eq('identity platform check preserves the caller scope', $issues, 'caller-owned');
+eq( 'identity platform check preserves the caller scope', $issues, 'caller-owned' );
 $classes = require "$identity/vendor-prefixed/composer/autoload_classmap.php";
-$globals = array_filter(array_keys($classes), static fn (string $name) => !str_starts_with($name, 'SpacePress\\Identity\\Vendor\\'));
-eq('identity registers every Composer global polyfill class', array_keys(require "$identity/vendor-prefixed/composer/polyfill_classes.php"), array_values($globals));
-check('identity exposes Composer functions before any private class is requested', function_exists('spacepress_identity_vendor_trigger_deprecation'));
-check('identity boots without the private class map', !class_exists('ComposerAutoloaderInitSpacePressIdentity', false));
-check('a missing private class leaves the loader usable', !class_exists('SpacePress\\Identity\\Vendor\\MissingDependency'));
-$rsa = openssl_pkey_new(['private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA]);
-openssl_pkey_export($rsa, $pem);
-$jwt = \SpacePress\Identity\Vendor\Firebase\JWT\JWT::encode(['sub' => '1', 'exp' => time() + 60], $pem, 'RS256', 'k');
-$claims = \SpacePress\Identity\Vendor\Firebase\JWT\JWT::decode($jwt, ['k' => new \SpacePress\Identity\Vendor\Firebase\JWT\Key(openssl_pkey_get_details($rsa)['key'], 'RS256')]);
-eq('isolated php-jwt signs and verifies RS256', $claims->sub, '1');
+$globals = array_filter( array_keys( $classes ), static fn ( string $name ) => ! str_starts_with( $name, 'SpacePress\\Identity\\Vendor\\' ) );
+eq( 'identity registers every Composer global polyfill class', array_keys( require "$identity/vendor-prefixed/composer/polyfill_classes.php" ), array_values( $globals ) );
+check( 'identity exposes Composer functions before any private class is requested', function_exists( 'spacepress_identity_vendor_trigger_deprecation' ) );
+check( 'identity boots without the private class map', ! class_exists( 'ComposerAutoloaderInitSpacePressIdentity', false ) );
+check( 'a missing private class leaves the loader usable', ! class_exists( 'SpacePress\\Identity\\Vendor\\MissingDependency' ) );
+$rsa = openssl_pkey_new(
+	array(
+		'private_key_bits' => 2048,
+		'private_key_type' => OPENSSL_KEYTYPE_RSA,
+	)
+);
+openssl_pkey_export( $rsa, $pem );
+$jwt    = \SpacePress\Identity\Vendor\Firebase\JWT\JWT::encode(
+	array(
+		'sub' => '1',
+		'exp' => time() + 60,
+	),
+	$pem,
+	'RS256',
+	'k'
+);
+$claims = \SpacePress\Identity\Vendor\Firebase\JWT\JWT::decode( $jwt, array( 'k' => new \SpacePress\Identity\Vendor\Firebase\JWT\Key( openssl_pkey_get_details( $rsa )['key'], 'RS256' ) ) );
+eq( 'isolated php-jwt signs and verifies RS256', $claims->sub, '1' );
 $totp = \SpacePress\Identity\Vendor\OTPHP\TOTP::generate();
-check('isolated otphp verifies its own code', $totp->verify($totp->now()));
-finish('vendor_drift');
+check( 'isolated otphp verifies its own code', $totp->verify( $totp->now() ) );
+finish( 'vendor_drift' );

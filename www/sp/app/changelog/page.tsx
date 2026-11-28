@@ -29,12 +29,46 @@ export default function ChangelogPage() {
       </section>
 
       <div className="sp-container-narrow sp-changelog">
+        <article className="sp-release-entry" id="2026-11-26">
+          <header className="sp-release-head">
+            <span className="sp-mono-label">November 22–26, 2026 · main</span>
+            <h2>Queries and mutations, the import split, packages with islands, and a docs package</h2>
+            <p>
+              What changed on <code>main</code> since the preview. Several of these are breaking: the compiler refuses the old spelling and names the new one.
+            </p>
+          </header>
+
+          <ul className="sp-release-list">
+            <li>
+              <strong>Breaking: <code>query()</code> and <code>mutation()</code> replace <code>action()</code>.</strong> A server function is <code>query(options, handler)</code> when it only reads and <code>mutation(options, handler)</code> when it writes; its input is the handler&apos;s parameter type. Jobs are <code>job(options, handler)</code> and are queued with <code>myJob.enqueue(...)</code> instead of <code>jobs.myJob</code>. <Link href="/docs/core/actions-jobs-routes">Server functions →</Link>
+            </li>
+            <li>
+              <strong>Breaking: modules say where code runs.</strong> Schema builders stay in <code>&quot;spacepress&quot;</code>; <code>db</code>, <code>HttpError</code>, <code>mail</code>, <code>once</code> and <code>connectors</code> move to <code>&quot;spacepress/server&quot;</code>; kinds come from <code>&quot;spacepress/server/db&quot;</code>; WordPress functions from <code>&quot;spacepress/server/wp&quot;</code>; page helpers from <code>&quot;spacepress/app&quot;</code> and <code>&quot;spacepress/content&quot;</code>; island hooks from <code>&quot;react&quot;</code> and <code>&quot;spacepress/react&quot;</code>. <Link href="/docs/getting-started/project-structure">Project structure →</Link>
+            </li>
+            <li>
+              <strong>Typed islands:</strong> every build writes <code>sp/_generated/api</code>, so islands call <code>useLive(api.notes.list(...))</code> and <code>useMutation(api.actions.clap)</code> with full types. Pages import <code>PageProps</code> from <code>./$types</code>, and <code>defineConfig(&#123; dir &#125;)</code> renames <code>sp/</code>. Islands also accept ordinary browser code in handlers and effects (loops, <code>async</code> callbacks, <code>fetch</code>, <code>localStorage</code>) and upload files with <code>uploadFile(bucket, file)</code>.
+            </li>
+            <li>
+              <strong>Packages can ship UI:</strong> installed packages may export TSX components, <code>&quot;use client&quot;</code> islands and stylesheets; each package island is hashed into the plugin lock. <code>@spacepress/docs</code> (this site&apos;s reference) and <code>@spacepress/todo</code> are the first two. <Link href="/examples">Examples →</Link>
+            </li>
+            <li>
+              <strong>Forward-only storage:</strong> migrations are sortable folders that never drop or rename columns (<code>.was()</code> is replaced by <code>.column()</code> and <code>.alias()</code>), deletes are soft by default, and revisions are unified across collections and tables.
+            </li>
+            <li>
+              <strong>WordPress Abilities everywhere:</strong> the typed client runs each query and mutation through core&apos;s Abilities run route, forms are type-checked against their mutation&apos;s input, fields can be <code>.searchable()</code>, and access rules may run read-only <code>db.query</code> lookups.
+            </li>
+            <li>
+              <strong>Hosting and admin:</strong> compiled page cache policies with fixed purge routes, Gutenberg collaborative editing in SpacePress Admin, host-managed <code>connectors.call()</code>, configurable REST and auth paths, and an in-place upgrade for sites deployed under the TypedPress name. <Link href="/docs/operations/upgrade-to-spacepress">Upgrade guide →</Link>
+            </li>
+          </ul>
+        </article>
+
         <article className="sp-release-entry" id="v0-istanbul">
           <header className="sp-release-head">
             <span className="sp-mono-label">v0 &ldquo;Istanbul&rdquo; · CLI 0.3.0</span>
             <h2>Initial public preview</h2>
             <p>
-              The first end-to-end preview of SpacePress: compile TypeScript schemas, server actions, background jobs, and React TSX pages into native PHP, numbered SQL migrations, OpenAPI 3.1, and standard WordPress plugins — zero Node.js in production.
+              The first end-to-end preview of SpacePress: compile TypeScript schemas, server actions, background jobs, and React TSX pages into native PHP, SQL migrations, OpenAPI 3.1, and standard WordPress plugins — zero Node.js in production.
             </p>
           </header>
 

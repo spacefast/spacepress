@@ -50,7 +50,7 @@ const examples: Record<string, unknown> = {};
     file !== "tsconfig.json");
   examples.website = {
     title: "spacepress.dev (This website)",
-    summary: "The official SpacePress site: its schema, server actions, background jobs, Markdown-synced docs & blog, and TSX pages.",
+    summary: "The official SpacePress site: its schema, mutations, background jobs, Markdown-synced docs & blog, and TSX pages.",
     files,
     shown,
     run: { lock: lock.plugins.map(({ slug, version }) => ({ slug, version })), landing: "/examples", seed: "", syncSeed: {}, appPages: true, schemaPhp: output.schemaPhp, ledger: history },

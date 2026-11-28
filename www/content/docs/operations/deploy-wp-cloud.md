@@ -39,7 +39,7 @@ npx spacepress push --dry-run
 npx spacepress push
 ```
 
-`spacepress push` uploads the compiled PHP runtime and app trees, runs any new numbered SQL migrations in `sp/_generated/migrations/`, configures pretty permalinks, creates app routes, and activates the build atomically.
+`spacepress push` uploads the compiled PHP runtime and app trees, applies any new migrations from `sp/_generated/migrations/`, configures pretty permalinks, creates app routes, and activates the build atomically.
 
 In CI or non-interactive scripts, create a WordPress Application Password (`wp user application-password create <user> deploy --porcelain`) and pass `SP_APP_PASSWORD="<user>:<password>"`.
 

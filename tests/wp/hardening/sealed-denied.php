@@ -7,10 +7,17 @@
 
 declare(strict_types=1);
 
-add_action('rest_api_init', static function (): void {
-    register_rest_route('vip-block-data-api/v1', '/posts/(?P<id>\\d+)/blocks', [
-        'methods' => 'GET',
-        'permission_callback' => '__return_true',
-        'callback' => static fn (WP_REST_Request $request): array => ['content' => (string) get_post((int) $request['id'])?->post_content],
-    ]);
-});
+add_action(
+	'rest_api_init',
+	static function (): void {
+		register_rest_route(
+			'vip-block-data-api/v1',
+			'/posts/(?P<id>\\d+)/blocks',
+			array(
+				'methods'             => 'GET',
+				'permission_callback' => '__return_true',
+				'callback'            => static fn ( WP_REST_Request $request ): array => array( 'content' => (string) get_post( (int) $request['id'] )?->post_content ),
+			)
+		);
+	}
+);

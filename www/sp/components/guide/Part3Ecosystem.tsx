@@ -61,28 +61,24 @@ export default function Invitation({ name, url }: InvitationProps) {
 }
 
 // sp/server.ts — transactional send queued in-transaction & retried after commit
-import { action, email, text } from "spacepress";
+import { mutation } from "spacepress";
 import { mail } from "spacepress/server";
 import Invitation from "../emails/invitation";
 
-export const inviteMember = action({
-  access: "admin",
-  input: { to: email(), name: text().max(80) },
-  async handler({ to, name }) {
-    const rendered = mail.render(Invitation, {
-      name,
-      url: "https://example.com/accept",
-    });
-    return await mail.send({
-      to,
-      subject: \`You're invited, \${name}\`,
-      html: rendered.html,
-      text: rendered.text,
-    });
-  },
+export const inviteMember = mutation({ access: "admin" }, async ({ to, name }: { to: string; name: string }) => {
+  const rendered = mail.render(Invitation, {
+    name,
+    url: "https://example.com/accept",
+  });
+  return await mail.send({
+    to,
+    subject: \`You're invited, \${name}\`,
+    html: rendered.html,
+    text: rendered.text,
+  });
 });`;
 
-const ADMIN_SCREEN_SANDBOX = `import { table, text, integer, action, adminScreen, item, defineConfig } from "spacepress";
+const ADMIN_SCREEN_SANDBOX = `import { table, text, integer, query, mutation, adminScreen, item, defineConfig } from "spacepress";
 import { db, HttpError } from "spacepress/server";
 
 export const tickets = table({
@@ -91,24 +87,13 @@ export const tickets = table({
   state: text().default("open"),
 });
 
-export const listOpenTickets = action({
-  access: "editor",
-  readonly: true,
-  input: {},
-  async handler() {
-    return await db.query.tickets.findMany({ where: { state: "open" }, orderBy: { priority: "asc" } });
-  },
-});
+export const listOpenTickets = query({ access: "editor" }, async () =>
+  await db.query.tickets.findMany({ where: { state: "open" }, orderBy: { priority: "asc" } }));
 
-export const closeTicket = action({
-  access: "editor",
-  destructive: true,
-  input: { id: integer() },
-  async handler({ id }) {
-    const [row] = await db.update(tickets).set({ state: "closed" }).where({ id }).returning();
-    if (!row) throw new HttpError(404, "not_found", "Ticket not found");
-    return row;
-  },
+export const closeTicket = mutation({ access: "editor", destructive: true }, async ({ id }: { id: number }) => {
+  const [row] = await db.update(tickets).set({ state: "closed" }).where({ id }).returning();
+  if (!row) throw new HttpError(404, "not_found", "Ticket not found");
+  return row;
 });
 
 // Renders in both /wp-admin/new/screens/open-tickets and classic wp-admin
@@ -149,18 +134,12 @@ publishedAt: 2026-11-21T09:00:00.000Z
 Write documentation or blog posts in plain Markdown. Front matter keys are validated
 against your TypeScript schema at sync time — typos fail with the exact file and line.`;
 
-const ABILITIES_CODE = `import { action, text } from "spacepress";
+const ABILITIES_CODE = `import { query } from "spacepress";
 import { abilities } from "spacepress/server/wp";
 
 // Call any registered WordPress Ability with compiled input/output types
-export const runSiteCheck = action({
-  access: "admin",
-  readonly: true,
-  input: { target: text().max(120) },
-  async handler({ target }) {
-    return await abilities.call("core/get-site-info", {});
-  },
-});`;
+export const runSiteCheck = query({ access: "admin" }, async () =>
+  await abilities.call("core/get-site-info", {}));`;
 
 export function Part3Ecosystem() {
   return (
@@ -197,7 +176,7 @@ export function Part3Ecosystem() {
         <span className="sp-guide-num">10</span>
         <h2>React Email Templates &amp; Transactional Mail</h2>
         <p>
-          Author transactional emails as React components under <code>emails/*.tsx</code> using <code>react-email</code>. Inside hooks, actions, routes, or background jobs, render them to both HTML and plain text with <code>mail.render(Template, props)</code> and queue delivery with <code>mail.send()</code>.
+          Author transactional emails as React components under <code>emails/*.tsx</code> using <code>react-email</code>. Inside hooks, mutations, routes, or background jobs, render them to both HTML and plain text with <code>mail.render(Template, props)</code> and queue delivery with <code>mail.send()</code>.
         </p>
         <p>
           Every <code>mail.send()</code> call participates in the handler&apos;s database transaction: the message is handed off to the site&apos;s mail transport only after commit (with automatic retries on failure), and a rollback sends nothing.
@@ -213,7 +192,7 @@ export function Part3Ecosystem() {
         </p>
         <ul>
           <li>
-            <strong>Custom Admin Screens (<code>adminScreen()</code>):</strong> Build rich DataViews tables/grids or DataForms backed by your <code>readonly: true</code> and mutation actions. One declarative definition renders in both <code>/wp-admin/new/screens/&lt;slug&gt;</code> and classic <code>wp-admin</code>.
+            <strong>Custom Admin Screens (<code>adminScreen()</code>):</strong> Build rich DataViews tables/grids or DataForms backed by your <code>query()</code> and <code>mutation()</code> functions. One declarative definition renders in both <code>/wp-admin/new/screens/&lt;slug&gt;</code> and classic <code>wp-admin</code>.
           </li>
           <li>
             <strong>Gutenberg Blocks &amp; Block Themes in TSX (<code>@spacepress/blocks</code>):</strong> Author real Gutenberg post content and complete block themes in TSX — HTML tags map to core blocks (<code>&lt;p&gt;</code> → <code>core/paragraph</code>) while <code>blockComponent()</code> and <code>&lt;Block name=&quot;...&quot; /&gt;</code> target any registered block.
@@ -222,7 +201,7 @@ export function Part3Ecosystem() {
             <strong>Locked WordPress Plugins &amp; Sealed Mode:</strong> Declare WordPress.org or URL plugins in <code>defineConfig(&#123; plugins: &#123; ... &#125;, sealed: true &#125;)</code> with exact versions and SHA-256 checksums locked in <code>sp/_generated/wp-plugins.lock.json</code>. In <code>sealed: true</code> mode, activating any undeclared plugin is refused.
           </li>
           <li>
-            <strong>TypeScript Plugin Packages (<code>definePlugin()</code> + <code>use</code>):</strong> Compose reusable SpacePress packages with <code>use: [myPlugin(...)]</code>. The compiler infers exact capabilities from compiled code and locks grants in <code>sp/_generated/plugins.lock.json</code>.
+            <strong>TypeScript Plugin Packages (<code>definePlugin()</code> + <code>use</code>):</strong> Compose reusable SpacePress packages with <code>use: [myPlugin(...)]</code>. Installed packages can ship TSX components, <code>&quot;use client&quot;</code> islands and stylesheets, as <code>@spacepress/docs</code> and <code>@spacepress/todo</code> do. The compiler infers exact capabilities from compiled code and locks grants, including a hash of each package island, in <code>sp/_generated/plugins.lock.json</code>.
           </li>
         </ul>
 
@@ -266,7 +245,7 @@ export function Part3Ecosystem() {
             <strong>Project MCP Server (<code>spacepress mcp</code>):</strong> Serves your project&apos;s schema, routes, diagnostics, and embedded version-matched documentation over stdio MCP. Run <code>spacepress init</code> to generate <code>AGENTS.md</code>, <code>.mcp.json</code>, and agent skills automatically.
           </li>
           <li>
-            <strong>WordPress Abilities API:</strong> Collections, globals, actions, and jobs are exposed as WordPress Abilities by default (<code>agents: false</code> opts out). Annotate actions with <code>readonly: true</code> or <code>destructive: true</code> so AI agents know when to ask for confirmation. Call any installed site ability with full type safety via <code>abilities.call()</code> after running <code>spacepress abilities pull --site &lt;url&gt;</code>.
+            <strong>WordPress Abilities API:</strong> Collections, tables, globals, queries and mutations are WordPress Abilities; jobs become one only with <code>agents: true</code>. <code>agents: false</code> hides a function from REST discovery and MCP, and the generated typed client calls them through core&apos;s <code>/wp-json/wp-abilities/v1/abilities/&lt;app&gt;/&lt;name&gt;/run</code> route. Queries are marked read-only; mark mutations <code>destructive: true</code> so AI agents know when to ask for confirmation. Call any installed site ability with full type safety via <code>abilities.call()</code> after running <code>spacepress abilities pull --site &lt;url&gt;</code>.
           </li>
           <li>
             <strong>Runtime Schema Versions (<code>runtimeSchema: true</code>):</strong> Allow live sites to evolve collections and fields as numbered schema versions, then pull them back into source control with <code>spacepress pull</code>.
@@ -297,7 +276,7 @@ export function Part3Ecosystem() {
               </tr>
               <tr>
                 <td><code>spacepress check</code></td>
-                <td>Type-check and validate schemas, hooks, actions, pages, and migrations without writing output (supports <code>--json</code> and <code>--frozen</code> for CI).</td>
+                <td>Type-check and validate schemas, hooks, server functions, pages, and migrations without writing output (supports <code>--json</code> and <code>--frozen</code> for CI).</td>
               </tr>
               <tr>
                 <td><code>spacepress build</code></td>
@@ -337,11 +316,11 @@ export function Part3Ecosystem() {
 
         <h3>Boot a full multi-file SpacePress app in WordPress Playground</h3>
         <p>
-          Try editing <strong>Field Notes</strong> (<code>full-site</code>) below — it combines collections, field-level access rules, a SQL applause table, a server action, dynamic TSX routes, a custom JSON Feed route, and a <code>&quot;use client&quot;</code> island. Compile it live and click <strong>Run in WordPress</strong> to test it in-tab.
+          Try editing <strong>Field Notes</strong> (<code>full-site</code>) below — it combines collections, field-level access rules, a SQL applause table, a mutation, dynamic TSX routes, a custom JSON Feed route, and a <code>&quot;use client&quot;</code> island. Compile it live and click <strong>Run in WordPress</strong> to test it in-tab.
         </p>
         <sp-play
           example="full-site"
-          hint="Full editorial site: collections, SQL table, action, TSX pages, JSON Feed route, and Interactivity API island — compile & launch in WordPress."
+          hint="Full editorial site: collections, SQL table, mutation, TSX pages, JSON Feed route, and Interactivity API island — compile & launch in WordPress."
         />
       </section>
     </>

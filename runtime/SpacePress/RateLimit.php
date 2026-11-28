@@ -18,43 +18,44 @@ use function SpacePress\db;
  * another call made meanwhile). Rows of windows long past are removed as new ones are written: they are
  * counters, not data. Forwarded-for headers are not an identity source: REMOTE_ADDR is what the server saw.
  */
-final class RateLimit
-{
-    public static function register(): void
-    {
-        SystemTables::register('__sp_rates', [
-            'CREATE TABLE IF NOT EXISTS `{prefix}sp__rates` (`id` CHAR(64) NOT NULL, `ends` BIGINT NOT NULL, `used` INT NOT NULL, PRIMARY KEY (`id`), KEY `ends` (`ends`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin',
-        ]);
-    }
+final class RateLimit {
 
-    /** @param array{count: int, window: int} $limit */
-    public static function check(string $action, array $limit, ?array $user): void
-    {
-        $store = db()->store();
-        if (!$store instanceof Wp\CompositeStore) {
-            return; // the standalone runtime (its tests) has no site to count on
-        }
-        $connection = $store->db;
-        $table = '`' . $connection->prefix() . 'sp__rates`';
-        $window = max(1, (int) $limit['window']);
-        $now = time();
-        $bucket = intdiv($now, $window);
-        $ends = ($bucket + 1) * $window;
-        $who = $user !== null ? 'u' . $user['id'] : 'a' . ($_SERVER['REMOTE_ADDR'] ?? 'local');
-        $id = hash('sha256', $action . "\0" . $who . "\0" . $window . "\0" . $bucket);
-        // One statement creates or increments the row and takes its lock: concurrent calls queue on it.
-        $count = static function () use ($connection, $table, $id, $ends): int {
-            $connection->run("INSERT INTO $table (`id`, `ends`, `used`) VALUES (?, ?, 1) ON DUPLICATE KEY UPDATE `used` = `used` + 1", [$id, $ends]);
+	public static function register(): void {
+		SystemTables::register(
+			'__sp_rates',
+			array(
+				'CREATE TABLE IF NOT EXISTS `{prefix}sp__rates` (`id` CHAR(64) NOT NULL, `ends` BIGINT NOT NULL, `used` INT NOT NULL, PRIMARY KEY (`id`), KEY `ends` (`ends`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin',
+			)
+		);
+	}
 
-            return (int) ($connection->run("SELECT `used` FROM $table WHERE `id` = ?", [$id])[0]['used'] ?? 0);
-        };
-        if ($count() > (int) $limit['count']) {
-            $retry = $ends - $now;
-            throw new HttpError(429, 'rate_limited', 'Too many requests. Try again in ' . $retry . ' second' . ($retry === 1 ? '' : 's') . '.');
-        }
-        $connection->onRollback(static fn () => $count());
-        if (random_int(0, 99) === 0) {
-            $connection->run("DELETE FROM $table WHERE `ends` < ?", [$now - 86400]);
-        }
-    }
+	/** @param array{count: int, window: int} $limit */
+	public static function check( string $action, array $limit, ?array $user ): void {
+		$store = db()->store();
+		if ( ! $store instanceof Wp\CompositeStore ) {
+			return; // the standalone runtime (its tests) has no site to count on
+		}
+		$connection = $store->db;
+		$table      = '`' . $connection->prefix() . 'sp__rates`';
+		$window     = max( 1, (int) $limit['window'] );
+		$now        = time();
+		$bucket     = intdiv( $now, $window );
+		$ends       = ( $bucket + 1 ) * $window;
+		$who        = null !== $user ? 'u' . $user['id'] : 'a' . ( $_SERVER['REMOTE_ADDR'] ?? 'local' );
+		$id         = hash( 'sha256', $action . "\0" . $who . "\0" . $window . "\0" . $bucket );
+		// One statement creates or increments the row and takes its lock: concurrent calls queue on it.
+		$count = static function () use ( $connection, $table, $id, $ends ): int {
+			$connection->run( "INSERT INTO $table (`id`, `ends`, `used`) VALUES (?, ?, 1) ON DUPLICATE KEY UPDATE `used` = `used` + 1", array( $id, $ends ) );
+
+			return (int) ( $connection->run( "SELECT `used` FROM $table WHERE `id` = ?", array( $id ) )[0]['used'] ?? 0 );
+		};
+		if ( $count() > (int) $limit['count'] ) {
+			$retry = $ends - $now;
+			throw new HttpError( 429, 'rate_limited', 'Too many requests. Try again in ' . $retry . ' second' . ( 1 === $retry ? '' : 's' ) . '.' );
+		}
+		$connection->onRollback( static fn () => $count() );
+		if ( random_int( 0, 99 ) === 0 ) {
+			$connection->run( "DELETE FROM $table WHERE `ends` < ?", array( $now - 86400 ) );
+		}
+	}
 }

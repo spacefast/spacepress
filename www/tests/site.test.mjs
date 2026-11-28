@@ -49,6 +49,14 @@ test("home and synced reference fit a narrow viewport", async (t) => {
     const page = await open(t, path, { viewport: { width: 390, height: 800 } });
     assert.ok(await page.locator("h1").isVisible());
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), path);
+    if (path.startsWith("/docs/")) {
+      const themeToggle = page.getByRole("button", { name: "Switch between light and dark" });
+      assert.ok(await themeToggle.isVisible());
+      await page.getByRole("navigation", { name: "Breadcrumbs" }).getByRole("link").last().evaluate((link) => {
+        link.textContent = "WordPressPluginConfiguration".repeat(4);
+      });
+      assert.ok(await themeToggle.evaluate((toggle) => toggle.getBoundingClientRect().right <= innerWidth));
+    }
   }
 });
 
@@ -57,6 +65,9 @@ test("reference navigation opens synced Markdown and its code examples", async (
   await page.getByRole("link", { name: /Pages, Layouts & Interactive Islands/ }).click();
   await page.waitForURL("**/docs/core/pages-and-islands/");
   assert.equal(await page.locator("h1").textContent(), "Pages, Layouts & Interactive Islands");
+  const reference = await page.locator(".sd-docs").boundingBox();
+  const header = await page.locator(".sp-header").boundingBox();
+  assert.ok(reference && header && Math.abs(reference.y - (header.y + header.height)) <= 1);
   assert.ok(await page.getByRole("navigation", { name: "Reference", exact: true }).locator("a").count() > 1);
   assert.ok(await page.getByRole("navigation", { name: "On this page" }).locator("a").count() > 0);
   await page.locator(".sd-prose sp-code.sp-drawn").first().waitFor();
@@ -69,7 +80,7 @@ test("reference navigation opens synced Markdown and its code examples", async (
   await plain.locator(".sd-mobile-nav > summary").click();
   assert.ok(await plain.getByRole("navigation", { name: "Reference", exact: true }).getByRole("link", { name: "Pages, Layouts & Interactive Islands" }).isVisible());
 
-  await page.getByRole("button", { name: "Switch between light and dark" }).click();
+  await page.locator(".sd-article-top").getByRole("button", { name: "Switch between light and dark" }).click();
   const theme = await page.locator("html").getAttribute("data-theme");
   assert.ok(theme === "dark" || theme === "light");
   await page.reload();
@@ -85,6 +96,40 @@ test("reference navigation opens synced Markdown and its code examples", async (
   await anchor.focus();
   await anchor.press("Enter");
   await page.waitForFunction(async (value) => await navigator.clipboard.readText() === value, anchorUrl);
+});
+
+test("reference pages reached by navigation draw their own code and close the page menu", async (t) => {
+  const page = await open(t, "/docs/core/pages-and-islands/", { viewport: { width: 1400, height: 900 } });
+  // What each code block shows: its highlighted code, or "" when nothing was drawn into it.
+  const shown = () => page.evaluate(() => [...document.querySelectorAll(".sd-prose sp-code")].map((node) =>
+    (node.querySelector("diffs-container")?.shadowRoot?.querySelector("pre")?.textContent ?? "").replace(/\s+/g, " ").trim()));
+  const served = async (path) => [...(await (await fetch(base + path)).text()).matchAll(/<pre[^>]*>/g)].length;
+  // The page at `path` is in once its title is, with as many blocks drawn as it serves.
+  const arrived = async (path) => {
+    await page.waitForURL(`**${path}`);
+    const title = (await (await fetch(base + path)).text()).match(/<h1>([^<]*)<\/h1>/)[1].replace(/&amp;/g, "&");
+    await page.waitForFunction(([heading, count]) => document.querySelector("h1")?.textContent === heading &&
+      [...document.querySelectorAll(".sd-prose sp-code")].filter((n) => n.querySelector("diffs-container")?.shadowRoot?.querySelector("pre")).length === count,
+      [title, await served(path)]);
+  };
+  const visit = async (path) => {
+    await page.locator(`.sd-desktop-nav a[href$="${path}"]`).click();
+    await arrived(path);
+    const blocks = await shown();
+    assert.ok(blocks.every((text) => text !== ""), `${path}: an empty code block`);
+    assert.equal(await page.locator(".sd-action-menu").evaluate((menu) => menu.open), false, `${path}: the page menu stayed open`);
+    return blocks;
+  };
+  await arrived("/docs/core/pages-and-islands/");
+  const first = await shown();
+  await page.getByLabel("More page actions").click();
+  const other = await visit("/docs/core/actions-jobs-routes/");
+  assert.notDeepEqual(other, first);
+  // Back to a page the router has shown before: the same code as on the first load, drawn again.
+  assert.deepEqual(await visit("/docs/core/pages-and-islands/"), first);
+  await page.goBack();
+  await arrived("/docs/core/actions-jobs-routes/");
+  assert.deepEqual(await shown(), other);
 });
 
 async function tasks(t) {

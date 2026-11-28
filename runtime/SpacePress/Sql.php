@@ -13,715 +13,698 @@ namespace SpacePress;
  * '{a}' in a ColumnRef/baseWhere becomes the query alias (t0, t1, ...), '{j}' the column's join
  * alias (t0_m3 = alias t0, column #3 of the Source). Joins are emitted once per (alias, column).
  */
-final class Sql
-{
-    private const CMP = ['eq' => '=', 'ne' => '<>', 'gt' => '>', 'gte' => '>=', 'lt' => '<', 'lte' => '<='];
-    private const FIELD_OPS = Schema::FIELD_OPS;
-
-    private readonly Dialect $d;
-    private readonly string $lock;
-    private int $aliases = 0;
-    /** @var list<int|float|string|null> */
-    private array $params = [];
-    /** @var array<string, array<string, string>> base alias => column name => join alias */
-    private array $used = [];
-    /** @var array<string, array<string, int>> source column positions for collections that need joins */
-    private array $positions = [];
-    /** @var array<string, Source> */
-    private array $sources = [];
-    /** @var array<string, list<array>> */
-    private array $relationGuards = [];
-    private bool $trusted = false;
-
-    /** @param ?\Closure(string): list<array|SqlPredicate> $guardsFor the viewer's read guards per relation target (null = trusted) */
-    private function __construct(private readonly Schema $schema, private readonly Store $store, private readonly ?\Closure $guardsFor, bool $forUpdate)
-    {
-        $this->d = $store->dialect();
-        $this->lock = $forUpdate ? $this->d->writeLock() : '';
-    }
-
-    /**
-     * Compile one read. $opts may hold where/orderBy/limit/offset (other keys are ignored: Db owns
-     * `columns` and `with`). $partition = [column, encoded values] restricts to column IN values with
-     * limit/offset applied per distinct value (window function). $guards are extra filters ANDed in
-     * (access + draft rules); their pointers are not user-facing. $ptr prefixes error pointers.
-     * $guardsFor(collection) returns the viewer's read guards for a relation filter's target (or
-     * throws the read denial); null means a trusted read.
-     *
-     * $partition[2], when given, names each value's window (parallel to the values): values with
-     * the same name share one limit/offset window (a translation group's rows, Db::attach).
-     *
-     * @param ?array{0: string, 1: list<int|float|string|null>, 2?: list<string>} $partition
-     * @param list<array|SqlPredicate> $guards
-     * @return array{sql: string, params: list<int|float|string|null>}
-     */
-    public static function select(Schema $schema, Store $store, string $collection, array $opts, ?array $partition = null, string $ptr = '', array $guards = [], ?\Closure $guardsFor = null, ?array $only = null, bool $forUpdate = false): array
-    {
-        return (new self($schema, $store, $guardsFor, $forUpdate))->compile($collection, $opts, $partition, $ptr, $guards, $only);
-    }
-
-    /** @param ?array<string, mixed> $only the columns to select, by name; null selects every column */
-    private function compile(string $collection, array $opts, ?array $partition, string $ptr, array $guards, ?array $only = null): array
-    {
-        $spec = $this->schema->collection($collection);
-        $src = $this->source($collection);
-        $alias = $this->alias();
-        $conds = [];
-        $deleted = $opts['deleted'] ?? 'exclude';
-        if ($src->baseWhere !== '') {
-            $base = $deleted === 'exclude'
-                ? $src->baseWhere
-                : str_replace("NOT IN ('trash', ", 'NOT IN (', $src->baseWhere);
-            $conds[] = $this->sub($base, $alias, '');
-            if ($deleted === 'only') {
-                $conds[] = $alias . ".post_status = 'trash'";
-            }
-        } elseif (($spec['softDelete'] ?? false) && isset($src->columns['_live'])) {
-            if ($deleted === 'exclude') {
-                $conds[] = $this->cmpRef($collection, '_live', $alias) . ' = 1';
-            } elseif ($deleted === 'only') {
-                $conds[] = $this->cmpRef($collection, '_live', $alias) . ' IS NULL';
-            }
-        }
-        if (isset($opts['where'])) {
-            $conds[] = $this->filter($collection, $opts['where'], $alias, $ptr . '/where');
-        }
-        foreach ($guards as $g) {
-            $conds[] = $this->guard($collection, $g, $alias);
-        }
-        if ($partition !== null) {
-            [$col, $values] = $partition;
-            if ($values === []) {
-                $conds[] = '0 = 1';
-            } else {
-                $conds[] = $this->cmpRef($collection, $col, $alias) . ' IN (' . self::placeholders($values) . ')';
-                foreach ($values as $v) {
-                    $this->params[] = $this->metaParam($spec['columns'][$col], $src->columns[$col], $v);
-                }
-            }
-        }
-        $order = $this->orderBy($collection, $opts['orderBy'] ?? [], $alias, $ptr . '/orderBy');
-        if ($order === [] && ($spec['taxonomy'] ?? false)) {
-            // Terms list by name, then id, as core lists them (ruling 28).
-            $order = [$this->cmpRef($collection, 'name', $alias) . ' ASC', $this->cmpRef($collection, $spec['primaryKey'], $alias) . ' ASC'];
-        }
-        $limit = self::count($opts, 'limit', $ptr);
-        $offset = self::count($opts, 'offset', $ptr);
-
-        $windowed = $partition !== null && ($limit !== null || $offset !== null);
-        if ($windowed) {
-            $window = $order !== [] ? $order : [$this->cmpRef($collection, $spec['primaryKey'], $alias) . ' ASC'];
-            $by = $this->cmpRef($collection, $partition[0], $alias);
-            if (isset($partition[2])) {
-                // The select list binds nothing, so the window's parameters go first.
-                $cases = [];
-                foreach ($partition[1] as $i => $v) {
-                    $cases[] = $this->metaParam($spec['columns'][$partition[0]], $src->columns[$partition[0]], $v);
-                    $cases[] = $partition[2][$i];
-                }
-                $this->params = [...$cases, ...$this->params];
-                $by = "CASE $by" . str_repeat(' WHEN ? THEN ?', count($partition[1])) . ' END';
-            }
-            $over = "PARTITION BY $by ORDER BY " . implode(', ', $window);
-        }
-        $select = [];
-        // Schema columns only: a Source may carry helper expressions (the post-backed translation group).
-        foreach ($spec['columns'] as $name => $col) {
-            if ($only !== null && !isset($only[$name])) {
-                continue; // not selected: its expression marks no join
-            }
-            // A many-ref's value is its links, which Db reads from the join table.
-            $expr = match (true) {
-                $col['derived'] ?? false => $this->translations($collection, $alias),
-                $col['type'] === 'refList' => 'NULL',
-                default => $this->ref($collection, (string) $name, $alias, false),
-            };
-            $select[] = $expr . ' AS ' . $this->d->quote((string) $name);
-        }
-        // Joins last: every expression above has marked the columns it needs.
-        $from = ' FROM ' . $src->table . ' ' . $alias . $this->joins($collection, $alias)
-            . ($conds === [] ? '' : ' WHERE ' . implode(' AND ', $conds));
-
-        if ($windowed) {
-            $sql = 'SELECT * FROM (SELECT ' . implode(', ', $select) . ", ROW_NUMBER() OVER ($over) AS __sp_rn$from) z"
-                . ' WHERE z.__sp_rn > ' . ($offset ?? 0)
-                . ($limit === null ? '' : ' AND z.__sp_rn <= ' . (($offset ?? 0) + $limit))
-                . ' ORDER BY z.__sp_rn';
-        } else {
-            $sql = 'SELECT ' . implode(', ', $select) . $from . ($order === [] ? '' : ' ORDER BY ' . implode(', ', $order));
-            if ($limit !== null || $offset !== null) {
-                $sql .= ' LIMIT ' . ($limit ?? $this->d->noLimit) . ' OFFSET ' . ($offset ?? 0);
-            }
-        }
-
-        return ['sql' => $sql . $this->lock, 'params' => $this->params];
-    }
-
-    // ================================================================ sources, aliases, joins
-
-    private function source(string $collection): Source
-    {
-        return $this->sources[$collection] ??= $this->store->source($collection);
-    }
-
-    private function alias(): string
-    {
-        $a = 't' . $this->aliases++;
-        $this->used[$a] = [];
-
-        return $a;
-    }
-
-    /** Substitute {a}/{j}. */
-    private function sub(string $sql, string $alias, string $join): string
-    {
-        return strtr($sql, ['{a}' => $alias, '{j}' => $join]);
-    }
-
-    /** Value expression (storage form) or comparison expression for a column; marks it used. */
-    private function ref(string $collection, string $col, string $alias, bool $cmp): string
-    {
-        $r = $this->source($collection)->columns[$col] ?? throw new \LogicException("Source for $collection has no column $col");
-        $expr = $cmp && $r->cmpExpr !== '' ? $r->cmpExpr : $r->expr;
-        if (!str_contains($expr, '{j}')) {
-            return str_replace('{a}', $alias, $expr);
-        }
-        $this->positions[$collection] ??= array_flip(array_keys($this->source($collection)->columns));
-        $join = $this->used[$alias][$col] ??= $alias . '_m' . $this->positions[$collection][$col];
-        return $this->sub($expr, $alias, $join);
-    }
-
-    private function cmpRef(string $collection, string $col, string $alias): string
-    {
-        return $this->ref($collection, $col, $alias, true);
-    }
-
-    private function joins(string $collection, string $alias): string
-    {
-        if ($this->used[$alias] === []) {
-            return '';
-        }
-        $out = '';
-        foreach ($this->source($collection)->columns as $name => $r) {
-            if ($r->join !== '' && isset($this->used[$alias][$name])) {
-                $out .= ' ' . $this->sub($r->join, $alias, $this->used[$alias][$name]);
-            }
-        }
-
-        return $out;
-    }
-
-    // ================================================================ order / limit
-
-    /** @return list<string> "expr ASC|DESC" */
-    private function orderBy(string $collection, mixed $orderBy, string $alias, string $ptr): array
-    {
-        if (!is_array($orderBy)) {
-            throw HttpError::invalidQuery('orderBy must be an object', $ptr);
-        }
-        $spec = $this->schema->collection($collection);
-        $orderBy = Schema::resolveAliases($spec, $orderBy, $ptr);
-        $out = [];
-        foreach ($orderBy as $col => $dir) {
-            $col = (string) $col;
-            $cptr = $ptr . HttpError::seg($col);
-            if (!isset($spec['columns'][$col])) {
-                throw HttpError::invalidQuery("Unknown column '$col'", $cptr);
-            }
-            if ($spec['columns'][$col]['type'] === 'refList') {
-                throw HttpError::invalidQuery('`orderBy` isn\'t supported on list columns', $cptr);
-            }
-            if ($dir !== 'asc' && $dir !== 'desc') {
-                throw HttpError::invalidQuery("orderBy direction must be 'asc' or 'desc'", $cptr);
-            }
-            $kind = $this->source($collection)->columns[$col]->kind;
-            if ($kind === 'json') {
-                throw HttpError::invalidQuery('`orderBy` isn\'t supported on JSON columns', $cptr);
-            }
-            if ($kind === 'serialized-list') {
-                throw HttpError::invalidQuery('`orderBy` isn\'t supported on list columns', $cptr);
-            }
-            if ($this->source($collection)->baseWhere !== '' && ($spec['content'] ?? null) === $col) {
-                throw HttpError::invalidQuery("`orderBy` on `$col` isn't supported on editor collections", $cptr);
-            }
-            $out[] = $this->cmpRef($collection, $col, $alias) . ' ' . strtoupper($dir);
-        }
-
-        return $out;
-    }
-
-    private static function count(array $opts, string $key, string $ptr): ?int
-    {
-        $v = $opts[$key] ?? null;
-        if ($v === null) {
-            return null;
-        }
-        if (!Js::isInteger($v) || $v < 0) {
-            throw HttpError::invalidQuery("$key must be a non-negative integer", $ptr . '/' . $key);
-        }
-
-        return (int) $v;
-    }
-
-    // ================================================================ filters
-
-    private function filter(string $collection, mixed $where, string $alias, string $ptr): string
-    {
-        if (!is_array($where) || ($where !== [] && array_is_list($where))) {
-            throw HttpError::invalidQuery('Filter must be an object', $ptr);
-        }
-        $spec = $this->schema->collection($collection);
-        $where = Schema::resolveAliases($spec, $where, $ptr);
-        $parts = [];
-        foreach ($where as $key => $value) {
-            $kptr = $ptr . HttpError::seg($key);
-            $key = (string) $key;
-            if ($value === JsUndefined::Value) {
-                throw HttpError::invalidInput("Filter value for '$key' cannot be undefined; omit the key or pass null explicitly", $kptr);
-            }
-            if ($key === 'OR' || $key === 'AND') {
-                $parts[] = $this->combine($key, $value, $kptr, fn ($f, $p) => $this->filter($collection, $f, $alias, $p));
-            } elseif ($key === 'NOT') {
-                $parts[] = 'NOT (' . $this->filter($collection, $value, $alias, $kptr) . ')';
-            } elseif (Schema::filtersRelation($spec, $key, $value)) {
-                $parts[] = $this->relationFilter($collection, $spec['relations'][$key], $value, $alias, $kptr);
-            } elseif (($spec['columns'][$key]['type'] ?? null) === 'refList') {
-                $parts[] = $this->linkFilter($collection, $key, $value, $alias, $kptr);
-            } elseif (isset($spec['columns'][$key])) {
-                $parts[] = $this->fieldFilter($collection, $key, $value, $alias, $kptr);
-            } else {
-                throw HttpError::invalidQuery("Unknown column or relation '$key'", $kptr);
-            }
-        }
-
-        return $parts === [] ? '1 = 1' : implode(' AND ', $parts);
-    }
-
-    private function combine(string $op, mixed $list, string $ptr, callable $compile): string
-    {
-        if (!is_array($list) || !array_is_list($list)) {
-            throw HttpError::invalidQuery("$op must be an array", $ptr);
-        }
-        if ($list === []) {
-            return $op === 'OR' ? '0 = 1' : '1 = 1';
-        }
-        $sql = [];
-        foreach ($list as $i => $f) {
-            $sql[] = '(' . $compile($f, $ptr . '/' . $i) . ')';
-        }
-
-        return '(' . implode(" $op ", $sql) . ')';
-    }
-
-    private function fieldFilter(string $collection, string $name, mixed $value, string $alias, string $ptr): string
-    {
-        if ($value instanceof Locale\Filter) {
-            return $this->localeRule($collection, $value, $alias);
-        }
-        if ($this->schema->collection($collection)['columns'][$name]['derived'] ?? false) {
-            throw HttpError::invalidQuery("`$name` is derived and can't be filtered", $ptr);
-        }
-        $kind = $this->source($collection)->columns[$name]->kind;
-        if ($value === null) {
-            return $this->nullTest($collection, $name, $alias, true);
-        }
-        $isOps = is_array($value) && $value !== [] && !array_is_list($value);
-        if ($kind === 'json' && is_array($value)
-            && !($isOps && array_diff(array_map('strval', array_keys($value)), self::FIELD_OPS) === [])) {
-            return $this->op($collection, $name, 'eq', $value, $alias, $ptr);
-        }
-        if ($kind === 'serialized-list' && is_array($value) && array_is_list($value)) {
-            return $this->op($collection, $name, 'eq', $value, $alias, $ptr);
-        }
-        if (!is_array($value)) {
-            return $this->op($collection, $name, 'eq', $value, $alias, $ptr);
-        }
-        if (!$isOps) {
-            throw HttpError::invalidQuery('Field filter must be a value or an operator object', $ptr);
-        }
-        $parts = [];
-        foreach ($value as $op => $arg) {
-            $parts[] = $this->op($collection, $name, (string) $op, $arg, $alias, $ptr . HttpError::seg($op));
-        }
-
-        return implode(' AND ', $parts);
-    }
-
-    private function op(string $collection, string $name, string $op, mixed $arg, string $alias, string $ptr): string
-    {
-        if ($arg === JsUndefined::Value) {
-            throw HttpError::invalidInput("Filter operator '$op' on '$name' cannot be undefined", $ptr);
-        }
-        $col = $this->schema->collection($collection)['columns'][$name];
-        $src = $this->source($collection);
-        $ref = $src->columns[$name];
-
-        switch ($op) {
-            case 'NOT':
-                return 'NOT (' . $this->fieldFilter($collection, $name, $arg, $alias, $ptr) . ')';
-            case 'OR':
-            case 'AND':
-                return $this->combine($op, $arg, $ptr, fn ($f, $p) => $this->fieldFilter($collection, $name, $f, $alias, $p));
-            case 'isNull':
-            case 'isNotNull':
-                return $this->nullTest($collection, $name, $alias, ($op === 'isNull') === Js::truthy($arg));
-        }
-        if (!in_array($op, self::FIELD_OPS, true)) {
-            throw HttpError::invalidQuery("Unknown operator '$op'", $ptr);
-        }
-
-        if ($ref->kind === 'json') {
-            if ($op !== 'eq' && $op !== 'ne') {
-                throw HttpError::invalidQuery("`$op` isn't supported on JSON columns", $ptr);
-            }
-            if ($src->baseWhere !== '' && in_array($col['type'], ['group', 'repeater', 'blocks'], true)) {
-                throw HttpError::invalidQuery("`$op` on `$name` isn't supported on editor collections; filter on a scalar column", $ptr);
-            }
-            if ($arg === null) {
-                return $this->nullTest($collection, $name, $alias, $op === 'eq');
-            }
-            // Whole-value comparison against the canonical JSON text the codecs store.
-            $this->params[] = Js::jsonStringify($arg);
-
-            return $this->ref($collection, $name, $alias, false) . ' ' . self::CMP[$op] . ' ?';
-        }
-
-        if ($ref->kind === 'serialized-list') {
-            if ($op === 'has') {
-                return $this->has($collection, $name, $arg, $alias, $ptr);
-            }
-            if ($op === 'eq' && $arg === []) {
-                return $this->emptyList($collection, $name, $alias);
-            }
-            if (($op === 'eq' || $op === 'ne') && $arg === null) {
-                return $this->nullTest($collection, $name, $alias, $op === 'eq');
-            }
-            throw HttpError::invalidQuery("`$op` isn't supported on list columns; use `has`", $ptr);
-        }
-
-        // scalar
-        return match ($op) {
-            'eq', 'ne', 'gt', 'gte', 'lt', 'lte' => $this->compare($collection, $name, $op, $arg, $alias, $ptr),
-            'in', 'notIn' => $this->inList($collection, $name, $op === 'notIn', $arg, $alias, $ptr),
-            'like', 'notLike', 'ilike', 'notIlike' => $this->like($collection, $name, $op, $arg, $alias, $ptr),
-            'has' => throw HttpError::invalidQuery('`has` is only supported on list columns', $ptr),
-        };
-    }
-
-    private function nullTest(string $collection, string $name, string $alias, bool $isNull): string
-    {
-        $ref = $this->source($collection)->columns[$name];
-        // json kind may carry a cmpExpr meaning "empty" (post-backed group/repeater/blocks); scalars test expr.
-        $expr = $this->ref($collection, $name, $alias, $ref->kind === 'json');
-
-        return $expr . ($isNull ? ' IS NULL' : ' IS NOT NULL');
-    }
-
-    private function compare(string $collection, string $name, string $op, mixed $arg, string $alias, string $ptr): string
-    {
-        if ($arg === null) {
-            return match ($op) {
-                'eq' => $this->nullTest($collection, $name, $alias, true),
-                'ne' => $this->nullTest($collection, $name, $alias, false),
-                default => throw HttpError::invalidQuery("$op does not accept null", $ptr),
-            };
-        }
-        $this->params[] = $this->param($collection, $name, $arg, $ptr);
-
-        return $this->cmpRef($collection, $name, $alias) . ' ' . self::CMP[$op] . ' ?';
-    }
-
-    private function inList(string $collection, string $name, bool $negate, mixed $list, string $alias, string $ptr): string
-    {
-        if (!is_array($list) || !array_is_list($list)) {
-            throw HttpError::invalidQuery('Expected an array', $ptr);
-        }
-        if ($list === []) {
-            return $negate ? '1 = 1' : '0 = 1';
-        }
-        foreach ($list as $i => $v) {
-            if ($v === JsUndefined::Value) {
-                throw HttpError::invalidInput("Filter value in list on '$name' cannot be undefined", $ptr . '/' . $i);
-            }
-            $this->params[] = $this->param($collection, $name, $v, $ptr . '/' . $i);
-        }
-
-        return $this->cmpRef($collection, $name, $alias) . ($negate ? ' NOT IN (' : ' IN (') . self::placeholders($list) . ')';
-    }
-
-    private function like(string $collection, string $name, string $op, mixed $pattern, string $alias, string $ptr): string
-    {
-        if (!is_string($pattern)) {
-            throw HttpError::invalidQuery("$op expects a string pattern", $ptr);
-        }
-        $this->params[] = $pattern;
-        $ci = $op === 'ilike' || $op === 'notIlike';
-        $sql = $this->d->like($this->ref($collection, $name, $alias, false), $ci);
-
-        return str_starts_with($op, 'not') ? "NOT ($sql)" : $sql;
-    }
-
-    private function has(string $collection, string $name, mixed $v, string $alias, string $ptr): string
-    {
-        $col = $this->schema->collection($collection)['columns'][$name];
-        $ref = $this->source($collection)->columns[$name];
-        if ($col['type'] === 'mediaList') {
-            if (!Js::isInteger($v)) {
-                throw HttpError::invalidQuery('has expects an integer', $ptr);
-            }
-            $v = (int) $v;
-        } elseif (!is_string($v)) {
-            throw HttpError::invalidQuery('has expects a string', $ptr);
-        }
-        if ($ref->cmpExpr !== '') {
-            // PHP-serialized array in postmeta: match one complete element (type-length-value can't
-            // produce a false substring hit). Ids may be stored as ints or numeric strings
-            // (SCF's gallery field stores strings), so ids match either form.
-            $expr = $this->ref($collection, $name, $alias, true);
-            $one = static fn (string $needle) => '%' . addcslashes($needle, '_%\\') . '%';
-            $this->params[] = $one(serialize($v));
-            if (is_int($v)) {
-                $this->params[] = $one(serialize((string) $v));
-
-                return "($expr LIKE ? OR $expr LIKE ?)";
-            }
-
-            return "$expr LIKE ?";
-        }
-        $expr = $this->ref($collection, $name, $alias, false);
-        $this->params[] = Js::jsonStringify($v);
-
-        return "JSON_CONTAINS($expr, ?)";
-    }
-
-    private function emptyList(string $collection, string $name, string $alias): string
-    {
-        $ref = $this->source($collection)->columns[$name];
-        if ($ref->cmpExpr !== '') {
-            // Post-backed: no row, '' and an empty serialized array all mean "empty".
-            return 'COALESCE(NULLIF(' . $this->ref($collection, $name, $alias, true) . ", ''), 'a:0:{}') = 'a:0:{}'";
-        }
-
-        return $this->ref($collection, $name, $alias, false) . " = '[]'";
-    }
-
-    /** A many-ref's links for the row at $alias: `l.<to>` values, as a subquery. */
-    private function linked(string $collection, array $through, string $alias): string
-    {
-        $links = $this->store instanceof Links ? $this->store : throw new \LogicException('This store keeps no ref().many() links');
-        $l = $this->alias();
-        $pk = $this->schema->collection($collection)['primaryKey'];
-
-        return 'SELECT ' . $l . '.' . $this->d->quote($through['to']) . ' FROM ' . $links->linkTable($through['table']) . ' ' . $l
-            . ' WHERE ' . $l . '.' . $this->d->quote($through['from']) . ' = ' . $this->cmpRef($collection, $pk, $alias);
-    }
-
-    /**
-     * Operators on a `ref().many()` field's own ids: `{ has: id }` and `{ eq: [] }` (no links), with
-     * NOT/AND/OR. A filter on the linked rows goes through the relation (relationFilter).
-     */
-    private function linkFilter(string $collection, string $name, mixed $value, string $alias, string $ptr): string
-    {
-        $rel = $this->schema->collection($collection)['relations'][$name];
-        $through = $rel['through'];
-        if (is_bool($value)) {
-            return $this->relationFilter($collection, $rel, $value, $alias, $ptr);
-        }
-        if (!is_array($value) || array_is_list($value)) {
-            if ($value === []) {
-            return 'NOT EXISTS (' . $this->linked($collection, $through, $alias) . $this->lock . ')';
-            }
-            throw HttpError::invalidQuery("`$name` is a list of ids: filter it with `{ has: id }`, or on the linked rows", $ptr);
-        }
-        $parts = [];
-        foreach ($value as $op => $arg) {
-            $optr = $ptr . HttpError::seg($op);
-            $parts[] = match ((string) $op) {
-                'has' => Js::isInteger($arg)
-                    ? (function () use ($collection, $through, $alias, $arg): string {
-                        $sql = 'EXISTS (' . $this->linked($collection, $through, $alias) . ' AND ' . $this->d->quote('target_id') . ' = ?' . $this->lock . ')';
-                        $this->params[] = (int) $arg;
-
-                        return $sql;
-                    })()
-                    : throw HttpError::invalidQuery('has expects an id', $optr),
-                'eq' => $arg === [] ? 'NOT EXISTS (' . $this->linked($collection, $through, $alias) . $this->lock . ')'
-                    : throw HttpError::invalidQuery("`eq` isn't supported on list columns; use `has`", $optr),
-                'NOT' => 'NOT (' . $this->linkFilter($collection, $name, $arg, $alias, $optr) . ')',
-                'AND', 'OR' => $this->combine((string) $op, $arg, $optr, fn ($f, $p) => $this->linkFilter($collection, $name, $f, $alias, $p)),
-                default => throw HttpError::invalidQuery("`$op` isn't supported on list columns; use `has`", $optr),
-            };
-        }
-
-        return $parts === [] ? '1 = 1' : implode(' AND ', $parts);
-    }
-
-    private function relationFilter(string $collection, array $rel, mixed $value, string $alias, string $ptr): string
-    {
-        $target = $rel['collection'];
-        $src = $this->source($target);
-        $inner = $this->alias();
-        $conds = [];
-        if ($src->baseWhere !== '') {
-            $conds[] = $this->sub($src->baseWhere, $inner, '');
-        } elseif (($this->schema->collection($target)['softDelete'] ?? false) && isset($src->columns['_live'])) {
-            $conds[] = $this->cmpRef($target, '_live', $inner) . ' = 1';
-        }
-        $conds[] = isset($rel['through'])
-            ? $this->cmpRef($target, $this->schema->collection($target)['primaryKey'], $inner) . ' IN (' . $this->linked($collection, $rel['through'], $alias) . $this->lock . ')'
-            : $this->cmpRef($target, $rel['to'], $inner) . ' = ' . $this->cmpRef($collection, $rel['from'], $alias);
-        if (!$this->trusted && $this->guardsFor !== null) {
-            foreach ($this->relationGuards[$target] ??= ($this->guardsFor)($target) as $g) {
-                $conds[] = $this->guard($target, $g, $inner);
-            }
-        }
-        if (is_array($value)) {
-            $conds[] = $this->filter($target, $value, $inner, $ptr);
-        } elseif ($value !== true && $value !== false) {
-            throw HttpError::invalidQuery('Relation filter must be true, false or a filter object', $ptr);
-        }
-        // Joins are assembled after the inner filter so nested EXISTS can mark this alias's columns.
-        $sql = 'EXISTS (SELECT 1 FROM ' . $src->table . ' ' . $inner . $this->joins($target, $inner) . ' WHERE ' . implode(' AND ', $conds) . $this->lock . ')';
-
-        return $value === false ? "NOT $sql" : $sql;
-    }
-
-    /**
-     * An access/draft guard. Guards are the app's own rules, so relation filters inside them are
-     * trusted; only the viewer's filters are confined to rows the viewer can read.
-     */
-    private function guard(string $collection, array|SqlPredicate $g, string $alias): string
-    {
-        if ($g instanceof SqlPredicate) {
-            array_push($this->params, ...$g->params);
-            return '(' . $this->sub($g->sql, $alias, '') . ')';
-        }
-        [$was, $this->trusted] = [$this->trusted, true];
-        try {
-            return '(' . $this->filter($collection, $g, $alias, '') . ')';
-        } finally {
-            $this->trusted = $was;
-        }
-    }
-
-    /** The viewer's read guards for $collection (none when trusted), cached per compile. */
-    private function readGuards(string $collection): array
-    {
-        return $this->trusted || $this->guardsFor === null ? [] : ($this->relationGuards[$collection] ??= ($this->guardsFor)($collection));
-    }
-
-    /**
-     * The locale rule (§7.3): rows in $f->locale or, with a fallback, the fallback-locale row of every
-     * translation group without a row in $f->locale that the viewer may read (the subquery carries
-     * the same per-target read guards as relation filters, so a hidden translation never suppresses
-     * its group's fallback). $f->groupOf narrows to one row's group. Both subqueries are
-     * uncorrelated; every localized Source exposes `locale` and a `translationGroup` expression.
-     */
-    private function localeRule(string $collection, Locale\Filter $f, string $alias): string
-    {
-        $pk = $this->schema->collection($collection)['primaryKey'];
-        $locale = $this->cmpRef($collection, 'locale', $alias);
-        $group = $this->cmpRef($collection, 'translationGroup', $alias);
-        $parts = [];
-        if ($f->groupOf !== null) {
-            $this->params[] = $f->groupOf;
-            $parts[] = '(' . $this->cmpRef($collection, $pk, $alias) . " = ? OR $group IN " . $this->groups($collection, $pk, $f->groupOf) . ')';
-        }
-        $this->params[] = $f->locale;
-        $rule = "$locale = ?";
-        if ($f->fallback !== null && $f->fallback !== $f->locale) {
-            $this->params[] = $f->fallback;
-            $rule = "($rule OR ($locale = ? AND ($group IS NULL OR $group NOT IN " . $this->groups($collection, 'locale', $f->locale) . ')))';
-        }
-        $parts[] = $rule;
-
-        return implode(' AND ', $parts);
-    }
-
-    /** `(SELECT translationGroup FROM <collection> WHERE <$col> = ?)` over rows the viewer may read; NULL groups excluded. */
-    private function groups(string $collection, string $col, int|string $value): string
-    {
-        $src = $this->source($collection);
-        $inner = $this->alias();
-        $group = $this->cmpRef($collection, 'translationGroup', $inner);
-        $conds = $src->baseWhere === '' ? [] : [$this->sub($src->baseWhere, $inner, '')];
-        $conds[] = $this->cmpRef($collection, $col, $inner) . ' = ?';
-        $this->params[] = $value;
-        $conds[] = "$group IS NOT NULL";
-        foreach ($this->readGuards($collection) as $g) {
-            $conds[] = $this->guard($collection, $g, $inner);
-        }
-
-        return "(SELECT $group FROM " . $src->table . ' ' . $inner . $this->joins($collection, $inner) . ' WHERE ' . implode(' AND ', $conds) . ')';
-    }
-
-    /**
-     * `translations` (§7.3): locale → primary key of every row in this row's translation group, as JSON
-     * text; just `{locale: pk}` for a row without a group. Literal-only SQL, so it can sit in the
-     * select list ahead of the WHERE's parameters.
-     */
-    private function translations(string $collection, string $alias): string
-    {
-        $src = $this->source($collection);
-        if (!isset($src->columns['locale'], $src->columns['translationGroup'])) {
-            return 'NULL';
-        }
-        $pk = $this->schema->collection($collection)['primaryKey'];
-        $inner = $this->alias();
-        $conds = $src->baseWhere === '' ? [] : [$this->sub($src->baseWhere, $inner, '')];
-        $conds[] = $this->cmpRef($collection, 'translationGroup', $inner) . ' = ' . $this->cmpRef($collection, 'translationGroup', $alias);
-        $innerLocale = $this->ref($collection, 'locale', $inner, false);
-        $conds[] = "$innerLocale IS NOT NULL";
-        // JSON_OBJECTAGG aggregates an empty group to NULL, so the row's own pair is the fallback.
-        $members = "(SELECT JSON_OBJECTAGG($innerLocale, " . $this->ref($collection, $pk, $inner, false) . ') FROM ' . $src->table . ' ' . $inner
-            . $this->joins($collection, $inner) . ' WHERE ' . implode(' AND ', $conds) . ')';
-        $locale = $this->ref($collection, 'locale', $alias, false);
-
-        return "CASE WHEN $locale IS NULL THEN NULL ELSE COALESCE($members, JSON_OBJECT($locale, " . $this->ref($collection, $pk, $alias, false) . ')) END';
-    }
-
-    // ================================================================ values
-
-    private function param(string $collection, string $name, mixed $v, string $ptr): int|float|string|null
-    {
-        $col = $this->schema->collection($collection)['columns'][$name];
-
-        return $this->metaParam($col, $this->source($collection)->columns[$name], $this->filterValue($col, $v, $ptr));
-    }
-
-    /** Encode a filter value with the column's codec (format checks relaxed: filters compare, they don't write). */
-    private function filterValue(array $col, mixed $v, string $ptr): int|float|string|null
-    {
-        unset($col['enum'], $col['notNull'], $col['rules']);
-        $col['type'] = match ($col['type']) {
-            'email', 'url', 'slug', 'richText' => 'text',
-            'media' => 'integer',
-            default => $col['type'],
-        };
-        try {
-            return Schema::encode($col, $v, ltrim(strrchr($ptr, '/') ?: $ptr, '/'), $ptr);
-        } catch (HttpError $e) {
-            throw HttpError::invalidQuery($e->getMessage(), $ptr);
-        }
-    }
-
-    /** With a cmpExpr the column compares in its WordPress meta form (§3.5.1). */
-    private function metaParam(array $col, ColumnRef $ref, int|float|string|null $v): int|float|string|null
-    {
-        if ($ref->cmpExpr === '' || $v === null) {
-            return $v;
-        }
-
-        return match ($col['type']) {
-            'timestamp' => substr((string) $v, 0, 10) . ' ' . substr((string) $v, 11, 8),
-            'date' => str_replace('-', '', (string) $v),
-            'boolean' => $v ? '1' : '0',
-            default => $v,
-        };
-    }
-
-    private static function placeholders(array $values): string
-    {
-        return implode(', ', array_fill(0, count($values), '?'));
-    }
+final class Sql {
+
+	private const CMP       = array(
+		'eq'  => '=',
+		'ne'  => '<>',
+		'gt'  => '>',
+		'gte' => '>=',
+		'lt'  => '<',
+		'lte' => '<=',
+	);
+	private const FIELD_OPS = Schema::FIELD_OPS;
+
+	private readonly Dialect $d;
+	private readonly string $lock;
+	private int $aliases = 0;
+	/** @var list<int|float|string|null> */
+	private array $params = array();
+	/** @var array<string, array<string, string>> base alias => column name => join alias */
+	private array $used = array();
+	/** @var array<string, array<string, int>> source column positions for collections that need joins */
+	private array $positions = array();
+	/** @var array<string, Source> */
+	private array $sources = array();
+	/** @var array<string, list<array>> */
+	private array $relationGuards = array(); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.PropertyNotSnakeCase -- Preserve the existing PHP property name.
+	private bool $trusted         = false;
+
+	/** @param ?\Closure(string): list<array|SqlPredicate> $guardsFor the viewer's read guards per relation target (null = trusted) */
+	private function __construct( private readonly Schema $schema, private readonly Store $store, private readonly ?\Closure $guardsFor, bool $forUpdate ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		$this->d    = $store->dialect();
+		$this->lock = $forUpdate ? $this->d->writeLock() : ''; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+	}
+
+	/**
+	 * Compile one read. $opts may hold where/orderBy/limit/offset (other keys are ignored: Db owns
+	 * `columns` and `with`). $partition = [column, encoded values] restricts to column IN values with
+	 * limit/offset applied per distinct value (window function). $guards are extra filters ANDed in
+	 * (access + draft rules); their pointers are not user-facing. $ptr prefixes error pointers.
+	 * $guardsFor(collection) returns the viewer's read guards for a relation filter's target (or
+	 * throws the read denial); null means a trusted read.
+	 *
+	 * $partition[2], when given, names each value's window (parallel to the values): values with
+	 * the same name share one limit/offset window (a translation group's rows, Db::attach).
+	 *
+	 * @param ?array{0: string, 1: list<int|float|string|null>, 2?: list<string>} $partition
+	 * @param list<array|SqlPredicate> $guards
+	 * @return array{sql: string, params: list<int|float|string|null>}
+	 */
+	public static function select( Schema $schema, Store $store, string $collection, array $opts, ?array $partition = null, string $ptr = '', array $guards = array(), ?\Closure $guardsFor = null, ?array $only = null, bool $forUpdate = false ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		return ( new self( $schema, $store, $guardsFor, $forUpdate ) )->compile( $collection, $opts, $partition, $ptr, $guards, $only ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+	}
+
+	/** @param ?array<string, mixed> $only the columns to select, by name; null selects every column */
+	private function compile( string $collection, array $opts, ?array $partition, string $ptr, array $guards, ?array $only = null ): array {
+		$spec    = $this->schema->collection( $collection );
+		$src     = $this->source( $collection );
+		$alias   = $this->alias();
+		$conds   = array();
+		$deleted = $opts['deleted'] ?? 'exclude';
+		if ( '' !== $src->baseWhere ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+			$base    = 'exclude' === $deleted
+				? $src->baseWhere // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+				: str_replace( "NOT IN ('trash', ", 'NOT IN (', $src->baseWhere ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+			$conds[] = $this->sub( $base, $alias, '' );
+			if ( 'only' === $deleted ) {
+				$conds[] = $alias . ".post_status = 'trash'";
+			}
+		} elseif ( ( $spec['softDelete'] ?? false ) && isset( $src->columns['_live'] ) ) {
+			if ( 'exclude' === $deleted ) {
+				$conds[] = $this->cmp_ref( $collection, '_live', $alias ) . ' = 1';
+			} elseif ( 'only' === $deleted ) {
+				$conds[] = $this->cmp_ref( $collection, '_live', $alias ) . ' IS NULL';
+			}
+		}
+		if ( isset( $opts['where'] ) ) {
+			$conds[] = $this->filter( $collection, $opts['where'], $alias, $ptr . '/where' );
+		}
+		foreach ( $guards as $g ) {
+			$conds[] = $this->guard( $collection, $g, $alias );
+		}
+		if ( null !== $partition ) {
+			[$col, $values] = $partition;
+			if ( array() === $values ) {
+				$conds[] = '0 = 1';
+			} else {
+				$conds[] = $this->cmp_ref( $collection, $col, $alias ) . ' IN (' . self::placeholders( $values ) . ')';
+				foreach ( $values as $v ) {
+					$this->params[] = $this->meta_param( $spec['columns'][ $col ], $src->columns[ $col ], $v );
+				}
+			}
+		}
+		$order = $this->orderBy( $collection, $opts['orderBy'] ?? array(), $alias, $ptr . '/orderBy' );
+		if ( array() === $order && ( $spec['taxonomy'] ?? false ) ) {
+			// Terms list by name, then id, as core lists them (ruling 28).
+			$order = array( $this->cmp_ref( $collection, 'name', $alias ) . ' ASC', $this->cmp_ref( $collection, $spec['primaryKey'], $alias ) . ' ASC' );
+		}
+		$limit  = self::count( $opts, 'limit', $ptr );
+		$offset = self::count( $opts, 'offset', $ptr );
+
+		$windowed = null !== $partition && ( null !== $limit || null !== $offset );
+		if ( $windowed ) {
+			$window = array() !== $order ? $order : array( $this->cmp_ref( $collection, $spec['primaryKey'], $alias ) . ' ASC' );
+			$by     = $this->cmp_ref( $collection, $partition[0], $alias );
+			if ( isset( $partition[2] ) ) {
+				// The select list binds nothing, so the window's parameters go first.
+				$cases = array();
+				foreach ( $partition[1] as $i => $v ) {
+					$cases[] = $this->meta_param( $spec['columns'][ $partition[0] ], $src->columns[ $partition[0] ], $v );
+					$cases[] = $partition[2][ $i ];
+				}
+				$this->params = array( ...$cases, ...$this->params );
+				$by           = "CASE $by" . str_repeat( ' WHEN ? THEN ?', count( $partition[1] ) ) . ' END';
+			}
+			$over = "PARTITION BY $by ORDER BY " . implode( ', ', $window );
+		}
+		$select = array();
+		// Schema columns only: a Source may carry helper expressions (the post-backed translation group).
+		foreach ( $spec['columns'] as $name => $col ) {
+			if ( null !== $only && ! isset( $only[ $name ] ) ) {
+				continue; // not selected: its expression marks no join
+			}
+			// A many-ref's value is its links, which Db reads from the join table.
+			$expr = match ( true ) {
+				$col['derived'] ?? false => $this->translations( $collection, $alias ),
+				'refList' === $col['type'] => 'NULL',
+				default => $this->ref( $collection, (string) $name, $alias, false ),
+			};
+			$select[] = $expr . ' AS ' . $this->d->quote( (string) $name );
+		}
+		// Joins last: every expression above has marked the columns it needs.
+		$from = ' FROM ' . $src->table . ' ' . $alias . $this->joins( $collection, $alias )
+			. ( array() === $conds ? '' : ' WHERE ' . implode( ' AND ', $conds ) );
+
+		if ( $windowed ) {
+			$sql = 'SELECT * FROM (SELECT ' . implode( ', ', $select ) . ", ROW_NUMBER() OVER ($over) AS __sp_rn$from) z"
+				. ' WHERE z.__sp_rn > ' . ( $offset ?? 0 )
+				. ( null === $limit ? '' : ' AND z.__sp_rn <= ' . ( ( $offset ?? 0 ) + $limit ) )
+				. ' ORDER BY z.__sp_rn';
+		} else {
+			$sql = 'SELECT ' . implode( ', ', $select ) . $from . ( array() === $order ? '' : ' ORDER BY ' . implode( ', ', $order ) );
+			if ( null !== $limit || null !== $offset ) {
+				$sql .= ' LIMIT ' . ( $limit ?? $this->d->noLimit ) . ' OFFSET ' . ( $offset ?? 0 );
+			}
+		}
+
+		return array(
+			'sql'    => $sql . $this->lock,
+			'params' => $this->params,
+		);
+	}
+
+	// ================================================================ sources, aliases, joins
+
+	private function source( string $collection ): Source {
+		return $this->sources[ $collection ] ??= $this->store->source( $collection );
+	}
+
+	private function alias(): string {
+		$a                = 't' . $this->aliases++;
+		$this->used[ $a ] = array();
+
+		return $a;
+	}
+
+	/** Substitute {a}/{j}. */
+	private function sub( string $sql, string $alias, string $join ): string {
+		return strtr(
+			$sql,
+			array(
+				'{a}' => $alias,
+				'{j}' => $join,
+			)
+		);
+	}
+
+	/** Value expression (storage form) or comparison expression for a column; marks it used. */
+	private function ref( string $collection, string $col, string $alias, bool $cmp ): string {
+		$r    = $this->source( $collection )->columns[ $col ] ?? throw new \LogicException( "Source for $collection has no column $col" );
+		$expr = $cmp && '' !== $r->cmpExpr ? $r->cmpExpr : $r->expr; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+		if ( ! str_contains( $expr, '{j}' ) ) {
+			return str_replace( '{a}', $alias, $expr );
+		}
+		$this->positions[ $collection ] ??= array_flip( array_keys( $this->source( $collection )->columns ) );
+		$join                             = $this->used[ $alias ][ $col ] ??= $alias . '_m' . $this->positions[ $collection ][ $col ];
+		return $this->sub( $expr, $alias, $join );
+	}
+
+	private function cmp_ref( string $collection, string $col, string $alias ): string {
+		return $this->ref( $collection, $col, $alias, true );
+	}
+
+	private function joins( string $collection, string $alias ): string {
+		if ( array() === $this->used[ $alias ] ) {
+			return '';
+		}
+		$out = '';
+		foreach ( $this->source( $collection )->columns as $name => $r ) {
+			if ( '' !== $r->join && isset( $this->used[ $alias ][ $name ] ) ) {
+				$out .= ' ' . $this->sub( $r->join, $alias, $this->used[ $alias ][ $name ] );
+			}
+		}
+
+		return $out;
+	}
+
+	// ================================================================ order / limit
+
+	/** @return list<string> "expr ASC|DESC" */
+	private function orderBy( string $collection, mixed $orderBy, string $alias, string $ptr ): array { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid, WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP method name. Preserve the existing PHP variable name.
+		if ( ! is_array( $orderBy ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+			throw HttpError::invalidQuery( 'orderBy must be an object', $ptr );
+		}
+		$spec    = $this->schema->collection( $collection );
+		$orderBy = Schema::resolveAliases( $spec, $orderBy, $ptr ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		$out     = array();
+		foreach ( $orderBy as $col => $dir ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+			$col  = (string) $col;
+			$cptr = $ptr . HttpError::seg( $col );
+			if ( ! isset( $spec['columns'][ $col ] ) ) {
+				throw HttpError::invalidQuery( "Unknown column '$col'", $cptr );
+			}
+			if ( 'refList' === $spec['columns'][ $col ]['type'] ) {
+				throw HttpError::invalidQuery( '`orderBy` isn\'t supported on list columns', $cptr );
+			}
+			if ( 'asc' !== $dir && 'desc' !== $dir ) {
+				throw HttpError::invalidQuery( "orderBy direction must be 'asc' or 'desc'", $cptr );
+			}
+			$kind = $this->source( $collection )->columns[ $col ]->kind;
+			if ( 'json' === $kind ) {
+				throw HttpError::invalidQuery( '`orderBy` isn\'t supported on JSON columns', $cptr );
+			}
+			if ( 'serialized-list' === $kind ) {
+				throw HttpError::invalidQuery( '`orderBy` isn\'t supported on list columns', $cptr );
+			}
+			if ( '' !== $this->source( $collection )->baseWhere && ( $spec['content'] ?? null ) === $col ) {
+				throw HttpError::invalidQuery( "`orderBy` on `$col` isn't supported on editor collections", $cptr );
+			}
+			$out[] = $this->cmp_ref( $collection, $col, $alias ) . ' ' . strtoupper( $dir );
+		}
+
+		return $out;
+	}
+
+	private static function count( array $opts, string $key, string $ptr ): ?int {
+		$v = $opts[ $key ] ?? null;
+		if ( null === $v ) {
+			return null;
+		}
+		if ( ! Js::isInteger( $v ) || $v < 0 ) {
+			throw HttpError::invalidQuery( "$key must be a non-negative integer", $ptr . '/' . $key );
+		}
+
+		return (int) $v;
+	}
+
+	// ================================================================ filters
+
+	private function filter( string $collection, mixed $where, string $alias, string $ptr ): string {
+		if ( ! is_array( $where ) || ( array() !== $where && array_is_list( $where ) ) ) {
+			throw HttpError::invalidQuery( 'Filter must be an object', $ptr );
+		}
+		$spec  = $this->schema->collection( $collection );
+		$where = Schema::resolveAliases( $spec, $where, $ptr );
+		$parts = array();
+		foreach ( $where as $key => $value ) {
+			$kptr = $ptr . HttpError::seg( $key );
+			$key  = (string) $key;
+			if ( JsUndefined::Value === $value ) {
+				throw HttpError::invalidInput( "Filter value for '$key' cannot be undefined; omit the key or pass null explicitly", $kptr );
+			}
+			if ( 'OR' === $key || 'AND' === $key ) {
+				$parts[] = $this->combine( $key, $value, $kptr, fn ( $f, $p ) => $this->filter( $collection, $f, $alias, $p ) );
+			} elseif ( 'NOT' === $key ) {
+				$parts[] = 'NOT (' . $this->filter( $collection, $value, $alias, $kptr ) . ')';
+			} elseif ( Schema::filtersRelation( $spec, $key, $value ) ) {
+				$parts[] = $this->relation_filter( $collection, $spec['relations'][ $key ], $value, $alias, $kptr );
+			} elseif ( ( $spec['columns'][ $key ]['type'] ?? null ) === 'refList' ) {
+				$parts[] = $this->link_filter( $collection, $key, $value, $alias, $kptr );
+			} elseif ( isset( $spec['columns'][ $key ] ) ) {
+				$parts[] = $this->field_filter( $collection, $key, $value, $alias, $kptr );
+			} else {
+				throw HttpError::invalidQuery( "Unknown column or relation '$key'", $kptr );
+			}
+		}
+
+		return array() === $parts ? '1 = 1' : implode( ' AND ', $parts );
+	}
+
+	private function combine( string $op, mixed $list, string $ptr, callable $compile ): string { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.listFound -- Preserve the existing PHP parameter name.
+		if ( ! is_array( $list ) || ! array_is_list( $list ) ) {
+			throw HttpError::invalidQuery( "$op must be an array", $ptr );
+		}
+		if ( array() === $list ) {
+			return 'OR' === $op ? '0 = 1' : '1 = 1';
+		}
+		$sql = array();
+		foreach ( $list as $i => $f ) {
+			$sql[] = '(' . $compile( $f, $ptr . '/' . $i ) . ')';
+		}
+
+		return '(' . implode( " $op ", $sql ) . ')';
+	}
+
+	private function field_filter( string $collection, string $name, mixed $value, string $alias, string $ptr ): string {
+		if ( $value instanceof Locale\Filter ) {
+			return $this->locale_rule( $collection, $value, $alias );
+		}
+		if ( $this->schema->collection( $collection )['columns'][ $name ]['derived'] ?? false ) {
+			throw HttpError::invalidQuery( "`$name` is derived and can't be filtered", $ptr );
+		}
+		$kind = $this->source( $collection )->columns[ $name ]->kind;
+		if ( null === $value ) {
+			return $this->null_test( $collection, $name, $alias, true );
+		}
+		$is_ops = is_array( $value ) && array() !== $value && ! array_is_list( $value );
+		if ( 'json' === $kind && is_array( $value )
+			&& ! ( $is_ops && array_diff( array_map( 'strval', array_keys( $value ) ), self::FIELD_OPS ) === array() ) ) {
+			return $this->op( $collection, $name, 'eq', $value, $alias, $ptr );
+		}
+		if ( 'serialized-list' === $kind && is_array( $value ) && array_is_list( $value ) ) {
+			return $this->op( $collection, $name, 'eq', $value, $alias, $ptr );
+		}
+		if ( ! is_array( $value ) ) {
+			return $this->op( $collection, $name, 'eq', $value, $alias, $ptr );
+		}
+		if ( ! $is_ops ) {
+			throw HttpError::invalidQuery( 'Field filter must be a value or an operator object', $ptr );
+		}
+		$parts = array();
+		foreach ( $value as $op => $arg ) {
+			$parts[] = $this->op( $collection, $name, (string) $op, $arg, $alias, $ptr . HttpError::seg( $op ) );
+		}
+
+		return implode( ' AND ', $parts );
+	}
+
+	private function op( string $collection, string $name, string $op, mixed $arg, string $alias, string $ptr ): string {
+		if ( JsUndefined::Value === $arg ) {
+			throw HttpError::invalidInput( "Filter operator '$op' on '$name' cannot be undefined", $ptr );
+		}
+		$col = $this->schema->collection( $collection )['columns'][ $name ];
+		$src = $this->source( $collection );
+		$ref = $src->columns[ $name ];
+
+		switch ( $op ) {
+			case 'NOT':
+				return 'NOT (' . $this->field_filter( $collection, $name, $arg, $alias, $ptr ) . ')';
+			case 'OR':
+			case 'AND':
+				return $this->combine( $op, $arg, $ptr, fn ( $f, $p ) => $this->field_filter( $collection, $name, $f, $alias, $p ) );
+			case 'isNull':
+			case 'isNotNull':
+				return $this->null_test( $collection, $name, $alias, ( 'isNull' === $op ) === Js::truthy( $arg ) );
+		}
+		if ( ! in_array( $op, self::FIELD_OPS, true ) ) {
+			throw HttpError::invalidQuery( "Unknown operator '$op'", $ptr );
+		}
+
+		if ( 'json' === $ref->kind ) {
+			if ( 'eq' !== $op && 'ne' !== $op ) {
+				throw HttpError::invalidQuery( "`$op` isn't supported on JSON columns", $ptr );
+			}
+			if ( '' !== $src->baseWhere && in_array( $col['type'], array( 'group', 'repeater', 'blocks' ), true ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+				throw HttpError::invalidQuery( "`$op` on `$name` isn't supported on editor collections; filter on a scalar column", $ptr );
+			}
+			if ( null === $arg ) {
+				return $this->null_test( $collection, $name, $alias, 'eq' === $op );
+			}
+			// Whole-value comparison against the canonical JSON text the codecs store.
+			$this->params[] = Js::jsonStringify( $arg );
+
+			return $this->ref( $collection, $name, $alias, false ) . ' ' . self::CMP[ $op ] . ' ?';
+		}
+
+		if ( 'serialized-list' === $ref->kind ) {
+			if ( 'has' === $op ) {
+				return $this->has( $collection, $name, $arg, $alias, $ptr );
+			}
+			if ( 'eq' === $op && array() === $arg ) {
+				return $this->emptyList( $collection, $name, $alias );
+			}
+			if ( ( 'eq' === $op || 'ne' === $op ) && null === $arg ) {
+				return $this->null_test( $collection, $name, $alias, 'eq' === $op );
+			}
+			throw HttpError::invalidQuery( "`$op` isn't supported on list columns; use `has`", $ptr );
+		}
+
+		// scalar
+		return match ( $op ) {
+			'eq', 'ne', 'gt', 'gte', 'lt', 'lte' => $this->compare( $collection, $name, $op, $arg, $alias, $ptr ),
+			'in', 'notIn' => $this->in_list( $collection, $name, 'notIn' === $op, $arg, $alias, $ptr ),
+			'like', 'notLike', 'ilike', 'notIlike' => $this->like( $collection, $name, $op, $arg, $alias, $ptr ),
+			'has' => throw HttpError::invalidQuery( '`has` is only supported on list columns', $ptr ),
+		};
+	}
+
+	private function null_test( string $collection, string $name, string $alias, bool $isNull ): string { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+		$ref = $this->source( $collection )->columns[ $name ];
+		// json kind may carry a cmpExpr meaning "empty" (post-backed group/repeater/blocks); scalars test expr.
+		$expr = $this->ref( $collection, $name, $alias, 'json' === $ref->kind );
+
+		return $expr . ( $isNull ? ' IS NULL' : ' IS NOT NULL' ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+	}
+
+	private function compare( string $collection, string $name, string $op, mixed $arg, string $alias, string $ptr ): string {
+		if ( null === $arg ) {
+			return match ( $op ) {
+				'eq' => $this->null_test( $collection, $name, $alias, true ),
+				'ne' => $this->null_test( $collection, $name, $alias, false ),
+				default => throw HttpError::invalidQuery( "$op does not accept null", $ptr ),
+			};
+		}
+		$this->params[] = $this->param( $collection, $name, $arg, $ptr );
+
+		return $this->cmp_ref( $collection, $name, $alias ) . ' ' . self::CMP[ $op ] . ' ?';
+	}
+
+	private function in_list( string $collection, string $name, bool $negate, mixed $list, string $alias, string $ptr ): string { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.listFound -- Preserve the existing PHP parameter name.
+		if ( ! is_array( $list ) || ! array_is_list( $list ) ) {
+			throw HttpError::invalidQuery( 'Expected an array', $ptr );
+		}
+		if ( array() === $list ) {
+			return $negate ? '1 = 1' : '0 = 1';
+		}
+		foreach ( $list as $i => $v ) {
+			if ( JsUndefined::Value === $v ) {
+				throw HttpError::invalidInput( "Filter value in list on '$name' cannot be undefined", $ptr . '/' . $i );
+			}
+			$this->params[] = $this->param( $collection, $name, $v, $ptr . '/' . $i );
+		}
+
+		return $this->cmp_ref( $collection, $name, $alias ) . ( $negate ? ' NOT IN (' : ' IN (' ) . self::placeholders( $list ) . ')';
+	}
+
+	private function like( string $collection, string $name, string $op, mixed $pattern, string $alias, string $ptr ): string {
+		if ( ! is_string( $pattern ) ) {
+			throw HttpError::invalidQuery( "$op expects a string pattern", $ptr );
+		}
+		$this->params[] = $pattern;
+		$ci             = 'ilike' === $op || 'notIlike' === $op;
+		$sql            = $this->d->like( $this->ref( $collection, $name, $alias, false ), $ci );
+
+		return str_starts_with( $op, 'not' ) ? "NOT ($sql)" : $sql;
+	}
+
+	private function has( string $collection, string $name, mixed $v, string $alias, string $ptr ): string {
+		$col = $this->schema->collection( $collection )['columns'][ $name ];
+		$ref = $this->source( $collection )->columns[ $name ];
+		if ( 'mediaList' === $col['type'] ) {
+			if ( ! Js::isInteger( $v ) ) {
+				throw HttpError::invalidQuery( 'has expects an integer', $ptr );
+			}
+			$v = (int) $v;
+		} elseif ( ! is_string( $v ) ) {
+			throw HttpError::invalidQuery( 'has expects a string', $ptr );
+		}
+		if ( '' !== $ref->cmpExpr ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+			// PHP-serialized array in postmeta: match one complete element (type-length-value can't
+			// produce a false substring hit). Ids may be stored as ints or numeric strings
+			// (SCF's gallery field stores strings), so ids match either form.
+			$expr           = $this->ref( $collection, $name, $alias, true );
+			$one            = static fn ( string $needle ) => '%' . addcslashes( $needle, '_%\\' ) . '%';
+			$this->params[] = $one( serialize( $v ) );
+			if ( is_int( $v ) ) {
+				$this->params[] = $one( serialize( (string) $v ) );
+
+				return "($expr LIKE ? OR $expr LIKE ?)";
+			}
+
+			return "$expr LIKE ?";
+		}
+		$expr           = $this->ref( $collection, $name, $alias, false );
+		$this->params[] = Js::jsonStringify( $v );
+
+		return "JSON_CONTAINS($expr, ?)";
+	}
+
+	private function emptyList( string $collection, string $name, string $alias ): string { // phpcs:ignore WordPress.NamingConventions.ValidFunctionName.MethodNameInvalid -- Preserve the existing PHP method name.
+		$ref = $this->source( $collection )->columns[ $name ];
+		if ( '' !== $ref->cmpExpr ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+			// Post-backed: no row, '' and an empty serialized array all mean "empty".
+			return 'COALESCE(NULLIF(' . $this->ref( $collection, $name, $alias, true ) . ", ''), 'a:0:{}') = 'a:0:{}'";
+		}
+
+		return $this->ref( $collection, $name, $alias, false ) . " = '[]'";
+	}
+
+	/** A many-ref's links for the row at $alias: `l.<to>` values, as a subquery. */
+	private function linked( string $collection, array $through, string $alias ): string {
+		$links = $this->store instanceof Links ? $this->store : throw new \LogicException( 'This store keeps no ref().many() links' );
+		$l     = $this->alias();
+		$pk    = $this->schema->collection( $collection )['primaryKey'];
+
+		return 'SELECT ' . $l . '.' . $this->d->quote( $through['to'] ) . ' FROM ' . $links->linkTable( $through['table'] ) . ' ' . $l
+			. ' WHERE ' . $l . '.' . $this->d->quote( $through['from'] ) . ' = ' . $this->cmp_ref( $collection, $pk, $alias );
+	}
+
+	/**
+	 * Operators on a `ref().many()` field's own ids: `{ has: id }` and `{ eq: [] }` (no links), with
+	 * NOT/AND/OR. A filter on the linked rows goes through the relation (relationFilter).
+	 */
+	private function link_filter( string $collection, string $name, mixed $value, string $alias, string $ptr ): string {
+		$rel     = $this->schema->collection( $collection )['relations'][ $name ];
+		$through = $rel['through'];
+		if ( is_bool( $value ) ) {
+			return $this->relation_filter( $collection, $rel, $value, $alias, $ptr );
+		}
+		if ( ! is_array( $value ) || array_is_list( $value ) ) {
+			if ( array() === $value ) {
+				return 'NOT EXISTS (' . $this->linked( $collection, $through, $alias ) . $this->lock . ')';
+			}
+			throw HttpError::invalidQuery( "`$name` is a list of ids: filter it with `{ has: id }`, or on the linked rows", $ptr );
+		}
+		$parts = array();
+		foreach ( $value as $op => $arg ) {
+			$optr    = $ptr . HttpError::seg( $op );
+			$parts[] = match ( (string) $op ) {
+				'has' => Js::isInteger( $arg )
+					? ( function () use ( $collection, $through, $alias, $arg ): string {
+						$sql            = 'EXISTS (' . $this->linked( $collection, $through, $alias ) . ' AND ' . $this->d->quote( 'target_id' ) . ' = ?' . $this->lock . ')';
+						$this->params[] = (int) $arg;
+
+						return $sql;
+					} )()
+					: throw HttpError::invalidQuery( 'has expects an id', $optr ),
+				'eq' => array() === $arg ? 'NOT EXISTS (' . $this->linked( $collection, $through, $alias ) . $this->lock . ')'
+					: throw HttpError::invalidQuery( "`eq` isn't supported on list columns; use `has`", $optr ),
+				'NOT' => 'NOT (' . $this->link_filter( $collection, $name, $arg, $alias, $optr ) . ')',
+				'AND', 'OR' => $this->combine( (string) $op, $arg, $optr, fn ( $f, $p ) => $this->link_filter( $collection, $name, $f, $alias, $p ) ),
+				default => throw HttpError::invalidQuery( "`$op` isn't supported on list columns; use `has`", $optr ),
+			};
+		}
+
+		return array() === $parts ? '1 = 1' : implode( ' AND ', $parts );
+	}
+
+	private function relation_filter( string $collection, array $rel, mixed $value, string $alias, string $ptr ): string {
+		$target = $rel['collection'];
+		$src    = $this->source( $target );
+		$inner  = $this->alias();
+		$conds  = array();
+		if ( '' !== $src->baseWhere ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+			$conds[] = $this->sub( $src->baseWhere, $inner, '' ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+		} elseif ( ( $this->schema->collection( $target )['softDelete'] ?? false ) && isset( $src->columns['_live'] ) ) {
+			$conds[] = $this->cmp_ref( $target, '_live', $inner ) . ' = 1';
+		}
+		$conds[] = isset( $rel['through'] )
+			? $this->cmp_ref( $target, $this->schema->collection( $target )['primaryKey'], $inner ) . ' IN (' . $this->linked( $collection, $rel['through'], $alias ) . $this->lock . ')'
+			: $this->cmp_ref( $target, $rel['to'], $inner ) . ' = ' . $this->cmp_ref( $collection, $rel['from'], $alias );
+		if ( ! $this->trusted && null !== $this->guardsFor ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+			foreach ( $this->relationGuards[ $target ] ??= ( $this->guardsFor )( $target ) as $g ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+				$conds[] = $this->guard( $target, $g, $inner );
+			}
+		}
+		if ( is_array( $value ) ) {
+			$conds[] = $this->filter( $target, $value, $inner, $ptr );
+		} elseif ( true !== $value && false !== $value ) {
+			throw HttpError::invalidQuery( 'Relation filter must be true, false or a filter object', $ptr );
+		}
+		// Joins are assembled after the inner filter so nested EXISTS can mark this alias's columns.
+		$sql = 'EXISTS (SELECT 1 FROM ' . $src->table . ' ' . $inner . $this->joins( $target, $inner ) . ' WHERE ' . implode( ' AND ', $conds ) . $this->lock . ')';
+
+		return false === $value ? "NOT $sql" : $sql;
+	}
+
+	/**
+	 * An access/draft guard. Guards are the app's own rules, so relation filters inside them are
+	 * trusted; only the viewer's filters are confined to rows the viewer can read.
+	 */
+	private function guard( string $collection, array|SqlPredicate $g, string $alias ): string {
+		if ( $g instanceof SqlPredicate ) {
+			array_push( $this->params, ...$g->params );
+			return '(' . $this->sub( $g->sql, $alias, '' ) . ')';
+		}
+		[$was, $this->trusted] = array( $this->trusted, true );
+		try {
+			return '(' . $this->filter( $collection, $g, $alias, '' ) . ')';
+		} finally {
+			$this->trusted = $was;
+		}
+	}
+
+	/** The viewer's read guards for $collection (none when trusted), cached per compile. */
+	private function read_guards( string $collection ): array {
+		return $this->trusted || null === $this->guardsFor ? array() : ( $this->relationGuards[ $collection ] ??= ( $this->guardsFor )( $collection ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+	}
+
+	/**
+	 * The locale rule (§7.3): rows in $f->locale or, with a fallback, the fallback-locale row of every
+	 * translation group without a row in $f->locale that the viewer may read (the subquery carries
+	 * the same per-target read guards as relation filters, so a hidden translation never suppresses
+	 * its group's fallback). $f->groupOf narrows to one row's group. Both subqueries are
+	 * uncorrelated; every localized Source exposes `locale` and a `translationGroup` expression.
+	 */
+	private function locale_rule( string $collection, Locale\Filter $f, string $alias ): string {
+		$pk     = $this->schema->collection( $collection )['primaryKey'];
+		$locale = $this->cmp_ref( $collection, 'locale', $alias );
+		$group  = $this->cmp_ref( $collection, 'translationGroup', $alias );
+		$parts  = array();
+		if ( null !== $f->groupOf ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+			$this->params[] = $f->groupOf; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+			$parts[]        = '(' . $this->cmp_ref( $collection, $pk, $alias ) . " = ? OR $group IN " . $this->groups( $collection, $pk, $f->groupOf ) . ')'; // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+		}
+		$this->params[] = $f->locale;
+		$rule           = "$locale = ?";
+		if ( null !== $f->fallback && $f->fallback !== $f->locale ) {
+			$this->params[] = $f->fallback;
+			$rule           = "($rule OR ($locale = ? AND ($group IS NULL OR $group NOT IN " . $this->groups( $collection, 'locale', $f->locale ) . ')))';
+		}
+		$parts[] = $rule;
+
+		return implode( ' AND ', $parts );
+	}
+
+	/** `(SELECT translationGroup FROM <collection> WHERE <$col> = ?)` over rows the viewer may read; NULL groups excluded. */
+	private function groups( string $collection, string $col, int|string $value ): string {
+		$src            = $this->source( $collection );
+		$inner          = $this->alias();
+		$group          = $this->cmp_ref( $collection, 'translationGroup', $inner );
+		$conds          = '' === $src->baseWhere ? array() : array( $this->sub( $src->baseWhere, $inner, '' ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+		$conds[]        = $this->cmp_ref( $collection, $col, $inner ) . ' = ?';
+		$this->params[] = $value;
+		$conds[]        = "$group IS NOT NULL";
+		foreach ( $this->read_guards( $collection ) as $g ) {
+			$conds[] = $this->guard( $collection, $g, $inner );
+		}
+
+		return "(SELECT $group FROM " . $src->table . ' ' . $inner . $this->joins( $collection, $inner ) . ' WHERE ' . implode( ' AND ', $conds ) . ')';
+	}
+
+	/**
+	 * `translations` (§7.3): locale → primary key of every row in this row's translation group, as JSON
+	 * text; just `{locale: pk}` for a row without a group. Literal-only SQL, so it can sit in the
+	 * select list ahead of the WHERE's parameters.
+	 */
+	private function translations( string $collection, string $alias ): string {
+		$src = $this->source( $collection );
+		if ( ! isset( $src->columns['locale'], $src->columns['translationGroup'] ) ) {
+			return 'NULL';
+		}
+		$pk           = $this->schema->collection( $collection )['primaryKey'];
+		$inner        = $this->alias();
+		$conds        = '' === $src->baseWhere ? array() : array( $this->sub( $src->baseWhere, $inner, '' ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+		$conds[]      = $this->cmp_ref( $collection, 'translationGroup', $inner ) . ' = ' . $this->cmp_ref( $collection, 'translationGroup', $alias );
+		$inner_locale = $this->ref( $collection, 'locale', $inner, false );
+		$conds[]      = "$inner_locale IS NOT NULL";
+		// JSON_OBJECTAGG aggregates an empty group to NULL, so the row's own pair is the fallback.
+		$members = "(SELECT JSON_OBJECTAGG($inner_locale, " . $this->ref( $collection, $pk, $inner, false ) . ') FROM ' . $src->table . ' ' . $inner
+			. $this->joins( $collection, $inner ) . ' WHERE ' . implode( ' AND ', $conds ) . ')';
+		$locale  = $this->ref( $collection, 'locale', $alias, false );
+
+		return "CASE WHEN $locale IS NULL THEN NULL ELSE COALESCE($members, JSON_OBJECT($locale, " . $this->ref( $collection, $pk, $alias, false ) . ')) END';
+	}
+
+	// ================================================================ values
+
+	private function param( string $collection, string $name, mixed $v, string $ptr ): int|float|string|null {
+		$col = $this->schema->collection( $collection )['columns'][ $name ];
+
+		return $this->meta_param( $col, $this->source( $collection )->columns[ $name ], $this->filter_value( $col, $v, $ptr ) );
+	}
+
+	/** Encode a filter value with the column's codec (format checks relaxed: filters compare, they don't write). */
+	private function filter_value( array $col, mixed $v, string $ptr ): int|float|string|null {
+		unset( $col['enum'], $col['notNull'], $col['rules'] );
+		$col['type'] = match ( $col['type'] ) {
+			'email', 'url', 'slug', 'richText' => 'text',
+			'media' => 'integer',
+			default => $col['type'],
+		};
+		try {
+			return Schema::encode( $col, $v, ltrim( strrchr( $ptr, '/' ) ?: $ptr, '/' ), $ptr ); // phpcs:ignore Universal.Operators.DisallowShortTernary.Found -- Keep the existing falsey fallback.
+		} catch ( HttpError $e ) {
+			throw HttpError::invalidQuery( $e->getMessage(), $ptr );
+		}
+	}
+
+	/** With a cmpExpr the column compares in its WordPress meta form (§3.5.1). */
+	private function meta_param( array $col, ColumnRef $ref, int|float|string|null $v ): int|float|string|null {
+		if ( '' === $ref->cmpExpr || null === $v ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+			return $v;
+		}
+
+		return match ( $col['type'] ) {
+			'timestamp' => substr( (string) $v, 0, 10 ) . ' ' . substr( (string) $v, 11, 8 ),
+			'date' => str_replace( '-', '', (string) $v ),
+			'boolean' => $v ? '1' : '0',
+			default => $v,
+		};
+	}
+
+	private static function placeholders( array $values ): string {
+		return implode( ', ', array_fill( 0, count( $values ), '?' ) );
+	}
 }

@@ -45,6 +45,10 @@ final class CompositeStore implements Store, Links {
 		return ( $spec['editor'] ?? true ) && ( $spec['wp'] ?? null ) !== null;
 	}
 
+	public function isTableBacked( string $collection ): bool {
+		return $this->for( $collection ) === $this->tables;
+	}
+
 	private function for( string $collection ): Store {
 		// The auth collection's rows are WordPress users (§6.2).
 		if ( null !== $this->users && $collection === ( $this->schema->auth()['collection'] ?? null ) ) { // phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- Preserve the existing comparison order.

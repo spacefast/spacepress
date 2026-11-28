@@ -883,8 +883,11 @@ final class Db {
 				$guards = null === $viewer ? array() : $this->write_guards( $collection, 'update', $viewer, $set );
 				$out    = array();
 				$opts   = array( 'where' => $where );
+				// A conditional table update must see the current predicate match and hold it through the write.
+				$lock_rows = null === $viewer && array() !== $where
+					&& $this->store instanceof Wp\CompositeStore && $this->store->isTableBacked( $collection );
 				// A referential update must use the same current rows the delete preflight locked.
-				$rows         = $this->select_decoded( $collection, $opts, '', null, null, $guards, $viewer, forUpdate: null !== $viewer && array() !== $this->deleting );
+				$rows         = $this->select_decoded( $collection, $opts, '', null, null, $guards, $viewer, forUpdate: $lock_rows || ( null !== $viewer && array() !== $this->deleting ) );
 				$pk           = $spec['primaryKey'];
 				$bulk         = new BulkUpdate( $collection, $spec, $set, $viewer, array_map( static fn ( array $row ) => self::key( $row[ $pk ] ), $rows ), $errorViewer ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				$this->bulk[] = $bulk;

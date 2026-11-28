@@ -632,57 +632,6 @@ code, pre { font-family: var(--font-mono); }
   .sp-pipe-arrow { flex-direction: row; justify-content: center; gap: 12px; }
 }
 
-/* Three architectural theses on Home */
-.sp-theses {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: clamp(16px, 2vw, 24px);
-}
-.sp-thesis {
-  background: var(--surface);
-  border: 1px solid var(--border-soft);
-  border-radius: var(--radius-lg);
-  padding: clamp(24px, 2.6vw, 32px);
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  min-width: 0;
-}
-.sp-thesis h3 {
-  margin: 0;
-  font-size: 1.25rem;
-  font-weight: 500;
-  line-height: 1.25;
-  letter-spacing: -0.01em;
-}
-.sp-thesis p {
-  margin: 0;
-  font-size: 0.9375rem;
-  line-height: 1.58;
-  color: var(--ink-muted);
-}
-.sp-thesis-links {
-  margin-top: auto;
-  padding-top: 8px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 14px;
-  font-size: 14px;
-  font-weight: 500;
-}
-.sp-thesis-links a {
-  color: var(--ink-secondary);
-  text-decoration: none;
-}
-.sp-thesis-links a:hover {
-  color: var(--ink);
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-@media (max-width: 960px) {
-  .sp-theses { grid-template-columns: 1fr; }
-}
-
 /* Changelog page */
 .sp-changelog {
   padding-top: 40px;

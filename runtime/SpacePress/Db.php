@@ -137,10 +137,10 @@ final class Db {
 			'where' => array( $bulk->spec['primaryKey'] => $pk ),
 			'limit' => 1,
 		);
-		$existing = $this->select_decoded( $collection, $opts, '', null )[0] ?? null;
+		$existing = $this->select_decoded( $collection, $opts, '', null, forUpdate: $bulk->lock_rows )[0] ?? null;
 		if ( null !== $existing ) {
 			// Through nested(): the early write counts toward MAX_HOOK_DEPTH like the write it replaces.
-			$bulk->done[ $key ] = $this->nested( fn () => Js::atInstant( fn () => $this->update_one( $collection, $bulk->spec, $existing, $bulk->set, $bulk->viewer, $values, $bulk->errorViewer ) ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
+			$bulk->done[ $key ] = $this->nested( fn () => Js::atInstant( fn () => $this->update_one( $collection, $bulk->spec, $existing, $bulk->set, $bulk->viewer, $values, $bulk->errorViewer, $bulk->lock_rows ) ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Preserve the existing PHP property name.
 		}
 
 		return true;
@@ -889,7 +889,7 @@ final class Db {
 				// A referential update must use the same current rows the delete preflight locked.
 				$rows         = $this->select_decoded( $collection, $opts, '', null, null, $guards, $viewer, forUpdate: $lock_rows || ( null !== $viewer && array() !== $this->deleting ) );
 				$pk           = $spec['primaryKey'];
-				$bulk         = new BulkUpdate( $collection, $spec, $set, $viewer, array_map( static fn ( array $row ) => self::key( $row[ $pk ] ), $rows ), $errorViewer ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+				$bulk         = new BulkUpdate( $collection, $spec, $set, $viewer, array_map( static fn ( array $row ) => self::key( $row[ $pk ] ), $rows ), $errorViewer, $lock_rows ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 				$this->bulk[] = $bulk;
 				try {
 					foreach ( $rows as $existing ) {
@@ -900,7 +900,7 @@ final class Db {
 						}
 						unset( $bulk->pending[ $key ] );
 						$bulk->current = $key;
-						$out[]         = Js::atInstant( fn () => $this->update_one( $collection, $spec, $existing, $set, $viewer, errorViewer: $errorViewer ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+						$out[]         = Js::atInstant( fn () => $this->update_one( $collection, $spec, $existing, $set, $viewer, errorViewer: $errorViewer, lock_rows: $lock_rows ) ); // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 					}
 				} finally {
 					array_pop( $this->bulk );
@@ -1110,7 +1110,7 @@ final class Db {
 	}
 
 	/** @param array $values trusted values applied over $patch after access and field rules (updateWithin) */
-	private function update_one( string $collection, array $spec, array $existing, array $patch, ?Viewer $viewer, array $values = array(), ?Viewer $errorViewer = null ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
+	private function update_one( string $collection, array $spec, array $existing, array $patch, ?Viewer $viewer, array $values = array(), ?Viewer $errorViewer = null, bool $lock_rows = false ): array { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase -- Preserve the existing PHP variable name.
 		$columns  = $spec['columns'];
 		$pk       = $spec['primaryKey'];
 		$provided = $patch;
@@ -1200,7 +1200,8 @@ final class Db {
 			throw $this->store->mapError( $e );
 		}
 		Access::clearCache();
-		[$row, $raw] = $this->read_by_pk( $collection, $spec, $pk_value );
+		// An empty or link-only patch can leave the locked row outside the transaction's snapshot.
+		[$row, $raw] = $this->read_by_pk( $collection, $spec, $pk_value, for_update: $lock_rows );
 		$this->record_revision( $collection, $spec, $pk_value, $raw, 'update', $previous, $row );
 		$this->hook( $collection, $spec, 'afterUpdate', $row, $previous );
 		$this->published( $collection, $spec, $row, $previous );
@@ -2263,7 +2264,7 @@ final class Db {
 	}
 
 	/** @return array{array, array} [decoded row, storage-form row] */
-	private function read_by_pk( string $collection, array $spec, int|string $pk, string $deleted = 'exclude' ): array {
+	private function read_by_pk( string $collection, array $spec, int|string $pk, string $deleted = 'exclude', bool $for_update = false ): array {
 		$opts = array(
 			'where' => array( $spec['primaryKey'] => $pk ),
 			'limit' => 1,
@@ -2271,8 +2272,8 @@ final class Db {
 		if ( 'exclude' !== $deleted ) {
 			$opts['deleted'] = $deleted;
 		}
-		$q   = Sql::select( $this->schema, $this->store, $collection, $opts );
-		$raw = $this->with_links( $collection, $this->store->select( $collection, $q ) )[0] ?? throw new \RuntimeException( "Row $collection/$pk vanished after write" );
+		$q   = Sql::select( $this->schema, $this->store, $collection, $opts, forUpdate: $for_update );
+		$raw = $this->with_links( $collection, $this->store->select( $collection, $q ), forUpdate: $for_update )[0] ?? throw new \RuntimeException( "Row $collection/$pk vanished after write" );
 		$raw = array_intersect_key( $raw, $spec['columns'] );
 
 		return array( Schema::decodeRow( $spec['columns'], $raw ), $raw );

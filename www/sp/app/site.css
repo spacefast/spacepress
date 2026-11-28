@@ -53,7 +53,6 @@
   --accent-ink: #141414;
   --accent-soft: rgba(30, 254, 87, 0.1);
   --accent-border: rgba(30, 254, 87, 0.3);
-  --daylight: linear-gradient(98deg, #1efe57 15%, #e5ff00 68%, #fff 100%);
   --ring: #0075ff;
   /* Kept for the inline styles that name them; both now sit inside the same quiet palette. */
   --indigo: #69b1ff;
@@ -360,9 +359,8 @@ code, pre { font-family: var(--font-mono); }
 
 /* Hero */
 .sp-hero { padding: clamp(40px, 6vw, 88px) 0 clamp(8px, 2vw, 24px); }
-.sp-hero-grid-bg { display: none; }
 
-.sp-hero-top { margin: 0 0 clamp(40px, 5vw, 64px); }
+.sp-hero-top { margin: 0 0 clamp(28px, 3.5vw, 44px); }
 
 .sp-hero h1 {
   max-width: 11.5em;
@@ -372,12 +370,9 @@ code, pre { font-family: var(--font-mono); }
   font-weight: 500;
   line-height: 0.96;
   letter-spacing: -0.02em;
-  color: transparent;
-  background-image: var(--daylight);
-  -webkit-background-clip: text;
-  background-clip: text;
+  color: var(--ink);
 }
-.sp-hero-accent { color: inherit; }
+.sp-hero-accent { color: var(--accent); }
 
 .sp-hero-sub {
   margin: 0 0 32px;
@@ -595,6 +590,7 @@ code, pre { font-family: var(--font-mono); }
   font-size: 12.5px;
   font-weight: 500;
 }
+.sp-pipeline-direction { font-size: 24px; line-height: 1; }
 .sp-pipe-arrow small { font-size: 12px; color: var(--ink-muted); }
 
 .sp-artifact-grid {
@@ -629,6 +625,7 @@ code, pre { font-family: var(--font-mono); }
 @media (max-width: 900px) {
   .sp-pipeline { grid-template-columns: minmax(0, 1fr); gap: 20px; }
   .sp-artifact-grid { grid-template-columns: 1fr; }
+  .sp-pipeline-direction { transform: rotate(90deg); }
   .sp-pipe-arrow { flex-direction: row; justify-content: center; gap: 12px; }
 }
 
@@ -1639,10 +1636,8 @@ a.sp-deploy-card:hover .sp-wpcloud-logo {
   display: flex;
   align-items: baseline;
   gap: 10px;
-  padding: 14px 16px;
-  background: var(--surface-code);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
 }
 .sp-freedom-num {
   font-family: var(--font-mono);
@@ -1977,29 +1972,6 @@ a.sp-deploy-card:hover .sp-wpcloud-logo {
   font-family: var(--font-mono);
   font-size: 12.5px;
   color: var(--ink-muted);
-}
-
-/* Closing call to action */
-.sp-cta-band {
-  margin: 0 calc(-1 * var(--pad));
-  padding: clamp(40px, 6vw, 88px) var(--pad);
-  background: var(--bg-subtle);
-  border-radius: var(--radius-panel);
-}
-.sp-cta-band h2 {
-  max-width: 14em;
-  margin: 0 0 20px;
-  font-size: clamp(2rem, 4.4vw, 3.75rem);
-  font-weight: 500;
-  line-height: 1.04;
-  letter-spacing: -0.02em;
-  color: var(--ink);
-}
-.sp-cta-band p {
-  margin: 0 0 32px;
-  max-width: 36rem;
-  font-size: clamp(1.05rem, 1.4vw, 1.2rem);
-  color: var(--ink-secondary);
 }
 
 /* Footer */

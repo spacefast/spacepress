@@ -217,7 +217,6 @@ export default function HomePage() {
   return (
     <>
       <section className="sp-hero">
-        <div className="sp-hero-grid-bg" aria-hidden="true" />
         <div className="sp-container sp-hero-inner">
           <div className="sp-hero-top">
             <h1>
@@ -327,7 +326,7 @@ export default function HomePage() {
             </div>
 
             <div className="sp-pipe-arrow">
-              <div style={{ fontSize: "24px", lineHeight: 1 }}>→</div>
+              <span className="sp-pipeline-direction" aria-hidden="true">→</span>
               <small>spacepress build</small>
             </div>
 
@@ -342,6 +341,96 @@ export default function HomePage() {
             <Link href="/docs/getting-started/project-structure" className="sp-inline-link">Project structure →</Link>{" · "}
             <Link href="/blog/introducing-spacepress" className="sp-inline-link">How it&apos;s built →</Link>
           </p>
+        </div>
+      </section>
+
+      <section className="sp-section">
+        <div className="sp-container">
+          <div className="sp-section-head">
+            <h2>What developers are saying</h2>
+          </div>
+
+          <div className="sp-quotes-grid">
+            <figure className="sp-quote-card">
+              <blockquote>&ldquo;This is wildddddd&rdquo;</blockquote>
+              <figcaption className="sp-quote-author">
+                <a
+                  className="sp-quote-avatar-link"
+                  href="https://gravatar.com/srubenstein"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="Seth Rubenstein on Gravatar"
+                >
+                  <img
+                    className="sp-quote-avatar"
+                    src="https://1.gravatar.com/avatar/1dbea249f39ebe090ce44bf103c993dd29d56dda5b94f70525222d7a728cc7bb?s=160"
+                    alt="Seth Rubenstein"
+                    width={44}
+                    height={44}
+                    loading="lazy"
+                    decoding="async"
+                  />
+                </a>
+                <div className="sp-quote-meta">
+                  <a
+                    className="sp-quote-name"
+                    href="https://gravatar.com/srubenstein"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Seth Rubenstein
+                  </a>
+                  <span className="sp-quote-role">Head of Engineering, Pew Research Center</span>
+                  <div className="sp-quote-links">
+                    <a href="https://x.com/SethRubenstein" target="_blank" rel="noopener noreferrer">
+                      @SethRubenstein ↗
+                    </a>
+                  </div>
+                </div>
+              </figcaption>
+            </figure>
+
+            <figure className="sp-quote-card">
+              <blockquote>
+                &ldquo;duuuude no fucking way [..] This is so exciting. [..] it&apos;s going to be a literally absurd&rdquo;
+              </blockquote>
+              <figcaption className="sp-quote-author">
+                <a
+                  className="sp-quote-avatar-link"
+                  href="https://gravatar.com/jameswlepage576d19b1f7"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="James LePage on Gravatar"
+                >
+                  <img
+                    className="sp-quote-avatar"
+                    src="https://1.gravatar.com/avatar/629816b02cf290becaead8afbfb01622c182c0059ce2497ffe33685757d715f6?s=160"
+                    alt="James LePage"
+                    width={44}
+                    height={44}
+                    loading="lazy"
+                    decoding="async"
+                  />
+                </a>
+                <div className="sp-quote-meta">
+                  <a
+                    className="sp-quote-name"
+                    href="https://gravatar.com/jameswlepage576d19b1f7"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    James LePage
+                  </a>
+                  <span className="sp-quote-role">Co-founder, Parisi Labs · ex-Head of AI, Automattic</span>
+                  <div className="sp-quote-links">
+                    <a href="https://x.com/jameswlepage" target="_blank" rel="noopener noreferrer">
+                      @jameswlepage ↗
+                    </a>
+                  </div>
+                </div>
+              </figcaption>
+            </figure>
+          </div>
         </div>
       </section>
 
@@ -391,104 +480,6 @@ export default function HomePage() {
             example="tasks"
             hint="Multi-file Tasks app: SQL table, two mutations, TSX page, and live Interactivity API island — compile and run in WordPress Playground."
           />
-        </div>
-      </section>
-
-      <section className="sp-section">
-        <div className="sp-container">
-          <div className="sp-section-head">
-            <h2>What developers are saying</h2>
-          </div>
-
-          <div className="sp-quotes-grid">
-            <figure className="sp-quote-card">
-              <blockquote>&ldquo;This is wildddddd&rdquo;</blockquote>
-              <figcaption className="sp-quote-author">
-                <a
-                  className="sp-quote-avatar-link"
-                  href="https://gravatar.com/srubenstein"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label="Seth Rubenstein on Gravatar"
-                >
-                  <img
-                    className="sp-quote-avatar"
-                    src="https://1.gravatar.com/avatar/1dbea249f39ebe090ce44bf103c993dd29d56dda5b94f70525222d7a728cc7bb?s=160"
-                    alt="Seth Rubenstein"
-                    width={44}
-                    height={44}
-                    loading="lazy"
-                    decoding="async"
-                  />
-                </a>
-                <div className="sp-quote-meta">
-                  <a
-                    className="sp-quote-name"
-                    href="https://gravatar.com/srubenstein"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    Seth Rubenstein
-                  </a>
-                  <span className="sp-quote-role">Head of Engineering, Pew Research Center</span>
-                  <div className="sp-quote-links">
-                    <a href="https://gravatar.com/srubenstein" target="_blank" rel="noopener noreferrer">
-                      Gravatar ↗
-                    </a>
-                    <span aria-hidden="true">·</span>
-                    <a href="https://x.com/SethRubenstein" target="_blank" rel="noopener noreferrer">
-                      @SethRubenstein ↗
-                    </a>
-                  </div>
-                </div>
-              </figcaption>
-            </figure>
-
-            <figure className="sp-quote-card">
-              <blockquote>
-                &ldquo;duuuude no fucking way [..] This is so exciting. [..] it&apos;s going to be a literally absurd&rdquo;
-              </blockquote>
-              <figcaption className="sp-quote-author">
-                <a
-                  className="sp-quote-avatar-link"
-                  href="https://gravatar.com/jameswlepage576d19b1f7"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label="James LePage on Gravatar"
-                >
-                  <img
-                    className="sp-quote-avatar"
-                    src="https://1.gravatar.com/avatar/629816b02cf290becaead8afbfb01622c182c0059ce2497ffe33685757d715f6?s=160"
-                    alt="James LePage"
-                    width={44}
-                    height={44}
-                    loading="lazy"
-                    decoding="async"
-                  />
-                </a>
-                <div className="sp-quote-meta">
-                  <a
-                    className="sp-quote-name"
-                    href="https://gravatar.com/jameswlepage576d19b1f7"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    James LePage
-                  </a>
-                  <span className="sp-quote-role">Co-founder, Parisi Labs · ex-Head of AI, Automattic</span>
-                  <div className="sp-quote-links">
-                    <a href="https://gravatar.com/jameswlepage576d19b1f7" target="_blank" rel="noopener noreferrer">
-                      Gravatar ↗
-                    </a>
-                    <span aria-hidden="true">·</span>
-                    <a href="https://x.com/jameswlepage" target="_blank" rel="noopener noreferrer">
-                      @jameswlepage ↗
-                    </a>
-                  </div>
-                </div>
-              </figcaption>
-            </figure>
-          </div>
         </div>
       </section>
 
@@ -601,24 +592,6 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="sp-section" style={{ paddingTop: 0 }}>
-        <div className="sp-container">
-          <div className="sp-cta-band">
-            <h2>Ship your next WordPress app in TypeScript</h2>
-            <p>
-              Deploy to Spacefast, Pressable, WordPress.com, or self-hosted WordPress in minutes — no Docker or Rust toolchain required.
-            </p>
-            <div className="sp-hero-ctas" style={{ marginBottom: 0 }}>
-              <Link href="/quick-start" className="sp-btn sp-btn-primary sp-btn-lg">
-                Start the 3-Minute Quick Start →
-              </Link>
-              <Link href="/play" className="sp-btn sp-btn-secondary sp-btn-lg">
-                Open Playground
-              </Link>
-            </div>
-          </div>
-        </div>
-      </section>
     </>
   );
 }

@@ -830,8 +830,13 @@ fn create_table_with_fks(
             body.push(fk);
         }
     }
+    let create = if t == REVISIONS && def["system"].as_bool() == Some(true) {
+        "CREATE TABLE IF NOT EXISTS"
+    } else {
+        "CREATE TABLE"
+    };
     format!(
-        "CREATE TABLE {} (\n\t{}\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;",
+        "{create} {} (\n\t{}\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;",
         table(t, tables),
         body.join(",\n\t")
     )
@@ -1786,7 +1791,11 @@ mod tests {
         let loc_pos = m1.sql.find("CREATE TABLE `{prefix}sp_locations`").unwrap();
         let item_pos = m1.sql.find("CREATE TABLE `{prefix}sp_items`").unwrap();
         assert!(loc_pos < item_pos, "{}", m1.sql);
-        assert!(m1.sql.contains("CREATE TABLE `{prefix}sp__revisions`"), "{}", m1.sql);
+        assert!(
+            m1.sql.contains("CREATE TABLE IF NOT EXISTS `{prefix}sp__revisions`"),
+            "{}",
+            m1.sql
+        );
 
         // Rebuild with no changes produces nothing.
         assert!(apply_step(&mut history, &v1).unwrap().is_none());

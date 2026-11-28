@@ -215,7 +215,7 @@ final class SchemaCheck {
 
 	/** A table a pending statement creates: checks of it run against no rows. */
 	private function follow( string $statement ): void {
-		if ( preg_match( '/^CREATE TABLE `((?:[^`]|``)+)`/', $statement, $m ) ) {
+		if ( preg_match( '/^CREATE TABLE (?:IF NOT EXISTS )?`((?:[^`]|``)+)`/', $statement, $m ) ) {
 			$this->created[ str_replace( '``', '`', $m[1] ) ] = true;
 		} elseif ( preg_match( '/^ALTER TABLE `((?:[^`]|``)+)` ADD COLUMN `((?:[^`]|``)+)`/', $statement, $m ) ) {
 			$this->adds[ str_replace( '``', '`', $m[1] ) ][ str_replace( '``', '`', $m[2] ) ] = true;
